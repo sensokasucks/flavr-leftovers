@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Stream Core Admin</title>
+  <link rel="stylesheet" href="/admin/admin.css" />
+</head>
+<body>
+  <header>
+    <h1>Stream Core Admin</h1>
+    <div class="token-row">
+      <label>Admin token</label>
+      <input type="password" id="token" placeholder="points.admin_token from config" />
+      <button id="save-token">Save</button>
+      <span id="status" class="muted"></span>
+    </div>
+    <div id="stats" class="stats"></div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="users">Users &amp; Points</button>
+    <button class="tab" data-tab="chat">Chat History</button>
+    <button class="tab" data-tab="config">Config</button>
+  </nav>
+
+  <!-- Users -->
+  <section id="tab-users" class="panel active">
+    <div class="toolbar">
+      <input id="user-q" placeholder="Search name / username…" />
+      <button id="user-search">Search</button>
+      <button id="user-refresh">Refresh</button>
+    </div>
+    <div class="split">
+      <div class="list-pane">
+        <table id="users-table">
+          <thead>
+            <tr><th>ID</th><th>Name</th><th>Points</th><th>Accounts</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="detail-pane" id="user-detail">
+        <p class="muted">Select a user</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Chat -->
+  <section id="tab-chat" class="panel">
+    <div class="toolbar">
+      <input id="chat-user-id" placeholder="User ID (optional)" />
+      <select id="chat-platform">
+        <option value="">All platforms</option>
+        <option value="kick">kick</option>
+        <option value="twitch">twitch</option>
+        <option value="youtube">youtube</option>
+      </select>
+      <input id="chat-q" placeholder="Search message text…" />
+      <button id="chat-search">Search</button>
+      <button id="chat-export">Download CSV</button>
+    </div>
+    <table id="chat-table">
+      <thead>
+        <tr>
+          <th>Time</th><th>User</th><th>Platform</th><th>Message</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Config (hybrid GUI) -->
+  <section id="tab-config" class="panel">
+    <div class="config-banner" id="config-banner">
+      <strong>Save writes the same files tech users edit by hand.</strong>
+      After saving, <em>restart Stream Core</em> for changes to take effect.
+      <span class="muted" id="config-paths"></span>
+    </div>
+
+    <div class="config-actions">
+      <button class="primary" id="cfg-save">Save config.yaml</button>
+      <button id="cfg-reload">Reload from disk</button>
+      <button id="cfg-reset-defaults" class="danger" title="Fill form with built-in defaults (does not save yet)">Reset form to defaults</button>
+      <span id="cfg-status" class="muted"></span>
+    </div>
+
+    <div class="config-grid">
+      <fieldset class="cfg-card">
+        <legend>Core</legend>
+        <label>Host <input id="cfg-core-host" type="text" /></label>
+        <label>Port <input id="cfg-core-port" type="number" min="1" max="65535" /></label>
+        <label>Command prefix <input id="cfg-core-prefix" type="text" maxlength="4" /></label>
+        <label>Log level
+          <select id="cfg-core-log">
+            <option>DEBUG</option>
+            <option>INFO</option>
+            <option>WARNING</option>
+            <option>ERROR</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Kick</legend>
+        <label class="check"><input id="cfg-kick-enabled" type="checkbox" /> Enabled</label>
+        <label>Channel slug
+          <input id="cfg-kick-slug" type="text" placeholder="kick.com/THIS_PART" />
+        </label>
+        <label>Viewer poll (seconds)
+          <input id="cfg-kick-poll" type="number" min="5" max="300" />
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Twitch</legend>
+        <label class="check"><input id="cfg-tw-enabled" type="checkbox" /> Enabled</label>
+        <label>Channel
+          <input id="cfg-tw-channel" type="text" placeholder="twitch.tv/THIS_PART" />
+        </label>
+        <p class="hint">Read-only anonymous IRC — no OAuth needed to listen.</p>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>YouTube</legend>
+        <label class="check"><input id="cfg-yt-enabled" type="checkbox" /> Enabled</label>
+        <label>Mode
+          <select id="cfg-yt-mode">
+            <option value="innertube">innertube (no API key / no quota)</option>
+            <option value="official">official (Data API v3)</option>
+            <option value="auto">auto (official if api_key set)</option>
+          </select>
+        </label>
+        <label>Live video ID
+          <input id="cfg-yt-video" type="text" placeholder="Required for innertube" />
+        </label>
+        <label>API key (official mode)
+          <input id="cfg-yt-apikey" type="text" autocomplete="off" placeholder="AIza…" />
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Minecraft</legend>
+        <label class="check"><input id="cfg-mc-enabled" type="checkbox" /> Enabled (opt-in)</label>
+        <label>In-game player name
+          <input id="cfg-mc-player" type="text" />
+        </label>
+        <label>Client mod URL
+          <input id="cfg-mc-client" type="text" />
+        </label>
+        <label>Server mod URL
+          <input id="cfg-mc-server" type="text" />
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Permissions</legend>
+        <p class="hint">One username per line. Matched case-insensitively across platforms.</p>
+        <label>Admins
+          <textarea id="cfg-perm-admin" rows="4" placeholder="your_kick_name"></textarea>
+        </label>
+        <label>Mods
+          <textarea id="cfg-perm-mod" rows="3" placeholder="mod_name"></textarea>
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Chat points</legend>
+        <label class="check"><input id="cfg-pts-enabled" type="checkbox" /> Enabled</label>
+        <label>Points per message
+          <input id="cfg-pts-per" type="number" min="0" />
+        </label>
+        <label>Cooldown (seconds)
+          <input id="cfg-pts-cd" type="number" min="0" />
+        </label>
+        <label>Admin token
+          <input id="cfg-pts-token" type="text" autocomplete="off" />
+        </label>
+        <p class="hint">Changing the admin token requires re-saving it in the header above after restart.</p>
+      </fieldset>
+    </div>
+
+    <details class="cfg-advanced" id="cfg-advanced">
+      <summary>Advanced settings</summary>
+      <div class="config-grid">
+        <fieldset class="cfg-card">
+          <legend>Kick (advanced)</legend>
+          <label>Chatroom ID (optional)
+            <input id="cfg-kick-chatroom" type="text" placeholder="Leave blank to auto-detect" />
+          </label>
+          <p class="hint">Only needed if Kick returns 403. From kick.com/api/v2/channels/YOUR_SLUG → chatroom.id</p>
+        </fieldset>
+
+        <fieldset class="cfg-card">
+          <legend>YouTube (advanced)</legend>
+          <label>Channel ID
+            <input id="cfg-yt-channel" type="text" placeholder="UC…" />
+          </label>
+          <label>Live chat ID override
+            <input id="cfg-yt-livechat" type="text" placeholder="Official mode only" />
+          </label>
+          <p class="hint">video_id changes every stream. innertube needs no key; official uses daily quota.</p>
+        </fieldset>
+
+        <fieldset class="cfg-card">
+          <legend>Metrics / power level</legend>
+          <label>Message window (sec) <input id="cfg-met-msgwin" type="number" /></label>
+          <label>Command window (sec) <input id="cfg-met-cmdwin" type="number" /></label>
+          <label>Viewer weight <input id="cfg-met-vw" type="number" step="0.05" min="0" max="1" /></label>
+          <label>CPM weight <input id="cfg-met-cw" type="number" step="0.05" min="0" max="1" /></label>
+          <label>Command weight <input id="cfg-met-cmdw" type="number" step="0.05" min="0" max="1" /></label>
+          <label>Max viewers for full <input id="cfg-met-maxv" type="number" /></label>
+          <label>Max CPM for full <input id="cfg-met-maxc" type="number" /></label>
+          <label>Max commands for full <input id="cfg-met-maxcmd" type="number" /></label>
+        </fieldset>
+
+        <fieldset class="cfg-card">
+          <legend>Overlay</legend>
+          <label>Show inventory (seconds)
+            <input id="cfg-ov-inv" type="number" min="1" max="120" />
+          </label>
+        </fieldset>
+      </div>
+    </details>
+
+    <div class="cfg-commands">
+      <div class="cfg-commands-head">
+        <h2>Chat commands</h2>
+        <div class="config-actions">
+          <button class="primary" id="cmd-save">Save commands.json</button>
+          <button id="cmd-reload">Reload</button>
+          <button id="cmd-add">Add command</button>
+          <span id="cmd-status" class="muted"></span>
+        </div>
+      </div>
+      <div class="split">
+        <div class="list-pane">
+          <table id="cmd-table">
+            <thead>
+              <tr><th>Name</th><th>Permission</th><th>Cost</th><th>Description</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="detail-pane" id="cmd-detail">
+          <p class="muted">Select a command or click Add</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <script src="/admin/admin.js"></script>
+</body>
+</html>
