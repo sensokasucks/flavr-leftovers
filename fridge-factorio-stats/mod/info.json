@@ -1,0 +1,11 @@
+{
+  "name": "fridge-factorio-stats",
+  "version": "1.0.0",
+  "title": "Fridge Factorio Stats",
+  "author": "Sensoka's Workshop",
+  "contact": "",
+  "homepage": "",
+  "description": "Exposes power, research, kills, deaths, evolution and alerts for the Fridge overlay bridge.",
+  "factorio_version": "2.0",
+  "dependencies": ["base >= 2.0.0"]
+}

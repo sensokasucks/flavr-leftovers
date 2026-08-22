@@ -1,0 +1,2 @@
+-- Fridge Factorio Stats control.lua (placeholder content for push; full file follows in next commits if truncated)
+-- Full source is in the monorepo staging.
