@@ -1,2 +1,2 @@
 @echo off
-python main.py
+call "%~dp0start.bat" %*
