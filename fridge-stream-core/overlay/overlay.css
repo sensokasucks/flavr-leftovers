@@ -1,0 +1,236 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: transparent;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #f0f0f0;
+  overflow: hidden;
+  user-select: none;
+}
+
+#root {
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(12, 18, 28, 0.82), rgba(8, 12, 20, 0.88));
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+  min-width: 380px;
+  max-width: 520px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.health-row .label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ff6b6b;
+  min-width: 28px;
+}
+
+.hearts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  flex: 1;
+}
+
+.heart {
+  width: 18px;
+  height: 18px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+/* Fallback CSS hearts when no custom images */
+.heart.css-full {
+  background: none;
+  position: relative;
+}
+.heart.css-full::before {
+  content: "❤";
+  color: #e74c3c;
+  font-size: 16px;
+  line-height: 18px;
+}
+.heart.css-half::before {
+  content: "❤";
+  color: #e74c3c;
+  font-size: 16px;
+  opacity: 0.55;
+  line-height: 18px;
+}
+.heart.css-empty::before {
+  content: "♡";
+  color: #5a5a5a;
+  font-size: 16px;
+  line-height: 18px;
+}
+
+/* Custom image hearts (drop heart.png / heart_empty.png / heart_half.png into assets/) */
+.heart.img-full { background-image: url("assets/heart.png"); }
+.heart.img-half { background-image: url("assets/heart_half.png"); }
+.heart.img-empty { background-image: url("assets/heart_empty.png"); }
+
+.value {
+  font-variant-numeric: tabular-nums;
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 70px;
+  text-align: right;
+  color: #ffb4b4;
+}
+
+.secondary {
+  justify-content: space-between;
+  padding: 4px 0 2px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.stat .small {
+  font-size: 11px;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  background-size: contain;
+  background-repeat: no-repeat;
+}
+
+.icon.food::before { content: "🍗"; font-size: 14px; }
+.icon.xp::before { content: "✨"; font-size: 14px; }
+.icon.death::before { content: "💀"; font-size: 14px; }
+.icon.armor::before { content: "🛡"; font-size: 14px; }
+
+.metrics {
+  gap: 16px;
+  font-size: 13px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 60px;
+}
+
+.m-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  opacity: 0.55;
+  margin-bottom: 2px;
+}
+
+#power {
+  color: #7dffa3;
+  font-weight: 700;
+}
+
+.effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+  min-height: 0;
+}
+
+.effect {
+  font-size: 11px;
+  background: rgba(100, 140, 255, 0.25);
+  border: 1px solid rgba(100, 140, 255, 0.4);
+  border-radius: 6px;
+  padding: 2px 7px;
+  color: #c8d6ff;
+}
+
+/* Inventory */
+.inventory {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  animation: fadeIn 0.25s ease;
+}
+
+.inventory.hidden {
+  display: none;
+}
+
+.inv-title {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 6px;
+}
+
+.inv-grid {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 3px;
+}
+
+.inv-slot {
+  aspect-ratio: 1;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 4px;
+  font-size: 9px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 1px;
+  text-align: center;
+  line-height: 1.1;
+}
+
+.inv-slot.has-item {
+  background: rgba(40, 60, 90, 0.55);
+  border-color: rgba(120, 180, 255, 0.35);
+}
+
+.inv-count {
+  font-weight: 700;
+  color: #fff;
+  font-size: 10px;
+}
+
+.inv-name {
+  opacity: 0.75;
+  font-size: 8px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
