@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local config & secrets (examples are kept)
+config/config.yaml
+config/config.json
+.env
+.env.*
+
+# Runtime state
+data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+
+# Build / IDE
+.gradle/
+build/
+dist/
+*.jar
+node_modules/
+.DS_Store
+*.lock
+.idea/
+.vscode/

@@ -1,0 +1,1 @@
+build streaming plugins based on user needs. Try to keep everything modular and documented.
