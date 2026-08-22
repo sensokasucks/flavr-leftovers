@@ -1,0 +1,72 @@
+# Fridge Stream Core configuration
+# Copy to config.yaml and edit.
+# All chat platforms default OFF — enable only what you use.
+
+core:
+  host: "127.0.0.1"
+  port: 3850                  # same port the old Minecraft bridge used
+  command_prefix: "!"
+  log_level: "INFO"
+
+# --- Chat platforms (all opt-in) -----------------------------------------
+
+kick:
+  enabled: false
+  channel_slug: "YOUR_KICK_CHANNEL"   # kick.com/THIS_PART only
+  # chatroom_id is auto-detected on first successful lookup and saved here.
+  # Only set it by hand if autodetection fails (Cloudflare 403):
+  # 1. Open https://kick.com/api/v2/channels/YOUR_SLUG in a browser
+  # 2. Find "chatroom": { "id": 12345678, ... }
+  # 3. Uncomment and set:
+  # chatroom_id: 12345678
+  poll_viewer_interval_sec: 15
+
+twitch:
+  enabled: false
+  channel: "YOUR_TWITCH_CHANNEL"   # twitch.tv/THIS_PART (no #)
+  # Read-only via anonymous IRC — no OAuth needed to listen.
+
+youtube:
+  enabled: false
+  # mode:
+  #   innertube  – no API key, no quota (uses the same web endpoint as youtube.com)
+  #   official   – Data API v3 (needs api_key + uses daily quota)
+  #   auto       – official if api_key is set, otherwise innertube
+  mode: "innertube"
+  api_key: ""                    # only for mode: official
+  channel_id: ""                 # optional helper
+  video_id: ""                   # current live video id (required for innertube; recommended for official)
+  # live_chat_id: ""             # optional override for official mode
+
+# --- Games ---------------------------------------------------------------
+
+minecraft:
+  enabled: false             # opt-in: set true when the Fabric mods are running
+  player_name: "YourInGameName"
+  client_mod_url: "http://127.0.0.1:3852"
+  server_mod_url: "http://127.0.0.1:3853"
+
+permissions:
+  # Usernames are matched case-insensitively across every platform
+  admin:
+    - "YOUR_USERNAME"
+  mod: []
+
+metrics:
+  messageWindowSec: 60
+  commandWindowSec: 120
+  viewerWeight: 0.4
+  cpmWeight: 0.3
+  commandWeight: 0.3
+  maxViewersForFull: 500
+  maxCpmForFull: 30
+  maxCommandsForFull: 10
+	overlay:
+  show_inventory_seconds: 12
+
+# In-house chat points + history (SQLite in data/stream_core.db)
+points:
+  enabled: true
+  per_message: 1          # points awarded per message
+  cooldown_sec: 30        # anti-spam: min seconds between awards per user
+  admin_token: "change-me"  # required header X-Admin-Token for /admin dashboard
