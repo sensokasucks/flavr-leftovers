@@ -151,7 +151,7 @@ You never need to set `chatroom_id` by hand unless Kick blocks the automated loo
 
 ## Typical first-time flow
 
-1. Install **Python 3.11+** (tick Add to PATH).
+1. Install **Python 3.10+** (tick Add to PATH).
 2. Double-click **install.bat** → answer **Y** for the wizard.
 3. Double-click **start.bat**.
 4. Open `http://127.0.0.1:3850/admin/`, paste the admin token, finish any tweaks on the Config tab.

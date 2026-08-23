@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.config import DEFAULTS, load_config, save_config  # noqa: E402
+from core.config import ConfigError, DEFAULTS, load_config, save_config  # noqa: E402
 
 
 def _prompt(label: str, default: str = "") -> str:
@@ -69,7 +69,11 @@ def main() -> int:
     print("Press Enter to keep the value in [brackets].")
     print()
 
-    cfg = load_config()
+    try:
+        cfg = load_config()
+    except ConfigError as exc:
+        print(f"ERROR: {exc}")
+        return 1
 
     # --- Chat platforms (all opt-in) ---
     print("Chat platforms default OFF. Enable only what you use.")

@@ -44,30 +44,59 @@ class CommandRouter:
             log.warning("commands file not found: %s", path)
             return
 
-        raw = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            raw = json.loads(path.read_text(encoding="utf-8-sig"))
+        except json.JSONDecodeError as exc:
+            log.error("Invalid commands JSON in %s: %s", path, exc)
+            return
+        if not isinstance(raw, dict):
+            log.error("commands file %s must be a JSON object", path)
+            return
         for name, data in raw.items():
+            if not isinstance(data, dict):
+                log.warning("Skipping command %r — expected an object", name)
+                continue
             perm = data.get("permission", "public")
             try:
                 perm_level = PermissionLevel(perm.lower())
             except ValueError:
                 perm_level = PermissionLevel.PUBLIC
 
+            def _int(val, default: int) -> int:
+                try:
+                    return int(val)
+                except (TypeError, ValueError):
+                    return default
+
+            aliases = data.get("aliases") or []
+            if isinstance(aliases, str):
+                aliases = [aliases]
+            args = data.get("args") or []
+            if isinstance(args, str):
+                args = [args]
+            examples = data.get("examples") or []
+            if isinstance(examples, str):
+                examples = [examples]
+            allowed = data.get("allowedValues", data.get("allowed_values")) or []
+            if isinstance(allowed, str):
+                allowed = [allowed]
+
             cmd = CommandDefinition(
                 name=name.lower(),
-                aliases=[a.lower() for a in data.get("aliases", [])],
+                aliases=[str(a).lower() for a in aliases],
                 permission=perm_level,
-                description=data.get("description", ""),
-                args=data.get("args", []),
-                template=data.get("template", ""),
+                description=data.get("description", "") or "",
+                args=[str(a) for a in args],
+                template=data.get("template", "") or "",
                 qty_template=data.get("qtyTemplate") or data.get("qty_template"),
-                default_qty=int(data.get("defaultQty", data.get("default_qty", 1))),
-                max_qty=int(data.get("maxQty", data.get("max_qty", 8))),
-                default_seconds=int(data.get("defaultSeconds", data.get("default_seconds", 30))),
-                max_seconds=int(data.get("maxSeconds", data.get("max_seconds", 120))),
-                allowed_values=[str(v).lower() for v in data.get("allowedValues", data.get("allowed_values", []))],
-                cost=int(data.get("cost", 0)),
+                default_qty=_int(data.get("defaultQty", data.get("default_qty", 1)), 1),
+                max_qty=_int(data.get("maxQty", data.get("max_qty", 8)), 8),
+                default_seconds=_int(data.get("defaultSeconds", data.get("default_seconds", 30)), 30),
+                max_seconds=_int(data.get("maxSeconds", data.get("max_seconds", 120)), 120),
+                allowed_values=[str(v).lower() for v in allowed],
+                cost=_int(data.get("cost", 0), 0),
                 special=data.get("special"),
-                examples=data.get("examples", []),
+                examples=[str(e) for e in examples],
                 enabled=bool(data.get("enabled", True)),
             )
             self.commands[cmd.name] = cmd

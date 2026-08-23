@@ -17,25 +17,40 @@ import signal
 import sys
 from pathlib import Path
 
-import uvicorn
+if sys.version_info < (3, 10):
+    sys.stderr.write(
+        "Fridge Stream Core needs Python 3.10 or newer.\n"
+        f"This interpreter is {sys.version}\n"
+    )
+    raise SystemExit(1)
 
 # Ensure project root is on path when run as script
 ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from core.config import load_config
-from core.event_bus import EventBus
-from core.metrics import MetricsAggregator
-from core.permissions import PermissionManager
-from core.command_router import CommandRouter
-from core.models import ChatEvent, ExecuteRequest
-from core.store import Store
-from adapters.kick import KickAdapter
-from adapters.twitch import TwitchAdapter
-from adapters.youtube import YouTubeAdapter
-from games.minecraft import MinecraftIntegration
-from api.server import create_app, CoreState
+try:
+    import uvicorn
+
+    from core.config import ConfigError, ensure_seed_files, load_config
+    from core.event_bus import EventBus
+    from core.metrics import MetricsAggregator
+    from core.permissions import PermissionManager
+    from core.command_router import CommandRouter
+    from core.models import ChatEvent, ExecuteRequest
+    from core.store import Store
+    from adapters.kick import KickAdapter
+    from adapters.twitch import TwitchAdapter
+    from adapters.youtube import YouTubeAdapter
+    from games.minecraft import MinecraftIntegration
+    from api.server import create_app, CoreState
+except ImportError as exc:
+    sys.stderr.write(
+        f"Missing a Python package: {exc}\n"
+        "On Windows, double-click install.bat once.\n"
+        "Or run:  python -m pip install -r requirements.txt\n"
+    )
+    raise SystemExit(1) from exc
 
 log = logging.getLogger("main")
 
@@ -262,7 +277,12 @@ class StreamCore:
 
 
 async def _run() -> None:
-    config = load_config()
+    ensure_seed_files()
+    try:
+        config = load_config()
+    except ConfigError as exc:
+        sys.stderr.write(f"ERROR: {exc}\n")
+        raise SystemExit(1) from exc
     level = config.get("core", {}).get("log_level", "INFO").upper()
     logging.basicConfig(
         level=getattr(logging, level, logging.INFO),

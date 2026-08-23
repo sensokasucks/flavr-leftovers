@@ -17,10 +17,20 @@ from .models import ChatUser, PermissionLevel
 class PermissionManager:
     def __init__(self, config: dict):
         perms = config.get("permissions", {})
-        self.admins = {u.lower() for u in perms.get("admin", [])}
-        self.mods = {u.lower() for u in perms.get("mod", [])}
+        self.admins = self._names(perms.get("admin", []))
+        self.mods = self._names(perms.get("mod", []))
         # public is always open; the "*" entry is just documentation
         self._temp_permits: Dict[str, float] = {}  # username -> expiry epoch
+
+    @staticmethod
+    def _names(val) -> set:
+        """Accept a list or a single string from hand-edited YAML."""
+        if not val:
+            return set()
+        if isinstance(val, str):
+            name = val.lower().strip()
+            return {name} if name else set()
+        return {str(u).lower().strip() for u in val if str(u).strip()}
 
     def grant_temp(self, username: str, minutes: int = 10) -> None:
         key = username.lower().strip()

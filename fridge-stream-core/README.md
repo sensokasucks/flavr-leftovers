@@ -37,7 +37,7 @@ Stream Core separates the concerns so:
 
 ## Quick start (Windows – recommended)
 
-1. Install **Python 3.11+** from [python.org](https://www.python.org/downloads/)  
+1. Install **Python 3.10+** from [python.org](https://www.python.org/downloads/)  
    (tick **Add python.exe to PATH** during setup).
 2. Double-click **`install.bat`** once.  
    When asked, run the first-run wizard (Kick channel, admins, admin token).

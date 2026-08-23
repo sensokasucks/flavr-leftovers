@@ -20,7 +20,7 @@ if %ERRORLEVEL%==0 (
     set "PY=python"
   ) else (
     echo [ERROR] Python was not found on PATH.
-    echo Install Python 3.11+ from https://www.python.org/downloads/
+    echo Install Python 3.10+ from https://www.python.org/downloads/
     echo During setup, tick "Add python.exe to PATH".
     echo.
     pause
@@ -98,9 +98,11 @@ if errorlevel 1 (
 
 :done
 echo.
-echo Next: double-click start.bat whenever you stream.
-echo Admin dashboard: http://127.0.0.1:3850/admin/
-echo Overlay chat:    http://127.0.0.1:3850/overlay/chat.html
+echo ----------------------------------------------------------
+echo  To start Stream Core later:  double-click start.bat
+echo  Admin dashboard:             http://127.0.0.1:3850/admin/
+echo  Chat overlay:                http://127.0.0.1:3850/overlay/chat.html
+echo ----------------------------------------------------------
 echo.
 pause
 endlocal

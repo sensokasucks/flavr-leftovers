@@ -61,7 +61,8 @@ metrics:
   maxViewersForFull: 500
   maxCpmForFull: 30
   maxCommandsForFull: 10
-	overlay:
+
+overlay:
   show_inventory_seconds: 12
 
 # In-house chat points + history (SQLite in data/stream_core.db)

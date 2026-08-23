@@ -7,6 +7,26 @@ Dates are when the work landed in this tree.
 
 ---
 
+## [0.7.1] — 2026-08-22
+
+### Fixed
+
+- **Tab in `config.example.yaml` crashed a fresh GitHub clone.** PyYAML rejects tab indent (`ScannerError` on `overlay:`). The example file is spaces-only again.
+- **Config loader is tab-tolerant.** Existing `config.yaml` copies that still have a tab (from `install.bat` copying the old example, or a Windows editor) are rewritten to spaces on startup instead of crashing.
+- UTF-8 BOM from Notepad no longer breaks YAML/JSON parse.
+- First run of `python main.py` (without `install.bat`) now seeds `config/config.yaml`, `config/commands.json`, and `data/` from the examples.
+- `core/store.py` no longer references a non-existent `users.username` column, which broke points + chat history on a chatter's **second** message.
+- Permission lists accept a single YAML string as well as a list (hand-edited config).
+- Invalid `commands.json` logs an error and continues instead of crashing startup.
+- Missing pip packages print `install.bat` / `pip install -r requirements.txt` instead of a raw traceback.
+- Python 3.10 is officially supported (was documented as 3.11+).
+
+### Notes for users who already copied the broken example
+
+Pull this update, then run `python main.py` (or `start.bat`) again. Core rewrites the tab in `config.yaml` automatically. You do not need to delete your settings.
+
+---
+
 ## [0.7.0] — 2026-08-22
 
 ### Added

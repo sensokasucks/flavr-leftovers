@@ -2,21 +2,30 @@
 Contract that every game integration implements.
 
 A game integration can be:
-  - Minecraft (HTTP to Fabric mods)
-  - Factorio (RCON / Wiretap)
-  - or anything else that consumes ExecuteRequest + MetricsSnapshot
+  - an in-process Python class (simple games / tools)
+  - a remote process that Core talks to over HTTP (Minecraft mods, Factorio, etc.)
+
+For remote games we already have a working pattern from the old bridge:
+  Core POSTs to the game's /api/execute and /api/metrics endpoints.
 """
 
 from __future__ import annotations
 
 import abc
-from typing import Any
+import logging
+from typing import Optional
 
 from core.models import ExecuteRequest, MetricsSnapshot
 
+log = logging.getLogger("games.base")
+
 
 class BaseGameIntegration(abc.ABC):
-    name: str = "game"
+    name: str = "base"
+
+    def __init__(self, config: dict):
+        self.config = config
+        self.enabled = True
 
     @abc.abstractmethod
     async def start(self) -> None:
@@ -28,9 +37,15 @@ class BaseGameIntegration(abc.ABC):
 
     @abc.abstractmethod
     async def execute(self, req: ExecuteRequest) -> dict:
-        """Run an approved command. Return {success: bool, ...}."""
+        """
+        Run the approved command/action.
+        Return a small result dict, e.g. {"success": True} or {"success": False, "error": "..."}.
+        """
         ...
 
     async def on_metrics(self, snap: MetricsSnapshot) -> None:
-        """Optional: react to live metrics (e.g. Chat Dynamo power level)."""
-        return None
+        """Optional: receive live metrics (viewers, CPM, power_level)."""
+        pass
+
+    async def health(self) -> bool:
+        return True

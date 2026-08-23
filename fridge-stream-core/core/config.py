@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import shutil
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -21,6 +22,11 @@ log = logging.getLogger("core.config")
 
 # Project root = parent of core/
 ROOT = Path(__file__).resolve().parent.parent
+
+
+class ConfigError(RuntimeError):
+    """Invalid or unreadable config file."""
+
 
 DEFAULTS: Dict[str, Any] = {
     "core": {
@@ -90,6 +96,67 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+def sanitize_yaml_text(text: str) -> Tuple[str, bool]:
+    """
+    YAML forbids tab characters as indentation. Windows editors (and an
+    earlier example file) sometimes sneak a tab in, which crashes PyYAML
+    with ScannerError on the next key.
+
+    - Strip a UTF-8 BOM if present.
+    - If a known top-level section is tab-indented, unindent it (the
+      GitHub example had a tab before `overlay:`).
+    - Any other tabs become spaces (tab stops of 2).
+    """
+    changed = False
+    if text.startswith("\ufeff"):
+        text = text.lstrip("\ufeff")
+        changed = True
+    if "\t" not in text:
+        return text, changed
+
+    top = set(DEFAULTS)
+    lines: list[str] = []
+    for raw in text.splitlines(True):
+        if "\t" not in raw:
+            lines.append(raw)
+            continue
+        changed = True
+        newline = "\n" if raw.endswith("\n") else ""
+        body = raw[:-1] if newline else raw
+        if body.endswith("\r"):
+            body = body[:-1]
+        stripped = body.lstrip(" \t")
+        lead = body[: len(body) - len(stripped)]
+        key = stripped.split(":", 1)[0].strip()
+        is_section = bool(stripped) and not stripped.startswith("#") and key in top
+        if is_section and "\t" in lead:
+            lines.append(stripped + newline)
+        else:
+            lines.append(lead.expandtabs(2) + stripped + newline)
+    return "".join(lines), True
+
+
+def _read_text(path: Path) -> str:
+    # utf-8-sig strips a Windows/Notepad BOM if one is present
+    return path.read_text(encoding="utf-8-sig")
+
+
+def _parse_yaml(text: str, source: Path | str) -> dict:
+    cleaned, _ = sanitize_yaml_text(text)
+    try:
+        data = yaml.safe_load(cleaned) or {}
+    except yaml.YAMLError as exc:
+        raise ConfigError(
+            f"Could not parse {source}. YAML does not allow tab characters "
+            f"for indentation.\nDetails: {exc}\n"
+            "Fix: copy config/config.example.yaml over config/config.yaml "
+            "(or replace tabs with spaces) and try again."
+        ) from exc
+    if data and not isinstance(data, dict):
+        raise ConfigError(f"{source} must be a YAML mapping (key: value), not {type(data).__name__}")
+    return data if isinstance(data, dict) else {}
+
+
 def resolve_config_path(path: Path | str | None = None) -> Optional[Path]:
     """Return the first existing config file path, or None."""
     candidates = []
@@ -121,15 +188,70 @@ def default_config_write_path() -> Path:
     return preferred
 
 
+def ensure_seed_files() -> None:
+    """
+    First-run: copy example config/commands into place and create data/.
+
+    Safe to call on every start. Never overwrites an existing config.yaml.
+    Also rewrites the example file if it still contains tabs (old clones).
+    """
+    cfg_dir = ROOT / "config"
+    cfg_dir.mkdir(parents=True, exist_ok=True)
+    (ROOT / "data").mkdir(parents=True, exist_ok=True)
+
+    example = cfg_dir / "config.example.yaml"
+    target = cfg_dir / "config.yaml"
+    if example.exists():
+        ex_text = _read_text(example)
+        cleaned, changed = sanitize_yaml_text(ex_text)
+        if changed:
+            try:
+                example.write_text(cleaned, encoding="utf-8")
+                log.warning("Removed tab indentation from %s", example)
+            except OSError:
+                log.warning("Could not rewrite tab characters in %s", example)
+        else:
+            cleaned = ex_text
+        if not target.exists():
+            target.write_text(cleaned, encoding="utf-8")
+            log.info("Created %s from config.example.yaml (platforms off)", target)
+
+    cmd_example = cfg_dir / "commands.example.json"
+    cmd_target = cfg_dir / "commands.json"
+    if not cmd_target.exists() and cmd_example.exists():
+        shutil.copyfile(cmd_example, cmd_target)
+        log.info("Created %s from commands.example.json", cmd_target)
+
+
 def load_config(path: Path | str | None = None) -> dict:
+    ensure_seed_files()
     data: dict = {}
     found = resolve_config_path(path)
     if found:
-        text = found.read_text(encoding="utf-8")
+        text = _read_text(found)
         if found.suffix in (".yaml", ".yml"):
-            data = yaml.safe_load(text) or {}
+            cleaned, changed = sanitize_yaml_text(text)
+            if changed:
+                try:
+                    found.write_text(cleaned, encoding="utf-8")
+                    log.warning(
+                        "Rewrote %s to replace tab indentation (YAML forbids tabs)",
+                        found,
+                    )
+                except OSError:
+                    log.warning(
+                        "Config %s contains tabs; loaded after converting to spaces",
+                        found,
+                    )
+                text = cleaned
+            data = _parse_yaml(text, found)
         else:
-            data = json.loads(text)
+            try:
+                data = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ConfigError(f"Could not parse {found}: {exc}") from exc
+            if not isinstance(data, dict):
+                data = {}
         log.info("Loaded config from %s", found)
     else:
         log.warning("No config file found – using defaults. Copy config.example.yaml")
@@ -169,6 +291,7 @@ def save_config(data: dict, path: Path | str | None = None) -> Path:
         allow_unicode=True,
         sort_keys=False,
         width=100,
+        indent=2,
     )
     # Header so non-tech users know what the file is
     header = (
@@ -195,7 +318,12 @@ def load_commands(path: Path | str | None = None) -> dict:
     target = Path(path) if path else resolve_commands_path()
     if not target.exists():
         return {}
-    return json.loads(target.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(_read_text(target))
+    except json.JSONDecodeError as exc:
+        log.error("Invalid commands JSON in %s: %s", target, exc)
+        return {}
+    return data if isinstance(data, dict) else {}
 
 
 def save_commands(data: dict, path: Path | str | None = None) -> Path:

@@ -63,7 +63,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     app = FastAPI(
         title="Fridge Stream Core",
-        version="0.5.0",
+        version="0.7.1",
         lifespan=lifespan,
     )
     app.add_middleware(

@@ -22,7 +22,6 @@ from core.models import ChatEvent, Platform
 log = logging.getLogger("core.store")
 
 SCHEMA = """
-PRAGMA journal_mode=WAL;
 PRAGMA foreign_keys=ON;
 
 CREATE TABLE IF NOT EXISTS users (
@@ -92,15 +91,37 @@ class Store:
         self._init_db()
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self.path), check_same_thread=False)
+        conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
     def _init_db(self) -> None:
-        with self._connect() as conn:
-            conn.executescript(SCHEMA)
-        log.info("Store ready at %s", self.path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        last_err: Optional[Exception] = None
+        for journal in ("WAL", "DELETE"):
+            try:
+                with self._connect() as conn:
+                    try:
+                        conn.execute(f"PRAGMA journal_mode={journal}")
+                    except sqlite3.OperationalError:
+                        if journal == "WAL":
+                            raise
+                    conn.executescript(SCHEMA)
+                log.info("Store ready at %s (journal=%s)", self.path, journal)
+                return
+            except sqlite3.OperationalError as exc:
+                last_err = exc
+                log.warning("Store init journal=%s failed: %s", journal, exc)
+                # Stale WAL leftovers on flaky filesystems
+                for suffix in ("-wal", "-shm"):
+                    leftover = Path(str(self.path) + suffix)
+                    try:
+                        leftover.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+        if last_err:
+            raise last_err
 
     async def _run(self, fn, *args):
         return await asyncio.to_thread(fn, *args)
@@ -131,7 +152,7 @@ class Store:
                 )
                 # Keep primary display name fresh if empty
                 conn.execute(
-                    "UPDATE users SET display_name=CASE WHEN display_name='' OR display_name=username "
+                    "UPDATE users SET display_name=CASE WHEN display_name='' "
                     "THEN ? ELSE display_name END, updated_at=? WHERE id=?",
                     (display_name or username, now, uid),
                 )
