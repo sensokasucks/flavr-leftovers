@@ -7,7 +7,7 @@ commands.json via `"group": "minecraft"` (etc.). Hot-reload without restart.
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Iterable, Mapping, Optional
 
 
 DEFAULT_GROUPS: dict[str, dict[str, Any]] = {
@@ -59,7 +59,6 @@ class CommandGroups:
         bind = meta.get("bind")
         if not bind:
             return bool(meta.get("enabled", True))
-        # Bind to a config section (e.g. minecraft.enabled)
         section = (self._config or {}).get(bind) or {}
         if isinstance(section, dict) and section.get("enabled") is False:
             return False
@@ -81,3 +80,64 @@ class CommandGroups:
 
     def as_config_dict(self) -> dict[str, Any]:
         return {k: dict(v) for k, v in self._raw.items()}
+
+    def active_ids(self, *, integration_running: Optional[dict[str, bool]] = None) -> set[str]:
+        return {
+            g["id"]
+            for g in self.list_groups()
+            if self.is_enabled(g["id"], integration_running=integration_running)
+        }
+
+
+def _as_running_map(running_games: Any) -> dict[str, bool]:
+    if not running_games:
+        return {}
+    if isinstance(running_games, Mapping):
+        return {str(k).lower(): bool(v) for k, v in running_games.items()}
+    if isinstance(running_games, (str, bytes)):
+        return {str(running_games).lower(): True}
+    if isinstance(running_games, Iterable):
+        return {str(k).lower(): True for k in running_games}
+    return {}
+
+
+def resolve_active_groups(
+    config: dict[str, Any] | None = None,
+    running_games: Any = None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, bool]:
+    """
+    Which command groups are live right now.
+
+    Matches Stream Core's refresh_command_groups() call:
+        resolve_active_groups(self.config, self.games.keys(), extra)
+
+    Returns {group_id: True/False}. Also behaves like a set of enabled
+    ids for ``"minecraft" in groups`` via ActiveGroups.
+    """
+    running = _as_running_map(running_games)
+    if extra:
+        running.update({str(k).lower(): bool(v) for k, v in extra.items()})
+    cg = CommandGroups(config or {})
+    flags = {
+        g["id"]: cg.is_enabled(g["id"], integration_running=running or None)
+        for g in cg.list_groups()
+    }
+    for key, on in running.items():
+        flags.setdefault(key, bool(on))
+    return ActiveGroups(flags)
+
+
+class ActiveGroups(dict):
+    """dict[str, bool] where ``in`` / iteration mean *enabled* groups."""
+
+    def __contains__(self, key: object) -> bool:
+        if not isinstance(key, str):
+            return False
+        return bool(self.get(key, False))
+
+    def __iter__(self):
+        return (k for k, v in dict.items(self) if v)
+
+    def enabled(self) -> set[str]:
+        return {k for k, v in dict.items(self) if v}

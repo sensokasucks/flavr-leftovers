@@ -1,6 +1,6 @@
 """Tests for command group enablement and binding."""
 
-from core.command_groups import CommandGroups, DEFAULT_GROUPS
+from core.command_groups import CommandGroups, DEFAULT_GROUPS, resolve_active_groups
 
 
 def test_core_always_on():
@@ -47,3 +47,16 @@ def test_list_groups_includes_defaults():
     ids = {g["id"] for g in cg.list_groups()}
     assert "core" in ids
     assert "minecraft" in ids
+    assert DEFAULT_GROUPS
+
+
+def test_resolve_active_groups_games_keys():
+    cfg = {
+        "minecraft": {"enabled": True},
+        "points": {"enabled": True},
+    }
+    groups = resolve_active_groups(cfg, ["minecraft"], {"points": True})
+    assert groups["core"] is True
+    assert "core" in groups
+    assert groups["minecraft"] is True
+    assert set(groups.enabled()) >= {"core", "minecraft", "points"}
