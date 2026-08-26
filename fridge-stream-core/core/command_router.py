@@ -10,14 +10,13 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from .models import (
     ChatEvent,
     CommandDefinition,
     ExecuteRequest,
     PermissionLevel,
-    Platform,
 )
 from .permissions import PermissionManager
 
@@ -36,7 +35,25 @@ class CommandRouter:
         self.player = default_player
         self.perms = permission_manager
         self.commands: Dict[str, CommandDefinition] = {}
+        self.active_groups: set[str] = set()
         self._load(commands_path)
+
+    def set_active_groups(self, groups) -> None:
+        if groups is None:
+            self.active_groups = set()
+            return
+        if isinstance(groups, dict):
+            self.active_groups = {str(k) for k, v in groups.items() if v}
+        else:
+            self.active_groups = {str(g) for g in groups}
+
+    def group_enabled(self, group_id: str) -> bool:
+        gid = (group_id or "core").strip().lower() or "core"
+        if gid == "core":
+            return True
+        if not self.active_groups:
+            return True
+        return gid in self.active_groups
 
     def _load(self, path: Path | str) -> None:
         path = Path(path)
@@ -58,7 +75,7 @@ class CommandRouter:
                 continue
             perm = data.get("permission", "public")
             try:
-                perm_level = PermissionLevel(perm.lower())
+                perm_level = PermissionLevel(str(perm).lower())
             except ValueError:
                 perm_level = PermissionLevel.PUBLIC
 
@@ -98,10 +115,10 @@ class CommandRouter:
                 special=data.get("special"),
                 examples=[str(e) for e in examples],
                 enabled=bool(data.get("enabled", True)),
+                group=str(data.get("group") or "core").strip().lower() or "core",
             )
             self.commands[cmd.name] = cmd
             for alias in cmd.aliases:
-                # aliases point at the same object
                 self.commands[alias] = cmd
 
         log.info("Loaded %d command definitions", len({c.name for c in self.commands.values()}))
@@ -110,10 +127,6 @@ class CommandRouter:
         return self.commands.get(name.lower())
 
     def parse_message(self, event: ChatEvent) -> bool:
-        """
-        Mutates the ChatEvent in-place: sets is_command, command_name, args.
-        Returns True if it looks like a command (starts with prefix).
-        """
         text = (event.message or "").strip()
         if not text.startswith(self.prefix):
             return False
@@ -128,16 +141,9 @@ class CommandRouter:
         return True
 
     def try_execute(self, event: ChatEvent) -> Tuple[Optional[ExecuteRequest], Optional[str]]:
-        """
-        Full pipeline for a single chat event that already looks like a command.
-
-        Returns (ExecuteRequest, None) on success
-                (None, reason_string) on rejection
-        """
         if not event.is_command or not event.command_name:
             return None, "not a command"
 
-        # Built-in !permit (admin only)
         if event.command_name == "permit":
             if not self.perms.has_permission(event.user, PermissionLevel.ADMIN):
                 return None, "no permission for permit"
@@ -151,28 +157,26 @@ class CommandRouter:
             if target:
                 self.perms.grant_temp(target, minutes)
                 log.info("Temp permit: %s for %d min (by %s)", target, minutes, event.user.username)
-            return None, "permit handled"  # not forwarded to game
+            return None, "permit handled"
 
         cmd = self.find(event.command_name)
         if not cmd or not cmd.enabled:
             return None, "unknown command"
 
+        if not self.group_enabled(getattr(cmd, "group", "core") or "core"):
+            return None, f"group {cmd.group} disabled"
+
         if not self.perms.has_permission(event.user, cmd.permission):
             return None, f"requires {cmd.permission.value}"
 
-        # Cost gate (future Channel Points / Super Chat). For now just check field.
-        # Real deduction will live in the platform adapters later.
-        if cmd.cost > 0 and not event.is_paid:
-            # still allow if the user is admin (testing convenience)
+        if cmd.cost > 0 and not getattr(event, "is_paid", False):
             if not self.perms.has_permission(event.user, PermissionLevel.ADMIN):
                 return None, f"requires cost {cmd.cost}"
 
-        # Build template context
         qty = cmd.default_qty
         seconds = cmd.default_seconds
         args = list(event.args)
 
-        # Heuristic: if first arg looks like a number and the command has qty, treat it as qty
         if args and cmd.args and any("qty" in a for a in cmd.args):
             try:
                 maybe_qty = int(args[-1])
@@ -191,12 +195,10 @@ class CommandRouter:
             except ValueError:
                 pass
 
-        # allowed_values check (e.g. weather clear/rain)
         if cmd.allowed_values and args:
             if args[0].lower() not in cmd.allowed_values:
                 return None, f"invalid value, allowed: {cmd.allowed_values}"
 
-        # Render template
         ctx = {
             "player": self.player,
             "qty": str(qty),
