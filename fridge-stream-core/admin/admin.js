@@ -79,6 +79,7 @@
       if (btn.dataset.tab === "sources") loadSources();
       if (btn.dataset.tab === "alerts") initAlertsTab();
       if (btn.dataset.tab === "integrations") initIntegrationsTab();
+      if (btn.dataset.tab === "credits") initCreditsTab();
       if (btn.dataset.tab === "chat") {
         loadChat();
         refreshChatLogBanner();
@@ -103,7 +104,9 @@
         <p>Active command groups: <strong>${(s.command_groups_active || []).join(", ") || "—"}</strong>
         · ${s.commands_loaded || 0} command defs loaded</p>
         <p>Points system: ${s.points_enabled ? pill(true, "on") : pill(false, "off")}
-        · Chat log: ${s.chat_log_enabled ? pill(true, "on") : pill(false, "off")}</p>
+        · Chat log: ${s.chat_log_enabled ? pill(true, "on") : pill(false, "off")}
+        · Credits: ${s.credits && s.credits.running ? pill(true, "on") : pill(false, "off")}
+          ${s.credits ? `<span class="muted">${s.credits.count || 0} unique</span>` : ""}</p>
       </div>`;
 
       html += `<div class="cfg-card"><legend>Chat platforms</legend><ul class="status-list">`;
@@ -127,7 +130,7 @@
           ${g.player_name ? `<span class="muted">player ${g.player_name}</span>` : ""}</li>`;
       }
       html += `</ul>
-        <p class="hint">Commands are grouped by integration. If Minecraft is stopped, !spawn / !give / etc. are ignored.</p>
+        <p class="hint">Commands are grouped by integration. Stopped games hide their command group. Factorio is stats/overlay only until chat-to-RCON lands.</p>
       </div>`;
 
       html += `<div class="cfg-card"><legend>Live metrics</legend>
@@ -928,6 +931,10 @@
     $("cfg-mc-client").value = m.client_mod_url ?? "";
     $("cfg-mc-server").value = m.server_mod_url ?? "";
 
+    const fx = cfg.factorio || {};
+    if ($("cfg-fx-enabled")) $("cfg-fx-enabled").checked = !!fx.enabled;
+    if ($("cfg-fx-bridge")) $("cfg-fx-bridge").value = fx.bridge_url ?? "http://127.0.0.1:3847";
+
     $("cfg-perm-admin").value = listToLines(p.admin);
     $("cfg-perm-mod").value = listToLines(p.mod);
 
@@ -939,6 +946,9 @@
     const clog = cfg.chat_log || {};
     if ($("cfg-chatlog-enabled")) {
       $("cfg-chatlog-enabled").checked = !!clog.enabled;
+    }
+    if ($("cfg-credits-enabled")) {
+      $("cfg-credits-enabled").checked = !!(cfg.credits || {}).enabled;
     }
 
     $("cfg-yt-enabled").checked = !!yt.enabled;
@@ -1002,6 +1012,12 @@
         client_mod_url: $("cfg-mc-client").value.trim(),
         server_mod_url: $("cfg-mc-server").value.trim(),
       },
+      factorio: {
+        enabled: $("cfg-fx-enabled") ? $("cfg-fx-enabled").checked : false,
+        bridge_url: $("cfg-fx-bridge")
+          ? $("cfg-fx-bridge").value.trim() || "http://127.0.0.1:3847"
+          : "http://127.0.0.1:3847",
+      },
       permissions: {
         admin: linesToList($("cfg-perm-admin").value),
         mod: linesToList($("cfg-perm-mod").value),
@@ -1031,6 +1047,10 @@
       },
       chat_log: {
         enabled: $("cfg-chatlog-enabled") ? $("cfg-chatlog-enabled").checked : false,
+      },
+      credits: {
+        ...((lastLoadedConfig || {}).credits || {}),
+        enabled: $("cfg-credits-enabled") ? $("cfg-credits-enabled").checked : false,
       },
     };
     return next;
@@ -1503,6 +1523,153 @@
     } catch {
       return String(ts);
     }
+  }
+
+  // ------------------------------------------------------------------
+  // Credits tab
+  // ------------------------------------------------------------------
+
+  let creditsPlay = { playing: true, mode: "loop" };
+
+  function fillCreditsTheme(t) {
+    t = t || {};
+    if ($("crd-title")) $("crd-title").value = t.title || "";
+    if ($("crd-subtitle")) $("crd-subtitle").value = t.subtitle || "";
+    if ($("crd-footer")) $("crd-footer").value = t.footer || "";
+    if ($("crd-columns")) $("crd-columns").value = String(t.columns || 2);
+    if ($("crd-sort")) $("crd-sort").value = t.sort || "first_seen";
+    if ($("crd-speed")) $("crd-speed").value = t.speed_px_per_sec ?? 42;
+    if ($("crd-namesize")) $("crd-namesize").value = t.name_size_px ?? 22;
+    if ($("crd-titlecolor")) $("crd-titlecolor").value = t.title_color || "#f3e2b0";
+    if ($("crd-namecolor")) $("crd-namecolor").value = t.name_color || "#f4f0e6";
+    if ($("crd-group")) $("crd-group").checked = !!t.group_by_platform;
+    if ($("crd-dots")) $("crd-dots").checked = t.show_platform !== false;
+    if ($("crd-counts")) $("crd-counts").checked = !!t.show_message_count;
+    if ($("crd-mods")) $("crd-mods").checked = t.highlight_mods !== false;
+  }
+
+  function collectCreditsTheme() {
+    return {
+      title: $("crd-title").value,
+      subtitle: $("crd-subtitle").value,
+      footer: $("crd-footer").value,
+      columns: Number($("crd-columns").value) || 2,
+      sort: $("crd-sort").value,
+      speed_px_per_sec: Number($("crd-speed").value) || 42,
+      name_size_px: Number($("crd-namesize").value) || 22,
+      title_color: $("crd-titlecolor").value,
+      name_color: $("crd-namecolor").value,
+      group_by_platform: $("crd-group").checked,
+      show_platform: $("crd-dots").checked,
+      show_message_count: $("crd-counts").checked,
+      highlight_mods: $("crd-mods").checked,
+      persist: true,
+    };
+  }
+
+  function renderCreditsRoster(r) {
+    r = r || {};
+    if ($("crd-count-line")) {
+      $("crd-count-line").textContent =
+        "Unique chatters: " + (r.count || 0) +
+        (r.by_platform
+          ? " · " + Object.entries(r.by_platform).map(([k, v]) => k + " " + v).join(" · ")
+          : "");
+    }
+    const list = $("crd-list");
+    if (!list) return;
+    const rows = r.chatters || [];
+    list.innerHTML = rows.length
+      ? rows
+          .map(
+            (c) =>
+              `<div>${escapeHtml(c.display_name)} <span class="muted">${escapeHtml(c.platform)}</span></div>`
+          )
+          .join("")
+      : "<div>No chatters yet — enable credits and chat, or add a test name.</div>";
+  }
+
+  async function initCreditsTab(force) {
+    if (!$("tab-credits")) return;
+    if ($("tab-credits").dataset.ready && !force) return;
+    try {
+      const data = await api("/api/admin/credits");
+      $("tab-credits").dataset.ready = "1";
+      if ($("crd-enabled")) $("crd-enabled").checked = !!data.enabled;
+      fillCreditsTheme(data.theme);
+      creditsPlay = data.play || creditsPlay;
+      renderCreditsRoster(data.roster);
+      const iframe = $("crd-preview");
+      if (iframe) iframe.src = "/overlay/credits.html?t=" + Date.now();
+    } catch (e) {
+      if ($("crd-enable-status")) $("crd-enable-status").textContent = String(e.message || e);
+    }
+  }
+
+  if ($("crd-enable-save")) {
+    $("crd-enable-save").onclick = async () => {
+      try {
+        const res = await api("/api/admin/credits/enabled", {
+          method: "PUT",
+          body: JSON.stringify({ enabled: $("crd-enabled").checked }),
+        });
+        $("crd-enable-status").textContent = res.enabled ? "On" : "Off";
+      } catch (e) {
+        $("crd-enable-status").textContent = String(e.message || e);
+      }
+    };
+  }
+  if ($("crd-copy")) {
+    $("crd-copy").onclick = async () => {
+      const url = location.origin + "/overlay/credits.html";
+      try {
+        await navigator.clipboard.writeText(url);
+        $("crd-enable-status").textContent = "URL copied";
+      } catch {
+        $("crd-enable-status").textContent = url;
+      }
+    };
+  }
+  function crdPlay(body) {
+    return api("/api/admin/credits/play", { method: "POST", body: JSON.stringify(body) });
+  }
+  if ($("crd-roll")) $("crd-roll").onclick = () => crdPlay({ playing: true, mode: "loop", freeze: true, restart: true });
+  if ($("crd-live")) $("crd-live").onclick = () => crdPlay({ freeze: false, playing: true });
+  if ($("crd-loop")) $("crd-loop").onclick = () => crdPlay({ mode: "loop", playing: true, restart: true });
+  if ($("crd-once")) $("crd-once").onclick = () => crdPlay({ mode: "once", playing: true, freeze: true, restart: true });
+  if ($("crd-hold")) $("crd-hold").onclick = () => crdPlay({ mode: "hold", playing: true });
+  if ($("crd-pause")) $("crd-pause").onclick = () => crdPlay({ playing: creditsPlay.playing === false });
+  if ($("crd-reset")) {
+    $("crd-reset").onclick = async () => {
+      if (!confirm("Clear unique chatters for this session?")) return;
+      await api("/api/admin/credits/reset", { method: "POST", body: "{}" });
+      initCreditsTab(true);
+    };
+  }
+  if ($("crd-save-look")) {
+    $("crd-save-look").onclick = async () => {
+      try {
+        await api("/api/admin/credits/theme", {
+          method: "PUT",
+          body: JSON.stringify(collectCreditsTheme()),
+        });
+        $("crd-look-status").textContent = "Saved";
+      } catch (e) {
+        $("crd-look-status").textContent = String(e.message || e);
+      }
+    };
+  }
+  if ($("crd-seed")) {
+    $("crd-seed").onclick = async () => {
+      await api("/api/admin/credits/seed", {
+        method: "POST",
+        body: JSON.stringify({
+          username: $("crd-seed-name").value,
+          platform: $("crd-seed-plat").value,
+        }),
+      });
+      initCreditsTab(true);
+    };
   }
 
   refreshStats();

@@ -14,7 +14,7 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -181,6 +181,11 @@ def create_app(core_state: "CoreState") -> FastAPI:
             alerts = getattr(core_state, "recent_alerts", None) or []
             if alerts:
                 await ws.send_json({"type": "alert_history", "data": list(alerts)})
+            credits = getattr(core_state, "credits", None)
+            if credits:
+                await ws.send_json({"type": "credits_theme", "data": credits.theme})
+                await ws.send_json({"type": "credits_play", "data": credits.public_play()})
+                await ws.send_json({"type": "credits_roster", "data": credits.snapshot()})
             while True:
                 data = await ws.receive_text()
                 if data == "ping":
@@ -205,6 +210,29 @@ def create_app(core_state: "CoreState") -> FastAPI:
         from core.alerts import read_alert_settings
 
         return read_alert_settings()
+
+    def _credits():
+        eng = getattr(core_state, "credits", None)
+        if not eng:
+            raise HTTPException(503, "Credits engine not ready")
+        return eng
+
+    @app.get("/api/credits/theme")
+    async def credits_theme():
+        return _credits().theme
+
+    @app.get("/api/credits/roster")
+    async def credits_roster():
+        return _credits().snapshot()
+
+    @app.get("/api/credits/play")
+    async def credits_play():
+        return _credits().public_play()
+
+    @app.get("/api/credits/health")
+    async def credits_health():
+        eng = _credits()
+        return {"ok": True, "enabled": eng.enabled, "count": len(eng.chatters)}
 
     # ------------------------------------------------------------------
     # Static overlay (if present)

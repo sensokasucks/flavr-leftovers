@@ -40,10 +40,16 @@ DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
         "bind": "minecraft",
         "description": "Minecraft integration (!spawn, !give, …)",
     },
+    "factorio": {
+        "enabled": True,
+        "always": False,
+        "bind": "factorio",
+        "description": "Factorio stats overlay (Fridge Factorio Stats bridge)",
+    },
 }
 
 # Game ids that must be running, not just enabled in config.
-GAME_BINDS = {"minecraft"}
+GAME_BINDS = {"minecraft", "factorio"}
 
 
 def _norm_name(name: Any) -> str:

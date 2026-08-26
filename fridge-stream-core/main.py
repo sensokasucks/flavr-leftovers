@@ -34,18 +34,21 @@ if str(ROOT) not in sys.path:
 try:
     import uvicorn
 
+    from core.config import ConfigError, ensure_seed_files, load_config, resolve_commands_path
     from core.command_groups import catalog_status, resolve_active_groups
-    from core.config import ConfigError, ensure_seed_files, load_config
     from core.event_bus import EventBus
     from core.metrics import MetricsAggregator
     from core.permissions import PermissionManager
     from core.command_router import CommandRouter
-    from core.models import ChatEvent, ExecuteRequest
+    from core.models import ChatEvent, ChatReply, ExecuteRequest
+    from core.alerts import build_alert
     from core.store import Store
+    from core.credits import CreditsEngine
     from adapters.kick import KickAdapter
     from adapters.twitch import TwitchAdapter
     from adapters.youtube import YouTubeAdapter
     from games.minecraft import MinecraftIntegration
+    from games.factorio import FactorioIntegration
     from api.server import create_app, CoreState
 except ImportError as exc:
     sys.stderr.write(
@@ -91,6 +94,8 @@ class StreamCore:
         db_path = ROOT / "data" / "stream_core.db"
         self.store = Store(db_path, config.get("points"), config.get("chat_log"))
         self.state.store = self.store
+        self.credits = CreditsEngine(config, ROOT)
+        self.state.credits = self.credits
 
         self._metrics_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
@@ -111,7 +116,7 @@ class StreamCore:
         # Wire metrics → game integrations + WS broadcast
         self.bus.on_metrics(self._on_metrics)
 
-        # Start game integrations (Minecraft is opt-in; more games register the same way)
+        # Start game integrations (all opt-in; more games register the same way)
         mc_cfg = self.config.get("minecraft", {})
         if mc_cfg.get("enabled", False):
             mc = MinecraftIntegration(self.config)
@@ -119,6 +124,14 @@ class StreamCore:
             self.games["minecraft"] = mc
         else:
             log.info("Minecraft integration disabled (minecraft.enabled=false)")
+
+        fx_cfg = self.config.get("factorio", {})
+        if fx_cfg.get("enabled", False):
+            fx = FactorioIntegration(self.config)
+            await fx.start()
+            self.games["factorio"] = fx
+        else:
+            log.info("Factorio integration disabled (factorio.enabled=false)")
 
         # Start chat adapters (all opt-in — default enabled=false)
         kick_cfg = self.config.get("kick", {})
@@ -161,9 +174,11 @@ class StreamCore:
         self.state.test_command = self.test_command
         self.state.test_metrics = self.test_metrics
         self.state.core = self
+        self.state.apply_credits = self.apply_credits_config
 
         # Periodic metrics publish
         self._metrics_task = asyncio.create_task(self._metrics_loop(), name="metrics-loop")
+        self._credits_task = asyncio.create_task(self._credits_persist_loop(), name="credits-persist")
 
         log.info("Stream Core started")
 
@@ -190,6 +205,25 @@ class StreamCore:
         )
         return info
 
+    def apply_credits_config(self) -> dict:
+        """Hot-apply credits.enabled / look from in-memory config (no restart)."""
+        self.credits.configure(self.config)
+        return {
+            "enabled": self.credits.enabled,
+            "count": len(self.credits.chatters),
+        }
+
+    async def _credits_persist_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=10)
+                break
+            except asyncio.TimeoutError:
+                try:
+                    self.credits.save_if_dirty()
+                except Exception:
+                    log.exception("credits persist failed")
+
     async def stop(self) -> None:
         self._stop.set()
         if self._metrics_task:
@@ -198,6 +232,16 @@ class StreamCore:
                 await self._metrics_task
             except asyncio.CancelledError:
                 pass
+        if getattr(self, "_credits_task", None):
+            self._credits_task.cancel()
+            try:
+                await self._credits_task
+            except asyncio.CancelledError:
+                pass
+            try:
+                self.credits.save_if_dirty()
+            except Exception:
+                log.exception("credits save on stop failed")
 
         for adapter in self.adapters.values():
             await adapter.stop()
@@ -239,6 +283,15 @@ class StreamCore:
                 await self.state.ws_manager.broadcast(payload)
             except Exception:
                 log.exception("chat WS broadcast failed")
+
+        try:
+            added = self.credits.ingest(event)
+            if added and self.state.ws_manager:
+                await self.state.ws_manager.broadcast(
+                    {"type": "credits_roster", "data": self.credits.snapshot()}
+                )
+        except Exception:
+            log.exception("credits ingest failed")
 
         # Paid Super Chat / bits / donations → alert overlay
         if event.is_paid:

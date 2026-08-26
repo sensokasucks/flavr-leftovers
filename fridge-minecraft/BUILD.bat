@@ -1,40 +1,107 @@
 @echo off
-REM Build both Fabric mods (client + server)
-setlocal
+setlocal EnableExtensions EnableDelayedExpansion
 cd /d "%~dp0"
 
-if not exist "client-mod\gradlew.bat" (
-  echo Missing client-mod\gradlew.bat
-  pause
-  exit /b 1
-)
-
-echo === Building client mod ===
-cd client-mod
-call gradlew.bat build
-if errorlevel 1 (
-  echo Client build failed
-  pause
-  exit /b 1
-)
-cd ..
-
-echo === Building server mod ===
-cd server-mod
-if not exist gradlew.bat (
-  copy /Y ..\client-mod\gradlew.bat .
-  if not exist gradle\wrapper mkdir gradle\wrapper
-  copy /Y ..\client-mod\gradle\wrapper\* gradle\wrapper\
-)
-call gradlew.bat build
-if errorlevel 1 (
-  echo Server build failed
-  pause
-  exit /b 1
-)
-cd ..
-
+title Fridge Minecraft - Build
 echo.
-echo Build complete. JARs under */build/libs/
-echo Copy them into Minecraft mods folders as needed.
+echo  ========================================
+echo   Fridge Minecraft - build both jars
+echo  ========================================
+echo.
+
+where java >nul 2>&1
+if errorlevel 1 (
+  echo [ERROR] java not found on PATH.
+  echo Install JDK 21 and reopen this window.
+  echo https://adoptium.net/temurin/releases/?version=21
+  goto :fail
+)
+
+echo Checking Java...
+java -version
+echo.
+
+set "FAIL=0"
+
+echo -------- client-mod --------
+pushd client-mod
+call gradlew.bat build --warning-mode none
+if errorlevel 1 (
+  echo [ERROR] client-mod build failed
+  set "FAIL=1"
+)
+popd
+echo.
+
+echo -------- server-mod --------
+pushd server-mod
+call gradlew.bat build --warning-mode none
+if errorlevel 1 (
+  echo [ERROR] server-mod build failed
+  set "FAIL=1"
+)
+popd
+echo.
+
+if "!FAIL!"=="1" goto :fail
+
+echo -------- copy jars --------
+if not exist "jars" mkdir jars
+
+set "CLIENT_JAR="
+for %%F in (client-mod\build\libs\fridge-minecraft-client-*.jar) do (
+  echo %%~nxF | findstr /i "sources dev" >nul
+  if errorlevel 1 set "CLIENT_JAR=%%F"
+)
+set "SERVER_JAR="
+for %%F in (server-mod\build\libs\fridge-minecraft-server-*.jar) do (
+  echo %%~nxF | findstr /i "sources dev" >nul
+  if errorlevel 1 set "SERVER_JAR=%%F"
+)
+
+if not defined CLIENT_JAR (
+  echo [ERROR] No client jar under client-mod\build\libs\
+  set "FAIL=1"
+)
+if not defined SERVER_JAR (
+  echo [ERROR] No server jar under server-mod\build\libs\
+  set "FAIL=1"
+)
+if "!FAIL!"=="1" goto :fail
+
+copy /Y "!CLIENT_JAR!" "jars\" >nul
+copy /Y "!SERVER_JAR!" "jars\" >nul
+echo Copied into jars\:
+for %%F in ("!CLIENT_JAR!") do echo   %%~nxF
+for %%F in ("!SERVER_JAR!") do echo   %%~nxF
+
+set "MODS=%APPDATA%\.minecraft\mods"
+if exist "%MODS%" (
+  echo.
+  choice /C YN /M "Also copy both jars into %MODS%"
+  if errorlevel 2 goto :done
+  copy /Y "!CLIENT_JAR!" "%MODS%\" >nul
+  copy /Y "!SERVER_JAR!" "%MODS%\" >nul
+  echo Installed into %MODS%
+) else (
+  echo.
+  echo No %MODS% folder found — skip auto-install.
+  echo Manually copy jars\*.jar into your Fabric mods folder.
+)
+
+:done
+echo.
+echo BUILD OK
+echo Client stats port 3852 ^| Server commands/dynamo port 3853
+echo Remember: Stream Core needs minecraft.enabled: true
+echo.
 pause
+exit /b 0
+
+:fail
+echo.
+echo BUILD FAILED — fix the errors above, then run BUILD.bat again.
+echo Need JDK 21 and internet on the first run ^(Gradle + Loom downloads^).
+echo.
+pause
+exit /b 1

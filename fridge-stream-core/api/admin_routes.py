@@ -23,6 +23,7 @@ from core.config import (
     save_config,
 )
 from core.command_groups import catalog_status
+from core.models import ChatEvent, ChatUser, Platform
 from core.alerts import (
     SKINS,
     build_alert,
@@ -119,6 +120,25 @@ class MetricsTestBody(BaseModel):
     power_level: int = Field(8, ge=0, le=15)
 
 
+class CreditsPlayBody(BaseModel):
+    playing: Optional[bool] = None
+    mode: Optional[str] = None
+    freeze: Optional[bool] = None
+    restart: bool = False
+
+
+class CreditsSeedBody(BaseModel):
+    username: str
+    display_name: str = ""
+    platform: str = "twitch"
+    is_mod: bool = False
+    message: str = "(seed)"
+
+
+class CreditsEnableBody(BaseModel):
+    enabled: bool
+
+
 def create_admin_router(core_state) -> APIRouter:
     router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -187,7 +207,13 @@ def create_admin_router(core_state) -> APIRouter:
                 "configured_enabled": bool((cfg.get("minecraft") or {}).get("enabled")),
                 "running": "minecraft" in games_live,
                 "player_name": (cfg.get("minecraft") or {}).get("player_name", ""),
-            }
+            },
+            "factorio": {
+                "configured_enabled": bool((cfg.get("factorio") or {}).get("enabled")),
+                "running": "factorio" in games_live,
+                "player_name": "",
+                "bridge_url": (cfg.get("factorio") or {}).get("bridge_url", "http://127.0.0.1:3847"),
+            },
         }
 
         port = int((cfg.get("core") or {}).get("port", 3850))
@@ -217,13 +243,13 @@ def create_admin_router(core_state) -> APIRouter:
             },
             {
                 "name": "Chat Credits overlay",
-                "url": "http://127.0.0.1:3854/overlay/credits.html",
-                "notes": "Ending credits roll (Fridge Chat Credits app)",
+                "url": f"{base}/overlay/credits.html",
+                "notes": "Built-in unique-chatter end credits (Admin → Credits). Transparent Webpage source.",
             },
             {
-                "name": "Chat Credits control desk",
+                "name": "Chat Credits (standalone app)",
                 "url": "http://127.0.0.1:3854/",
-                "notes": "Start fridge-chat-credits separately",
+                "notes": "Optional separate process if you don't want credits inside Core",
             },
             {
                 "name": "Factorio stats overlay",
@@ -256,6 +282,11 @@ def create_admin_router(core_state) -> APIRouter:
             "commands_loaded": cmd_count,
             "points_enabled": bool((cfg.get("points") or {}).get("enabled", False)),
             "chat_log_enabled": bool((cfg.get("chat_log") or {}).get("enabled", False)),
+            "credits": {
+                "configured_enabled": bool((cfg.get("credits") or {}).get("enabled")),
+                "running": bool(getattr(getattr(core_state, "credits", None), "enabled", False)),
+                "count": len(getattr(getattr(core_state, "credits", None), "chatters", {}) or {}),
+            },
             "metrics": metrics,
             "sources": sources,
             "note": "Restart Stream Core after changing config for platform/game toggles to apply.",
@@ -415,10 +446,20 @@ def create_admin_router(core_state) -> APIRouter:
                 groups_note = f" Command groups hot-applied: {', '.join(active)}."
             except Exception:
                 log.exception("refresh_command_groups after config save failed")
+        credits_note = ""
+        apply_credits = getattr(core_state, "apply_credits", None)
+        if callable(apply_credits):
+            try:
+                info = apply_credits()
+                credits_note = f" Credits {'on' if info.get('enabled') else 'off'}."
+            except Exception:
+                log.exception("apply_credits after config save failed")
         return {
             "ok": True,
             "path": str(path),
-            "message": "Saved. Restart Stream Core for platform/game toggles." + groups_note,
+            "message": "Saved. Restart Stream Core for platform/game toggles."
+            + groups_note
+            + credits_note,
         }
 
     @router.get("/commands")
@@ -679,7 +720,9 @@ def create_admin_router(core_state) -> APIRouter:
                 by_group[g].sort(key=lambda c: c["name"])
 
         # Known game slots (configured even if not running) + any live extras
-        known = ["minecraft"]
+        from games import KNOWN_GAMES
+
+        known = list(KNOWN_GAMES)
         for g in games_live:
             if g not in known:
                 known.append(g)
@@ -708,15 +751,38 @@ def create_admin_router(core_state) -> APIRouter:
                         "notes": "HP, CPM, power level, inventory flash",
                     },
                 ]
+            elif name == "factorio":
+                if game_obj and hasattr(game_obj, "overlay_catalog"):
+                    overlays = game_obj.overlay_catalog()
+                else:
+                    bridge = str(section.get("bridge_url") or "http://127.0.0.1:3847").rstrip("/")
+                    overlays = [
+                        {
+                            "name": "Factorio stats overlay",
+                            "url": f"{bridge}/overlay.html",
+                            "notes": "Fridge Factorio Stats bridge — start that app separately",
+                        },
+                        {
+                            "name": "Power",
+                            "url": f"{bridge}/power.html",
+                            "notes": "Production / consumption",
+                        },
+                        {
+                            "name": "Research",
+                            "url": f"{bridge}/research.html",
+                            "notes": "Current tech + progress",
+                        },
+                    ]
 
             game_panels.append({
                 "id": name,
-                "label": name.replace("_", " ").title(),
+                "label": "Factorio" if name == "factorio" else name.replace("_", " ").title(),
                 "configured_enabled": bool(section.get("enabled")),
                 "running": running,
                 "health": health,
                 "health_detail": health_detail,
                 "player_name": section.get("player_name") or section.get("player") or "",
+                "bridge_url": section.get("bridge_url", ""),
                 "client_mod_url": section.get("client_mod_url", ""),
                 "server_mod_url": section.get("server_mod_url", ""),
                 "command_group": name,
@@ -843,5 +909,123 @@ def create_admin_router(core_state) -> APIRouter:
                 "health": False,
                 "detail": str(e),
             }
+
+    # ------------------------------------------------------------------
+    # Chat credits
+    # ------------------------------------------------------------------
+
+    def _credits():
+        eng = getattr(core_state, "credits", None)
+        if not eng:
+            raise HTTPException(503, "Credits engine not ready")
+        return eng
+
+    async def _credits_broadcast(eng):
+        mgr = getattr(core_state, "ws_manager", None)
+        if not mgr:
+            return
+        await mgr.broadcast({"type": "credits_theme", "data": eng.theme})
+        await mgr.broadcast({"type": "credits_play", "data": eng.public_play()})
+        await mgr.broadcast({"type": "credits_roster", "data": eng.snapshot()})
+
+    def _persist_credits_look(eng):
+        cfg = getattr(core_state, "config", None) or load_config()
+        section = dict(cfg.get("credits") or {})
+        section["enabled"] = eng.enabled
+        section.update(eng.theme)
+        cfg["credits"] = section
+        core_state.config = cfg
+        save_config(cfg)
+
+    @router.get("/credits")
+    async def credits_status(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        eng = _credits()
+        return {
+            "ok": True,
+            "enabled": eng.enabled,
+            "theme": eng.theme,
+            "play": eng.public_play(),
+            "roster": eng.snapshot(),
+            "overlay": "/overlay/credits.html",
+        }
+
+    @router.put("/credits/enabled")
+    async def credits_enable(
+        body: CreditsEnableBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        eng.enabled = bool(body.enabled)
+        _persist_credits_look(eng)
+        apply = getattr(core_state, "apply_credits", None)
+        if callable(apply):
+            apply()
+        await _credits_broadcast(eng)
+        return {"ok": True, "enabled": eng.enabled, "count": len(eng.chatters)}
+
+    @router.put("/credits/theme")
+    async def credits_theme(
+        body: Dict[str, Any],
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        persist = bool(body.pop("persist", True))
+        eng.apply_theme(body)
+        if persist:
+            _persist_credits_look(eng)
+        await _credits_broadcast(eng)
+        return eng.theme
+
+    @router.post("/credits/play")
+    async def credits_play(
+        body: CreditsPlayBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        payload = body.model_dump() if hasattr(body, "model_dump") else body.dict()
+        public = eng.set_play(payload)
+        await _credits_broadcast(eng)
+        return public
+
+    @router.post("/credits/reset")
+    async def credits_reset(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        eng = _credits()
+        eng.reset()
+        await _credits_broadcast(eng)
+        return {"ok": True, "count": 0}
+
+    @router.post("/credits/seed")
+    async def credits_seed(
+        body: CreditsSeedBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        name = (body.username or body.display_name or "").strip()
+        if not name:
+            raise HTTPException(400, "username required")
+        try:
+            plat = Platform(body.platform.lower())
+        except ValueError:
+            plat = Platform.TWITCH
+        event = ChatEvent(
+            platform=plat,
+            user=ChatUser(
+                platform=plat,
+                id=name,
+                username=name,
+                display_name=body.display_name or name,
+                is_mod=body.is_mod,
+            ),
+            message=body.message or "(seed)",
+        )
+        eng.ingest(event, force=True)
+        await _credits_broadcast(eng)
+        return {"ok": True, "count": len(eng.chatters)}
 
     return router

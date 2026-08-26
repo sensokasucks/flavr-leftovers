@@ -70,6 +70,7 @@ python main.py
 | **Multi filter** | `…/overlay/chat.html?platforms=kick,twitch` | Subset |
 | **Minecraft stats** | `http://127.0.0.1:3850/overlay/overlay.html` | HP, CPM, power, inventory |
 | **Stream alerts** | `http://127.0.0.1:3850/overlay/alerts.html` | Follow / sub / raid / Super Chat — Streamlabs/SE CSS compatible |
+| **Chat credits** | `http://127.0.0.1:3850/overlay/credits.html` | Unique-chatter end credits (enable in Admin → Credits) |
 | Root | `http://127.0.0.1:3850/` | Same as Minecraft stats |
 
 Use a **transparent** Webpage source. Chat is a separate source so you can place and size it on its own. Add `?badges=0` to hide platform letters on combined chat. Alerts are a third source — test them from the admin **Alert test** tab. Paste existing Streamlabs / StreamElements CSS there (see [overlay/ALERTS.md](overlay/ALERTS.md)).
@@ -87,6 +88,7 @@ http://127.0.0.1:3850/admin/
 - Download full chat history as CSV (all or per user) when logging is on
 - **Integrations tab** — test chat commands (dry-run or live) and per-game features without going live in chat; Minecraft sub-panel for health, metrics push, overlay preview; modular for future games
 - **Alert test tab** — fire follow / sub / raid / Super Chat without a live event; paste Streamlabs / StreamElements CSS; pick Classic / Card / Custom CSS only
+- **Credits tab** — enable the built-in unique-chatter roll, restyle it, freeze/roll at stream end (hot-applied, uses Core chat adapters)
 - **Config tab** — simple GUI for `config.yaml` + `commands.json`
   - Everyday settings on the main form; advanced metrics / YouTube / chatroom id behind an accordion
   - **Command groups** — enable/disable whole sets; optional bind to Minecraft / points; hot-applied

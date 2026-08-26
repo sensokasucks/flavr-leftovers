@@ -46,6 +46,10 @@ minecraft:
   client_mod_url: "http://127.0.0.1:3852"
   server_mod_url: "http://127.0.0.1:3853"
 
+factorio:
+  enabled: false             # opt-in: set true when Fridge Factorio Stats is running
+  bridge_url: "http://127.0.0.1:3847"
+
 permissions:
   # Usernames are matched case-insensitively across every platform
   admin:
@@ -78,6 +82,28 @@ points:
 chat_log:
   enabled: false
 
+# Unique-chatter end credits overlay. Off by default.
+# Uses the same Kick / Twitch / YouTube adapters as live chat — no extra process.
+# Overlay: http://127.0.0.1:3850/overlay/credits.html
+# Admin → Credits tab to enable, restyle, and roll.
+credits:
+  enabled: false
+  ignore_own_channel: true
+  min_message_length: 1
+  title: "Thanks for watching"
+  subtitle: ""
+  footer: "See you next stream"
+  section_label: "Chatters"
+  group_by_platform: false
+  sort: "first_seen"            # first_seen | name | messages | last_seen
+  columns: 2
+  speed_px_per_sec: 42
+  gap_after_loop_sec: 2.5
+  mode: "loop"                  # loop | once | hold
+  show_platform: true
+  highlight_mods: true
+  background: "transparent"
+
 # Command groups. Toggle in Admin → Config without restarting Core.
 # bind: minecraft → on only when minecraft.enabled AND the integration is running
 # bind: points    → on only when points.enabled
@@ -95,4 +121,8 @@ command_groups:
     enabled: true
     bind: minecraft
     description: "Minecraft integration (!spawn, !give, …)"
+  factorio:
+    enabled: true
+    bind: factorio
+    description: "Factorio stats overlay (Fridge Factorio Stats bridge)"
 

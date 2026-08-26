@@ -22,7 +22,6 @@ DEFAULT_IGNORE = [
     "commanderroot",
     "soundalerts",
     "kofistreambot",
-    "streamelements",
     "own3d",
 ]
 
@@ -116,7 +115,6 @@ def load_config(root: Path) -> dict:
     with path.open("r", encoding="utf-8-sig") as f:
         text = f.read()
     if "\t" in text or text.startswith("\ufeff"):
-        # YAML forbids tab indent — same crash Stream Core hit on GitHub clones
         lines = []
         for raw in text.lstrip("\ufeff").splitlines(True):
             if "\t" not in raw:
@@ -141,5 +139,27 @@ def load_config(root: Path) -> dict:
         ) from exc
     if not isinstance(raw, dict):
         raw = {}
-    cfg = _deep_merge(DEFAULTS, raw)
-    return cfg
+    return _deep_merge(DEFAULTS, raw)
+
+
+def save_config(root: Path, data: dict) -> Path:
+    """Write config.yaml (merged with defaults). Platform toggles need a restart."""
+    merged = _deep_merge(DEFAULTS, data or {})
+    path = root / "config" / "config.yaml"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    text = yaml.safe_dump(
+        merged,
+        default_flow_style=False,
+        allow_unicode=True,
+        sort_keys=False,
+        width=100,
+        indent=2,
+    )
+    header = (
+        "# Fridge Chat Credits configuration\n"
+        "# Edited by the control-desk Config editor or by hand.\n"
+        "# Restart Chat Credits after changing platforms / ingest.\n\n"
+    )
+    path.write_text(header + text, encoding="utf-8")
+    log.info("Saved config to %s", path)
+    return path

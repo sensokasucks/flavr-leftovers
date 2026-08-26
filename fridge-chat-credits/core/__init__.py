@@ -1,0 +1,1 @@
+# Chat Credits core package

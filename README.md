@@ -1,7 +1,3 @@
-# FlaVR Leftovers
-
-Streaming toolkit for the **FlaVR Leftovers** stream, maintained by Sensoka's Workshop.
-
 # Fridge Workshop
 
 Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources and grew into standalone local apps that also work in OBS.

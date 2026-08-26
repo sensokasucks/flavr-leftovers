@@ -3,9 +3,7 @@
   "version": "1.0.0",
   "title": "Fridge Factorio Stats",
   "author": "Sensoka's Workshop",
-  "contact": "",
-  "homepage": "",
-  "description": "Exposes power, research, kills, deaths, evolution and alerts for the Fridge overlay bridge.",
   "factorio_version": "2.0",
-  "dependencies": ["base >= 2.0.0"]
+  "dependencies": ["base >= 2.0"],
+  "description": "Exports semi-realtime stats (research, deaths, kills, alerts, power approximation) for Fridge overlays via RCON command /fridge-stats (legacy /xsplit-stats) and optional file write. Works with or without Wiretap for richer power data."
 }

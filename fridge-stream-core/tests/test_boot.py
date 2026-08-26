@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core.config import DEFAULTS, load_config, sanitize_yaml_text
+from core.credits import CreditsEngine
 from core.models import ChatEvent, ChatUser, Platform
 from core.permissions import PermissionManager
 from core.store import Store
@@ -80,6 +81,7 @@ class SeedAndLoadTests(unittest.TestCase):
         self.assertFalse(cfg["minecraft"]["enabled"])
         self.assertFalse(cfg["chat_log"]["enabled"])
         self.assertFalse(cfg["points"]["enabled"])
+        self.assertFalse(cfg["credits"]["enabled"])
         self.assertEqual(cfg["overlay"]["show_inventory_seconds"], 12)
         self.assertEqual(cfg["overlay"]["alert_duration_ms"], 6000)
         self.assertEqual(cfg["core"]["port"], DEFAULTS["core"]["port"])
@@ -215,6 +217,39 @@ class AlertBuilderTests(unittest.TestCase):
             "alerts-custom.css",
         ):
             self.assertIn(needle, html)
+
+
+class CreditsEngineTests(unittest.TestCase):
+    def test_disabled_does_not_ingest(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            eng = CreditsEngine({"credits": {"enabled": False}}, root)
+            event = ChatEvent(
+                platform=Platform.KICK,
+                user=ChatUser(platform=Platform.KICK, id="1", username="bob"),
+                message="hi",
+            )
+            self.assertIsNone(eng.ingest(event))
+            self.assertEqual(len(eng.chatters), 0)
+            self.assertIsNotNone(eng.ingest(event, force=True))
+            self.assertEqual(len(eng.chatters), 1)
+            self.assertIsNone(eng.ingest(event, force=True))
+            self.assertEqual(eng.chatters["kick:bob"].messages, 2)
+
+    def test_ignore_bots(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            eng = CreditsEngine({"credits": {"enabled": True}}, Path(tmp))
+            event = ChatEvent(
+                platform=Platform.TWITCH,
+                user=ChatUser(platform=Platform.TWITCH, id="n", username="nightbot"),
+                message="hi",
+            )
+            self.assertIsNone(eng.ingest(event))
+
+    def test_overlay_file_exists(self):
+        html = (ROOT / "overlay" / "credits.html").read_text(encoding="utf-8")
+        self.assertIn("requestAnimationFrame", html)
+        self.assertIn("/api/credits/theme", html)
 
 
 if __name__ == "__main__":

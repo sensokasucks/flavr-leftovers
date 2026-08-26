@@ -60,6 +60,10 @@ DEFAULTS: Dict[str, Any] = {
         "client_mod_url": "http://127.0.0.1:3852",
         "server_mod_url": "http://127.0.0.1:3853",
     },
+    "factorio": {
+        "enabled": False,
+        "bridge_url": "http://127.0.0.1:3847",
+    },
     "permissions": {
         "admin": ["YOUR_USERNAME"],
         "mod": [],
@@ -87,6 +91,49 @@ DEFAULTS: Dict[str, Any] = {
     "chat_log": {
         "enabled": False,  # persist messages to SQLite (Chat History tab)
     },
+    "credits": {
+        "enabled": False,  # unique-chatter end credits overlay
+        "ignore_own_channel": True,
+        "min_message_length": 1,
+        "ignore_usernames": [
+            "nightbot",
+            "streamelements",
+            "streamlabs",
+            "moobot",
+            "fossabot",
+            "wizebot",
+            "sery_bot",
+            "commanderroot",
+            "soundalerts",
+        ],
+        "title": "Thanks for watching",
+        "subtitle": "",
+        "footer": "See you next stream",
+        "section_label": "Chatters",
+        "group_by_platform": False,
+        "sort": "first_seen",
+        "columns": 2,
+        "speed_px_per_sec": 42,
+        "gap_after_loop_sec": 2.5,
+        "mode": "loop",
+        "show_platform": True,
+        "show_message_count": False,
+        "highlight_mods": True,
+        "font_family": '"Palatino Linotype", Palatino, "Times New Roman", Georgia, serif',
+        "title_size_px": 54,
+        "name_size_px": 22,
+        "title_color": "#f3e2b0",
+        "name_color": "#f4f0e6",
+        "muted_color": "#9a8f78",
+        "mod_color": "#e8c36a",
+        "background": "transparent",
+        "text_shadow": "0 2px 8px rgba(0,0,0,0.85)",
+        "letter_spacing_em": 0.04,
+        "column_gap_px": 48,
+        "row_gap_px": 10,
+        "max_width_px": 920,
+        "custom_font_url": "",
+    },
     "command_groups": {
         "core": {
             "enabled": True,
@@ -105,6 +152,12 @@ DEFAULTS: Dict[str, Any] = {
             "always": False,
             "bind": "minecraft",
             "description": "Minecraft integration (!spawn, !give, …)",
+        },
+        "factorio": {
+            "enabled": True,
+            "always": False,
+            "bind": "factorio",
+            "description": "Factorio stats overlay (Fridge Factorio Stats bridge)",
         },
     },
 }

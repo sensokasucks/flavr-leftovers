@@ -22,6 +22,7 @@
     <button class="tab active" data-tab="status">Status</button>
     <button class="tab" data-tab="sources">Sources &amp; overlays</button>
     <button class="tab" data-tab="integrations">Integrations</button>
+    <button class="tab" data-tab="credits">Credits</button>
     <button class="tab" data-tab="alerts">Alert test</button>
     <button class="tab" data-tab="users">Users &amp; Points</button>
     <button class="tab" data-tab="chat">Chat History</button>
@@ -108,6 +109,104 @@
         <p class="hint">Not game-specific. Alerts have a dedicated tab with presets and CSS editor.</p>
         <div id="integ-shared-overlays" class="integ-overlay-list"></div>
       </fieldset>
+    </div>
+  </section>
+
+  <!-- Chat credits -->
+  <section id="tab-credits" class="panel">
+    <p class="tab-intro">
+      Built-in end credits: unique chatters from whatever platforms Core is already listening to.
+      No extra process. Add
+      <code>/overlay/credits.html</code>
+      as a <strong>transparent Webpage source</strong>. Enable here (hot-applied, no restart).
+    </p>
+    <div class="credits-layout">
+      <div>
+        <fieldset class="cfg-card">
+          <legend>Feature</legend>
+          <label class="check"><input type="checkbox" id="crd-enabled" /> Enabled</label>
+          <div class="form-row" style="margin-top:10px; gap:8px; flex-wrap:wrap">
+            <button class="primary" id="crd-enable-save" type="button">Save enable</button>
+            <span id="crd-enable-status" class="muted"></span>
+          </div>
+          <p class="hint" id="crd-count-line">Unique chatters: —</p>
+          <p class="hint">Overlay URL
+            <code id="crd-url">/overlay/credits.html</code>
+            <button type="button" id="crd-copy">Copy</button>
+          </p>
+        </fieldset>
+        <fieldset class="cfg-card">
+          <legend>Roll</legend>
+          <div class="form-row" style="gap:8px; flex-wrap:wrap">
+            <button class="primary" id="crd-roll" type="button">Roll credits (freeze list)</button>
+            <button id="crd-live" type="button">Live list</button>
+            <button id="crd-loop" type="button">Loop</button>
+            <button id="crd-once" type="button">Play once</button>
+            <button id="crd-hold" type="button">Hold still</button>
+            <button id="crd-pause" type="button">Pause / play</button>
+            <button class="danger" id="crd-reset" type="button">Reset session</button>
+          </div>
+        </fieldset>
+        <fieldset class="cfg-card">
+          <legend>Look</legend>
+          <label>Title <input id="crd-title" type="text" /></label>
+          <label>Subtitle <input id="crd-subtitle" type="text" /></label>
+          <label>Footer <input id="crd-footer" type="text" /></label>
+          <div class="row2">
+            <label>Columns
+              <select id="crd-columns"><option>1</option><option>2</option><option>3</option></select>
+            </label>
+            <label>Sort
+              <select id="crd-sort">
+                <option value="first_seen">First seen</option>
+                <option value="name">Name</option>
+                <option value="messages">Most messages</option>
+                <option value="last_seen">Last seen</option>
+              </select>
+            </label>
+          </div>
+          <div class="row2">
+            <label>Speed (px/s) <input id="crd-speed" type="number" min="10" max="200" /></label>
+            <label>Name size <input id="crd-namesize" type="number" min="12" max="48" /></label>
+          </div>
+          <div class="row2">
+            <label>Title color <input id="crd-titlecolor" type="text" /></label>
+            <label>Name color <input id="crd-namecolor" type="text" /></label>
+          </div>
+          <label class="check"><input type="checkbox" id="crd-group" /> Group by platform</label>
+          <label class="check"><input type="checkbox" id="crd-dots" /> Platform dots</label>
+          <label class="check"><input type="checkbox" id="crd-counts" /> Message counts</label>
+          <label class="check"><input type="checkbox" id="crd-mods" /> Highlight mods</label>
+          <div class="form-row" style="margin-top:10px">
+            <button class="primary" id="crd-save-look" type="button">Save look</button>
+            <span id="crd-look-status" class="muted"></span>
+          </div>
+        </fieldset>
+        <fieldset class="cfg-card">
+          <legend>Test name</legend>
+          <div class="row2">
+            <label>Username <input id="crd-seed-name" type="text" placeholder="viewer" /></label>
+            <label>Platform
+              <select id="crd-seed-plat">
+                <option value="twitch">twitch</option>
+                <option value="kick">kick</option>
+                <option value="youtube">youtube</option>
+              </select>
+            </label>
+          </div>
+          <button id="crd-seed" type="button">Add to roll</button>
+        </fieldset>
+      </div>
+      <div>
+        <fieldset class="cfg-card">
+          <legend>Preview</legend>
+          <p class="hint">Same overlay as XSplit. Crawl starts from the bottom.</p>
+          <div class="credits-preview">
+            <iframe id="crd-preview" title="Credits overlay" src="/overlay/credits.html"></iframe>
+          </div>
+          <div id="crd-list" class="credits-list muted"></div>
+        </fieldset>
+      </div>
     </div>
   </section>
 
@@ -372,6 +471,19 @@
       </fieldset>
 
       <fieldset class="cfg-card">
+        <legend>Factorio</legend>
+        <p class="hint">
+          Talks to the Fridge Factorio Stats bridge (RCON + overlay on port 3847).
+          Enable this so Factorio shows on Status and Integrations. The Node bridge
+          is still a separate process.
+        </p>
+        <label class="check"><input id="cfg-fx-enabled" type="checkbox" /> Enabled (opt-in)</label>
+        <label>Bridge URL
+          <input id="cfg-fx-bridge" type="text" placeholder="http://127.0.0.1:3847" />
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
         <legend>Permissions</legend>
         <p class="hint">One username per line. Matched case-insensitively across every platform.</p>
         <label>Admins <span class="field-help">Full control + !permit</span>
@@ -395,6 +507,12 @@
         <label>Admin token <span class="field-help">Paste into the header above</span>
           <input id="cfg-pts-token" type="text" autocomplete="off" />
         </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Chat credits</legend>
+        <p class="hint">Unique-chatter end-credits overlay. Uses Core’s existing chat adapters. Hot-applied — no restart.</p>
+        <label class="check"><input id="cfg-credits-enabled" type="checkbox" /> Enabled</label>
       </fieldset>
 
       <fieldset class="cfg-card">

@@ -48,6 +48,7 @@ public class FridgeClientMod implements ClientModInitializer {
                 if (!wasDead) {
                     deathCount++;
                     wasDead = true;
+                    LOGGER.info("Death recorded. Total: {}", deathCount);
                 }
             } else {
                 wasDead = false;
@@ -58,76 +59,97 @@ public class FridgeClientMod implements ClientModInitializer {
     private void startHttpServer() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", PORT), 0);
-            server.createContext("/stats", this::handleStats);
-            server.createContext("/health", this::handleHealth);
-            server.setExecutor(Executors.newSingleThreadExecutor());
+            server.createContext("/api/stats", this::handleStats);
+            server.createContext("/api/inventory", this::handleInventory);
+            server.createContext("/api/show_inventory", this::handleShowInventory);
+            server.setExecutor(Executors.newFixedThreadPool(2));
             server.start();
-            LOGGER.info("HTTP stats server listening on 127.0.0.1:{}", PORT);
+            LOGGER.info("HTTP API listening on http://127.0.0.1:{}", PORT);
         } catch (IOException e) {
             LOGGER.error("Failed to start HTTP server", e);
         }
     }
 
-    private void handleHealth(HttpExchange ex) throws IOException {
-        byte[] body = "ok".getBytes(StandardCharsets.UTF_8);
-        ex.getResponseHeaders().add("Content-Type", "text/plain");
-        ex.sendResponseHeaders(200, body.length);
-        try (OutputStream os = ex.getResponseBody()) {
-            os.write(body);
+    private void handleStats(HttpExchange ex) throws IOException {
+        if (!"GET".equals(ex.getRequestMethod())) {
+            ex.sendResponseHeaders(405, -1);
+            return;
         }
+        MinecraftClient mc = MinecraftClient.getInstance();
+        ClientPlayerEntity p = mc.player;
+        String json;
+        if (p == null) {
+            json = "{\"online\":false}";
+        } else {
+            List<String> effects = new ArrayList<>();
+            for (StatusEffectInstance inst : p.getStatusEffects()) {
+                Identifier id = Registries.STATUS_EFFECT.getId(inst.getEffectType().value());
+                String name = id != null ? id.getPath() : "unknown";
+                int secs = inst.getDuration() / 20;
+                effects.add(String.format("{\"name\":\"%s\",\"duration\":%d,\"amplifier\":%d}", name, secs, inst.getAmplifier()));
+            }
+            float xpProgress = p.experienceProgress;
+            json = String.format(
+                "{\"online\":true,\"health\":%.2f,\"maxHealth\":%.2f,\"food\":%d,\"saturation\":%.2f," +
+                "\"level\":%d,\"xpProgress\":%.3f,\"deaths\":%d,\"armor\":%d,\"effects\":[%s]}",
+                p.getHealth(), p.getMaxHealth(), p.getHungerManager().getFoodLevel(),
+                p.getHungerManager().getSaturationLevel(), p.experienceLevel, xpProgress,
+                deathCount, p.getArmor(), String.join(",", effects)
+            );
+        }
+        respond(ex, 200, json);
     }
 
-    private void handleStats(HttpExchange ex) throws IOException {
-        MinecraftClient client = MinecraftClient.getInstance();
-        ClientPlayerEntity player = client.player;
-
-        StringBuilder json = new StringBuilder();
-        json.append("{");
-        if (player == null) {
-            json.append("\"online\":false");
-        } else {
-            json.append("\"online\":true,");
-            json.append("\"name\":\"").append(escape(player.getName().getString())).append("\",");
-            json.append("\"health\":").append(player.getHealth()).append(",");
-            json.append("\"maxHealth\":").append(player.getMaxHealth()).append(",");
-            json.append("\"food\":").append(player.getHungerManager().getFoodLevel()).append(",");
-            json.append("\"saturation\":").append(player.getHungerManager().getSaturationLevel()).append(",");
-            json.append("\"xp\":").append(player.experienceLevel).append(",");
-            json.append("\"deaths\":").append(deathCount).append(",");
-            json.append("\"showInventory\":").append(System.currentTimeMillis() < showInventoryUntil);
-            // inventory summary
-            json.append(",\"inventory\":[");
-            boolean first = true;
-            for (int i = 0; i < player.getInventory().size(); i++) {
-                ItemStack stack = player.getInventory().getStack(i);
-                if (!stack.isEmpty()) {
-                    if (!first) json.append(",");
-                    first = false;
-                    Identifier id = Registries.ITEM.getId(stack.getItem());
-                    json.append("{\"slot\":").append(i)
-                        .append(",\"id\":\"").append(id).append("\"")
-                        .append(",\"count\":").append(stack.getCount()).append("}");
-                }
-            }
-            json.append("]");
+    private void handleInventory(HttpExchange ex) throws IOException {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        ClientPlayerEntity p = mc.player;
+        if (p == null) {
+            respond(ex, 200, "{\"slots\":[]}");
+            return;
         }
-        json.append("}");
+        StringBuilder sb = new StringBuilder("{\"slots\":[");
+        boolean first = true;
+        // main inventory 0-35 + armor 36-39 + offhand 40
+        for (int i = 0; i < p.getInventory().size(); i++) {
+            ItemStack stack = p.getInventory().getStack(i);
+            if (!first) sb.append(',');
+            first = false;
+            if (stack.isEmpty()) {
+                sb.append("null");
+            } else {
+                Identifier id = Registries.ITEM.getId(stack.getItem());
+                sb.append(String.format("{\"id\":\"%s\",\"count\":%d}", id.toString(), stack.getCount()));
+            }
+        }
+        sb.append("]}");
+        respond(ex, 200, sb.toString());
+    }
 
-        byte[] body = json.toString().getBytes(StandardCharsets.UTF_8);
+    private void handleShowInventory(HttpExchange ex) throws IOException {
+        // POST /api/show_inventory?seconds=12
+        String query = ex.getRequestURI().getQuery();
+        int seconds = 12;
+        if (query != null && query.contains("seconds=")) {
+            try {
+                seconds = Integer.parseInt(query.replaceAll(".*seconds=(\\d+).*", "$1"));
+            } catch (Exception ignored) {}
+        }
+        showInventoryUntil = System.currentTimeMillis() + seconds * 1000L;
+        respond(ex, 200, "{\"ok\":true,\"seconds\":" + seconds + "}");
+    }
+
+    private void respond(HttpExchange ex, int code, String body) throws IOException {
+        byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
         ex.getResponseHeaders().add("Content-Type", "application/json");
         ex.getResponseHeaders().add("Access-Control-Allow-Origin", "*");
-        ex.sendResponseHeaders(200, body.length);
+        ex.sendResponseHeaders(code, bytes.length);
         try (OutputStream os = ex.getResponseBody()) {
-            os.write(body);
+            os.write(bytes);
         }
     }
 
-    private static String escape(String s) {
-        return s.replace("\\", "\\\\").replace("\"", "\\\"");
-    }
-
-    /** Called by Stream Core via HTTP when inventory should be shown on overlay. */
-    public static void triggerShowInventory(int seconds) {
-        showInventoryUntil = System.currentTimeMillis() + seconds * 1000L;
+    /** Called by overlay logic if needed (currently unused, bridge polls). */
+    public static boolean shouldShowInventory() {
+        return System.currentTimeMillis() < showInventoryUntil;
     }
 }

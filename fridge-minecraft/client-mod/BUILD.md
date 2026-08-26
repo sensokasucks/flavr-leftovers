@@ -1,9 +1,11 @@
-# Client mod build
+# Client mod
 
-Requires JDK 21+ and the Gradle wrapper.
+Full Fabric Loom project. Prefer repo-root **`BUILD.bat`** / **`build.sh`**.
 
 ```bat
 gradlew.bat build
+:: → build\libs\fridge-minecraft-client-1.0.0.jar
 ```
 
-Output JAR is under `build/libs/`.
+Needs **JDK 21** and **Fabric API** at runtime. No other mod dependencies.  
+Stats HTTP API listens on port **3852**.

@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat Credits</title>
+  <style>
+    :root {
+      --title-color: #f3e2b0;
+      --name-color: #f4f0e6;
+      --muted: #9a8f78;
+      --mod: #e8c36a;
+      --font: "Palatino Linotype", Palatino, "Times New Roman", Georgia, serif;
+      --title-size: 54px;
+      --name-size: 22px;
+      --shadow: 0 2px 8px rgba(0,0,0,0.85);
+      --track: 0.04em;
+      --col-gap: 48px;
+      --row-gap: 10px;
+      --max-w: 920px;
+      --kick: #53fc18;
+      --twitch: #bf94ff;
+      --youtube: #ff6b6b;
+      --manual: #9ad0ff;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: transparent;
+      font-family: var(--font);
+      color: var(--name-color);
+    }
+    body.solid { background: #000; }
+    #stage {
+      position: relative;
+      width: 100%; height: 100%;
+      overflow: hidden;
+    }
+    /* Pixel crawl via JS — CSS keyframes cannot target a dynamic reel height
+       (and inline animation:none was swallowing animation-name in CEF/OBS). */
+    #reel {
+      position: absolute;
+      top: 0;
+      left: 50%;
+      width: min(var(--max-w), 94vw);
+      transform: translate3d(-50%, 100vh, 0);
+      will-change: transform;
+      text-align: center;
+      padding: 4vh 0 28vh;
+      backface-visibility: hidden;
+    }
+    .title {
+      font-size: var(--title-size);
+      color: var(--title-color);
+      letter-spacing: calc(var(--track) + 0.08em);
+      text-transform: uppercase;
+      text-shadow: var(--shadow);
+      font-weight: 600;
+      line-height: 1.15;
+    }
+    .subtitle {
+      margin-top: 10px;
+      font-size: calc(var(--name-size) + 4px);
+      color: var(--muted);
+      letter-spacing: var(--track);
+      text-shadow: var(--shadow);
+    }
+    .rule {
+      width: 120px;
+      height: 2px;
+      margin: 28px auto 18px;
+      background: linear-gradient(90deg, transparent, var(--title-color), transparent);
+      opacity: 0.7;
+    }
+    .section {
+      margin: 8px 0 22px;
+      font-size: calc(var(--name-size) - 4px);
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: var(--muted);
+      text-shadow: var(--shadow);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr));
+      column-gap: var(--col-gap);
+      row-gap: var(--row-gap);
+      text-align: center;
+    }
+    .grid.cols-1 { grid-template-columns: 1fr; }
+    .name {
+      font-size: var(--name-size);
+      letter-spacing: var(--track);
+      text-shadow: var(--shadow);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      padding: 0 6px;
+    }
+    .name.mod { color: var(--mod); }
+    .dot {
+      display: inline-block;
+      width: 0.55em;
+      height: 0.55em;
+      border-radius: 50%;
+      margin-right: 0.45em;
+      vertical-align: 0.08em;
+      box-shadow: 0 0 6px currentColor;
+    }
+    .dot.kick { background: var(--kick); color: var(--kick); }
+    .dot.twitch { background: var(--twitch); color: var(--twitch); }
+    .dot.youtube { background: var(--youtube); color: var(--youtube); }
+    .dot.manual { background: var(--manual); color: var(--manual); }
+    .count {
+      color: var(--muted);
+      font-size: 0.78em;
+      margin-left: 0.35em;
+    }
+    .footer {
+      margin-top: 48px;
+      font-size: calc(var(--name-size) + 6px);
+      color: var(--title-color);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      text-shadow: var(--shadow);
+    }
+    .empty {
+      color: var(--muted);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      font-size: calc(var(--name-size) - 2px);
+      text-shadow: var(--shadow);
+    }
+    .plat-block { margin-bottom: 36px; }
+    .plat-h {
+      font-size: calc(var(--name-size) - 2px);
+      letter-spacing: 0.32em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      text-shadow: var(--shadow);
+    }
+    .plat-h.kick { color: var(--kick); }
+    .plat-h.twitch { color: var(--twitch); }
+    .plat-h.youtube { color: var(--youtube); }
+    .plat-h.manual { color: var(--manual); }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <div id="reel"></div>
+  </div>
+  <script>
+    const PLATFORM_ORDER = ["twitch", "kick", "youtube", "manual"];
+    const PLATFORM_LABEL = { twitch: "Twitch", kick: "Kick", youtube: "YouTube", manual: "Chat" };
+
+    const qs = new URLSearchParams(location.search);
+    let theme = {};
+    let roster = { chatters: [], count: 0 };
+    let play = { playing: true, mode: "loop", freeze: false, generation: 0 };
+    let rebuildTimer = 0;
+    let lastRosterKey = "";
+    let lastThemeKey = "";
+
+    const crawl = {
+      raf: 0,
+      y: 0,
+      startY: 0,
+      endY: 0,
+      lastTs: 0,
+      running: false,
+      gapUntil: 0,
+      generation: -1,
+      started: false,
+    };
+
+    function num(v, fallback) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    }
+
+    function applyQuery(t) {
+      const out = { ...t };
+      for (const [k, v] of qs.entries()) {
+        if (k === "demo") continue;
+        if (v === "true") out[k] = true;
+        else if (v === "false") out[k] = false;
+        else if (v !== "" && !Number.isNaN(Number(v)) && String(Number(v)) === v) out[k] = Number(v);
+        else out[k] = v;
+      }
+      return out;
+    }
+
+    function applyTheme(t) {
+      theme = applyQuery(t || {});
+      const r = document.documentElement.style;
+      r.setProperty("--title-color", theme.title_color || "#f3e2b0");
+      r.setProperty("--name-color", theme.name_color || "#f4f0e6");
+      r.setProperty("--muted", theme.muted_color || "#9a8f78");
+      r.setProperty("--mod", theme.mod_color || "#e8c36a");
+      r.setProperty("--font", theme.font_family || "Georgia, serif");
+      r.setProperty("--title-size", (theme.title_size_px || 54) + "px");
+      r.setProperty("--name-size", (theme.name_size_px || 22) + "px");
+      r.setProperty("--shadow", theme.text_shadow || "0 2px 8px rgba(0,0,0,0.85)");
+      r.setProperty("--track", (theme.letter_spacing_em || 0.04) + "em");
+      r.setProperty("--col-gap", (theme.column_gap_px || 48) + "px");
+      r.setProperty("--row-gap", (theme.row_gap_px || 10) + "px");
+      r.setProperty("--max-w", (theme.max_width_px || 920) + "px");
+      const bg = theme.background || "transparent";
+      document.body.style.background = bg;
+      document.body.classList.toggle("solid", bg !== "transparent");
+      if (theme.custom_font_url) {
+        let link = document.getElementById("custom-font");
+        if (!link) {
+          link = document.createElement("link");
+          link.id = "custom-font";
+          link.rel = "stylesheet";
+          document.head.appendChild(link);
+        }
+        link.href = theme.custom_font_url;
+      }
+    }
+
+    function esc(s) {
+      return String(s || "")
+        .replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">");
+    }
+
+    function nameCell(c) {
+      const showPlat = theme.show_platform !== false;
+      const showCount = !!theme.show_message_count;
+      const hl = theme.highlight_mods !== false && c.is_mod;
+      const dot = showPlat
+        ? `<span class="dot ${esc(c.platform)}"></span>`
+        : "";
+      const count = showCount ? `<span class="count">${c.messages || 1}</span>` : "";
+      return `<div class="name${hl ? " mod" : ""}">${dot}${esc(c.display_name || c.username)}${count}</div>`;
+    }
+
+    function grid(list, cols) {
+      return `<div class="grid cols-${cols}" style="--cols:${cols}">${list.map(nameCell).join("")}</div>`;
+    }
+
+    function rosterKey(r) {
+      return (r.chatters || []).map((c) => c.platform + ":" + c.username).join("|");
+    }
+
+    function themeKey(t) {
+      return [
+        t.title, t.subtitle, t.footer, t.section_label, t.columns, t.sort,
+        t.group_by_platform, t.show_platform, t.show_message_count, t.highlight_mods,
+        t.name_size_px, t.title_size_px, t.font_family,
+      ].join("~");
+    }
+
+    function renderNames() {
+      const reel = document.getElementById("reel");
+      const cols = Math.max(1, Math.min(4, num(theme.columns, 2)));
+      const title = theme.title || "Thanks for watching";
+      const subtitle = theme.subtitle || "";
+      const footer = theme.footer || "";
+      const label = theme.section_label || "Chatters";
+      const group = !!theme.group_by_platform;
+      const chatters = roster.chatters || [];
+
+      let body = "";
+      if (!chatters.length) {
+        body = `<div class="empty">Waiting for chat</div>`;
+      } else if (group) {
+        const buckets = {};
+        for (const c of chatters) {
+          (buckets[c.platform] || (buckets[c.platform] = [])).push(c);
+        }
+        const keys = [
+          ...PLATFORM_ORDER.filter((p) => buckets[p]?.length),
+          ...Object.keys(buckets).filter((p) => !PLATFORM_ORDER.includes(p)),
+        ];
+        body = keys.map((p) =>
+          `<div class="plat-block">
+            <div class="plat-h ${esc(p)}">${esc(PLATFORM_LABEL[p] || p)}</div>
+            ${grid(buckets[p], cols)}
+          </div>`
+        ).join("");
+      } else {
+        body = `<div class="section">${esc(label)}</div>${grid(chatters, cols)}`;
+      }
+
+      reel.innerHTML = `
+        <div class="title">${esc(title)}</div>
+        ${subtitle ? `<div class="subtitle">${esc(subtitle)}</div>` : ""}
+        <div class="rule"></div>
+        ${body}
+        ${footer ? `<div class="footer">${esc(footer)}</div>` : ""}
+      `;
+    }
+
+    function metrics() {
+      const stage = document.getElementById("stage");
+      const reel = document.getElementById("reel");
+      const stageH = stage.clientHeight || window.innerHeight || 720;
+      const height = reel.scrollHeight || 0;
+      return {
+        stageH,
+        height,
+        startY: stageH,
+        endY: -height,
+      };
+    }
+
+    function applyY(y) {
+      const reel = document.getElementById("reel");
+      reel.style.transform = `translate3d(-50%, ${y}px, 0)`;
+    }
+
+    function holdY() {
+      const m = metrics();
+      if (m.height <= m.stageH * 0.92) {
+        return Math.max(24, (m.stageH - m.height) / 2);
+      }
+      return 48;
+    }
+
+    function syncMetrics() {
+      const m = metrics();
+      crawl.startY = m.startY;
+      crawl.endY = m.endY;
+    }
+
+    function stopRaf() {
+      crawl.running = false;
+      crawl.lastTs = 0;
+      if (crawl.raf) {
+        cancelAnimationFrame(crawl.raf);
+        crawl.raf = 0;
+      }
+    }
+
+    function resetToStart() {
+      syncMetrics();
+      crawl.y = crawl.startY;
+      crawl.gapUntil = 0;
+      crawl.lastTs = 0;
+      applyY(crawl.y);
+    }
+
+    function tick(ts) {
+      if (!crawl.running) return;
+      crawl.raf = requestAnimationFrame(tick);
+
+      const mode = play.mode || theme.mode || "loop";
+      if (play.playing === false || mode === "hold") {
+        return;
+      }
+
+      if (crawl.gapUntil && ts < crawl.gapUntil) {
+        return;
+      }
+      crawl.gapUntil = 0;
+
+      if (!crawl.lastTs) crawl.lastTs = ts;
+      const dt = Math.min(0.05, (ts - crawl.lastTs) / 1000);
+      crawl.lastTs = ts;
+
+      const speed = Math.max(8, num(theme.speed_px_per_sec, 42));
+      crawl.y -= speed * dt;
+      syncMetrics();
+
+      if (crawl.y <= crawl.endY) {
+        if (mode === "once") {
+          crawl.y = holdY();
+          applyY(crawl.y);
+          play.mode = "hold";
+          stopRaf();
+          return;
+        }
+        const gap = Math.max(0, num(theme.gap_after_loop_sec, 2.5));
+        crawl.y = crawl.startY;
+        crawl.lastTs = 0;
+        if (gap > 0) crawl.gapUntil = ts + gap * 1000;
+      }
+
+      applyY(crawl.y);
+    }
+
+    function startOrResumeCrawl(opts) {
+      const mode = play.mode || theme.mode || "loop";
+      syncMetrics();
+
+      if (play.playing === false || mode === "hold") {
+        stopRaf();
+        crawl.y = holdY();
+        applyY(crawl.y);
+        crawl.started = true;
+        return;
+      }
+
+      if (opts && opts.reset || !crawl.started) {
+        resetToStart();
+        crawl.started = true;
+      } else {
+        if (crawl.y > crawl.startY) crawl.y = crawl.startY;
+        if (crawl.y < crawl.endY) crawl.y = crawl.startY;
+        applyY(crawl.y);
+      }
+
+      if (!crawl.running) {
+        crawl.running = true;
+        crawl.lastTs = 0;
+        crawl.raf = requestAnimationFrame(tick);
+      }
+    }
+
+    function paint(opts) {
+      const rk = rosterKey(roster);
+      const tk = themeKey(theme);
+      const namesChanged = rk !== lastRosterKey || tk !== lastThemeKey;
+      if (namesChanged || !crawl.started) {
+        renderNames();
+        lastRosterKey = rk;
+        lastThemeKey = tk;
+      }
+
+      const gen = Number(play.generation || 0);
+      const reset = !!(opts && opts.reset) || gen !== crawl.generation;
+      crawl.generation = gen;
+      startOrResumeCrawl({ reset });
+    }
+
+    function schedulePaint(opts) {
+      clearTimeout(rebuildTimer);
+      rebuildTimer = setTimeout(() => paint(opts || {}), 40);
+    }
+
+    async function boot() {
+      try {
+        const [t, r, p] = await Promise.all([
+          fetch("/api/credits/theme").then((x) => x.json()),
+          fetch("/api/credits/roster").then((x) => x.json()),
+          fetch("/api/credits/play").then((x) => x.json()),
+        ]);
+        applyTheme(t);
+        roster = r;
+        play = p;
+      } catch (e) {
+        applyTheme({});
+      }
+      paint({ reset: true });
+      connectWs();
+    }
+
+    function connectWs() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        const kind = msg.type || "";
+        if (kind === "theme" || kind === "credits_theme") {
+          applyTheme(msg.data);
+          schedulePaint();
+        }
+        if (kind === "roster" || kind === "credits_roster") {
+          roster = msg.data;
+          schedulePaint();
+        }
+        if (kind === "play" || kind === "credits_play") {
+          play = msg.data;
+          schedulePaint();
+        }
+      };
+      ws.onclose = () => setTimeout(connectWs, 2000);
+    }
+
+    window.addEventListener("resize", () => {
+      syncMetrics();
+      if (play.mode === "hold" || play.playing === false) {
+        crawl.y = holdY();
+        applyY(crawl.y);
+      }
+    });
+
+    boot();
+  </script>
+</body>
+</html>

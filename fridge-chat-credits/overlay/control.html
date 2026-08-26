@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat Credits — Control</title>
+  <style>
+    :root {
+      --bg: #12110f;
+      --card: #1c1a17;
+      --ink: #f3eee4;
+      --muted: #9a9080;
+      --gold: #e8c36a;
+      --line: #2e2a24;
+      --kick: #53fc18;
+      --twitch: #bf94ff;
+      --youtube: #ff6b6b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    header {
+      padding: 18px 22px 10px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1 { font-size: 18px; margin: 0 0 4px; letter-spacing: .04em; }
+    header p { margin: 0; color: var(--muted); }
+    .preview-wrap {
+      margin: 16px 16px 0;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #000;
+      height: min(42vh, 380px);
+      position: relative;
+    }
+    .preview-wrap iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000;
+    }
+    .preview-cap {
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      z-index: 2;
+      font-size: 11px;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    main {
+      display: grid;
+      grid-template-columns: 280px 1fr 300px;
+      gap: 16px;
+      padding: 16px;
+    }
+    @media (max-width: 980px) {
+      main { grid-template-columns: 1fr; }
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); margin: 0 0 12px; }
+    .stat { font-size: 42px; color: var(--gold); font-weight: 650; }
+    .plat { display: flex; justify-content: space-between; padding: 4px 0; color: var(--muted); }
+    .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; }
+    button, select, input {
+      font: inherit;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: #26221c;
+      color: var(--ink);
+      padding: 7px 10px;
+    }
+    button {
+      cursor: pointer;
+      background: #3a3328;
+    }
+    button.primary { background: #6a5420; border-color: #8a6d2c; color: #fff6d8; }
+    button.danger { background: #4a2420; border-color: #6a3430; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
+    label { display: block; color: var(--muted); font-size: 12px; margin: 10px 0 4px; }
+    input[type="text"], input[type="number"], select { width: 100%; }
+    .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .list { max-height: 62vh; overflow: auto; }
+    .person {
+      display: flex; justify-content: space-between; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid var(--line);
+    }
+    .person b { font-weight: 600; }
+    .meta { color: var(--muted); font-size: 12px; }
+    code { color: var(--gold); font-size: 12px; }
+    a { color: var(--gold); }
+    .cfg {
+      margin: 0 16px 24px;
+    }
+    .cfg-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+    }
+    .cfg .card h2 { margin-bottom: 8px; }
+    .cfg-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 12px 16px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Chat Credits</h1>
+    <p>Unique chatters this session · Webpage source
+      <code>/overlay/credits.html</code>
+    </p>
+  </header>
+  <div class="preview-wrap">
+    <div class="preview-cap">Live overlay — crawl starts from the bottom</div>
+    <iframe id="preview" title="Credits roll preview" src="/overlay/credits.html"></iframe>
+  </div>
+  <main>
+    <section class="card">
+      <h2>Session</h2>
+      <div class="stat" id="count">0</div>
+      <div id="plats"></div>
+      <div class="row">
+        <button class="primary" id="btn-roll">Roll credits (freeze list)</button>
+        <button id="btn-live">Live list</button>
+      </div>
+      <div class="row">
+        <button id="btn-loop">Loop</button>
+        <button id="btn-once">Play once</button>
+        <button id="btn-hold">Hold still</button>
+      </div>
+      <div class="row">
+        <button id="btn-pause">Pause / play</button>
+        <button class="danger" id="btn-reset">Reset session</button>
+      </div>
+      <p class="meta" style="margin-top:12px">
+        Adapters: <span id="adapters">…</span><br />
+        <a href="/overlay/credits.html" target="_blank">Open overlay</a> ·
+        <a href="/api/roster.csv">Export CSV</a>
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Look</h2>
+      <label>Title</label>
+      <input type="text" id="title" />
+      <label>Subtitle</label>
+      <input type="text" id="subtitle" />
+      <label>Footer</label>
+      <input type="text" id="footer" />
+      <div class="grid2">
+        <div>
+          <label>Columns</label>
+          <select id="columns">
+            <option>1</option><option>2</option><option>3</option>
+          </select>
+        </div>
+        <div>
+          <label>Sort</label>
+          <select id="sort">
+            <option value="first_seen">First seen</option>
+            <option value="name">Name</option>
+            <option value="messages">Most messages</option>
+            <option value="last_seen">Last seen</option>
+          </select>
+        </div>
+        <div>
+          <label>Speed (px/s)</label>
+          <input type="number" id="speed_px_per_sec" min="10" max="200" />
+        </div>
+        <div>
+          <label>Name size</label>
+          <input type="number" id="name_size_px" min="12" max="48" />
+        </div>
+        <div>
+          <label>Title color</label>
+          <input type="text" id="title_color" />
+        </div>
+        <div>
+          <label>Name color</label>
+          <input type="text" id="name_color" />
+        </div>
+      </div>
+      <label><input type="checkbox" id="group_by_platform" /> Group by platform</label>
+      <label><input type="checkbox" id="show_platform" /> Platform dots</label>
+      <label><input type="checkbox" id="show_message_count" /> Show message counts</label>
+      <label><input type="checkbox" id="highlight_mods" /> Highlight mods</label>
+      <div class="row" style="margin-top:12px">
+        <button class="primary" id="btn-save">Save look</button>
+      </div>
+      <label>Test name</label>
+      <div class="row">
+        <input type="text" id="seed-name" placeholder="username" style="flex:1" />
+        <select id="seed-plat">
+          <option value="manual">manual</option>
+          <option value="twitch">twitch</option>
+          <option value="kick">kick</option>
+          <option value="youtube">youtube</option>
+        </select>
+        <button id="btn-seed">Add</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Chatters</h2>
+      <div class="list" id="list"></div>
+    </section>
+  </main>
+
+  <div class="cfg-actions">
+    <h2 style="margin:0; font-size:12px; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); flex:1">Config.yaml</h2>
+    <button class="primary" id="cfg-save">Save config</button>
+    <button id="cfg-reload">Reload</button>
+    <span class="meta" id="cfg-status"></span>
+  </div>
+  <p class="meta" style="margin:4px 16px 12px">
+    This is the standalone app’s own file — not Stream Core’s.
+    Changing Twitch / Kick / YouTube / ingest requires a restart of Chat Credits.
+    Look (title, colors, speed) saves immediately without a restart.
+  </p>
+  <section class="cfg">
+    <div class="cfg-grid">
+      <div class="card">
+        <h2>Twitch</h2>
+        <label><input type="checkbox" id="cfg-tw-enabled" /> Enabled (listens by itself, no token)</label>
+        <label>Channel</label>
+        <input type="text" id="cfg-tw-channel" placeholder="twitch.tv/THIS_PART" />
+      </div>
+      <div class="card">
+        <h2>Kick</h2>
+        <label><input type="checkbox" id="cfg-kick-enabled" /> Enabled (public chat socket)</label>
+        <label>Channel slug</label>
+        <input type="text" id="cfg-kick-slug" placeholder="kick.com/THIS_PART" />
+        <label>Chatroom id (optional)</label>
+        <input type="text" id="cfg-kick-chatroom" placeholder="only if lookup 403s" />
+      </div>
+      <div class="card">
+        <h2>YouTube</h2>
+        <label><input type="checkbox" id="cfg-yt-enabled" /> Enabled</label>
+        <label>API key</label>
+        <input type="text" id="cfg-yt-apikey" placeholder="AIza…" autocomplete="off" />
+        <label>Live video id</label>
+        <input type="text" id="cfg-yt-video" />
+      </div>
+      <div class="card">
+        <h2>Stream Core ingest</h2>
+        <p class="meta">Optional. Reuse Core’s chat instead of a second Kick socket. Core does not need to be running unless this is on.</p>
+        <label><input type="checkbox" id="cfg-ingest-enabled" /> Ingest from Stream Core</label>
+        <label>WebSocket URL</label>
+        <input type="text" id="cfg-ingest-url" placeholder="ws://127.0.0.1:3850/ws" />
+      </div>
+      <div class="card">
+        <h2>Roster filters</h2>
+        <label><input type="checkbox" id="cfg-ignore-own" /> Ignore own channel name</label>
+        <label>Min message length</label>
+        <input type="number" id="cfg-min-len" min="0" />
+        <label>Ignore usernames (one per line)</label>
+        <textarea id="cfg-ignore" rows="6" style="width:100%; background:#26221c; color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit"></textarea>
+      </div>
+      <div class="card">
+        <h2>Server</h2>
+        <label>Host</label>
+        <input type="text" id="cfg-host" />
+        <label>Port</label>
+        <input type="number" id="cfg-port" min="1" max="65535" />
+        <label>Log level</label>
+        <select id="cfg-log">
+          <option>DEBUG</option><option>INFO</option><option>WARNING</option><option>ERROR</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    const THEME_FIELDS = [
+      "title","subtitle","footer","columns","sort","speed_px_per_sec",
+      "name_size_px","title_color","name_color"
+    ];
+    const CHECKS = ["group_by_platform","show_platform","show_message_count","highlight_mods"];
+    let theme = {};
+    let play = {};
+    let lastConfig = {};
+
+    function fillTheme(t) {
+      theme = t;
+      for (const k of THEME_FIELDS) {
+        if ($(k) && t[k] != null) $(k).value = t[k];
+      }
+      for (const k of CHECKS) {
+        if ($(k)) $(k).checked = !!t[k];
+      }
+    }
+
+    function collectTheme() {
+      const body = {};
+      for (const k of THEME_FIELDS) {
+        let v = $(k).value;
+        if (["columns","speed_px_per_sec","name_size_px"].includes(k)) v = Number(v);
+        body[k] = v;
+      }
+      for (const k of CHECKS) body[k] = $(k).checked;
+      return body;
+    }
+
+    function renderRoster(r) {
+      $("count").textContent = r.count || 0;
+      const plats = r.by_platform || {};
+      $("plats").innerHTML = Object.keys(plats).sort().map((p) =>
+        `<div class="plat"><span><span class="dot" style="background:var(--${p}, #888)"></span>${p}</span><span>${plats[p]}</span></div>`
+      ).join("") || `<div class="meta">No chatters yet</div>`;
+      $("list").innerHTML = (r.chatters || []).map((c) =>
+        `<div class="person"><div><b>${esc(c.display_name)}</b>
+          <div class="meta">${c.platform}${c.is_mod ? " · mod" : ""} · ${c.messages} msg</div></div></div>`
+      ).join("");
+    }
+
+    function esc(s) {
+      return String(s || "").replace(/&/g,"&amp;").replace(/</g,"&lt;");
+    }
+
+    async function post(url, body) {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {}),
+      });
+      return r.json();
+    }
+
+    $("btn-save").onclick = async () => {
+      const body = collectTheme();
+      body.persist = true;
+      const r = await fetch("/api/theme", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      fillTheme(await r.json());
+    };
+    $("btn-roll").onclick = () => post("/api/play", { playing: true, mode: "loop", freeze: true, restart: true });
+    $("btn-live").onclick = () => post("/api/play", { freeze: false, playing: true });
+    $("btn-loop").onclick = () => post("/api/play", { mode: "loop", playing: true, restart: true });
+    $("btn-once").onclick = () => post("/api/play", { mode: "once", playing: true, freeze: true, restart: true });
+    $("btn-hold").onclick = () => post("/api/play", { mode: "hold", playing: true });
+    $("btn-pause").onclick = () => post("/api/play", { playing: play.playing === false });
+    $("btn-reset").onclick = async () => {
+      if (confirm("Clear every unique chatter for this session?")) {
+        await post("/api/session/reset", {});
+      }
+    };
+    $("btn-seed").onclick = () => post("/api/seed", {
+      username: $("seed-name").value,
+      platform: $("seed-plat").value,
+    });
+
+    function lines(s) {
+      return String(s || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+    }
+
+    function fillConfig(cfg) {
+      lastConfig = cfg || {};
+      const tw = cfg.twitch || {};
+      const k = cfg.kick || {};
+      const yt = cfg.youtube || {};
+      const ing = (cfg.ingest || {}).stream_core || {};
+      const r = cfg.roster || {};
+      const app = cfg.app || {};
+      $("cfg-tw-enabled").checked = !!tw.enabled;
+      $("cfg-tw-channel").value = tw.channel || "";
+      $("cfg-kick-enabled").checked = !!k.enabled;
+      $("cfg-kick-slug").value = k.channel_slug || "";
+      $("cfg-kick-chatroom").value = k.chatroom_id != null && k.chatroom_id !== "" ? String(k.chatroom_id) : "";
+      $("cfg-yt-enabled").checked = !!yt.enabled;
+      $("cfg-yt-apikey").value = yt.api_key || "";
+      $("cfg-yt-video").value = yt.video_id || "";
+      $("cfg-ingest-enabled").checked = !!ing.enabled;
+      $("cfg-ingest-url").value = ing.ws_url || "ws://127.0.0.1:3850/ws";
+      $("cfg-ignore-own").checked = r.ignore_own_channel !== false;
+      $("cfg-min-len").value = r.min_message_length ?? 1;
+      $("cfg-ignore").value = (r.ignore_usernames || []).join("\n");
+      $("cfg-host").value = app.host || "127.0.0.1";
+      $("cfg-port").value = app.port ?? 3854;
+      $("cfg-log").value = (app.log_level || "INFO").toUpperCase();
+    }
+
+    function collectConfig() {
+      const chatroom = $("cfg-kick-chatroom").value.trim();
+      const kick = {
+        enabled: $("cfg-kick-enabled").checked,
+        channel_slug: $("cfg-kick-slug").value.trim(),
+      };
+      if (chatroom) {
+        const n = Number(chatroom);
+        kick.chatroom_id = Number.isFinite(n) ? n : chatroom;
+      }
+      return {
+        ...(lastConfig || {}),
+        app: {
+          ...(lastConfig.app || {}),
+          host: $("cfg-host").value.trim() || "127.0.0.1",
+          port: Number($("cfg-port").value) || 3854,
+          log_level: $("cfg-log").value || "INFO",
+        },
+        twitch: {
+          enabled: $("cfg-tw-enabled").checked,
+          channel: $("cfg-tw-channel").value.trim().replace(/^#/, ""),
+        },
+        kick,
+        youtube: {
+          ...(lastConfig.youtube || {}),
+          enabled: $("cfg-yt-enabled").checked,
+          api_key: $("cfg-yt-apikey").value.trim(),
+          video_id: $("cfg-yt-video").value.trim(),
+        },
+        ingest: {
+          stream_core: {
+            enabled: $("cfg-ingest-enabled").checked,
+            ws_url: $("cfg-ingest-url").value.trim() || "ws://127.0.0.1:3850/ws",
+          },
+        },
+        roster: {
+          ignore_own_channel: $("cfg-ignore-own").checked,
+          min_message_length: Number($("cfg-min-len").value) || 1,
+          ignore_usernames: lines($("cfg-ignore").value),
+        },
+        credits: { ...(lastConfig.credits || {}), ...collectTheme() },
+      };
+    }
+
+    async function loadConfig() {
+      try {
+        const data = await fetch("/api/config").then((x) => x.json());
+        fillConfig(data.config || {});
+        $("cfg-status").textContent = "Loaded";
+      } catch (e) {
+        $("cfg-status").textContent = String(e.message || e);
+      }
+    }
+
+    $("cfg-reload").onclick = () => loadConfig();
+    $("cfg-save").onclick = async () => {
+      try {
+        const res = await fetch("/api/config", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config: collectConfig() }),
+        });
+        const data = await res.json();
+        $("cfg-status").textContent = data.message || "Saved";
+      } catch (e) {
+        $("cfg-status").textContent = String(e.message || e);
+      }
+    };
+
+    async function boot() {
+      const [t, r, p, h] = await Promise.all([
+        fetch("/api/theme").then((x) => x.json()),
+        fetch("/api/roster").then((x) => x.json()),
+        fetch("/api/play").then((x) => x.json()),
+        fetch("/api/health").then((x) => x.json()),
+      ]);
+      fillTheme(t);
+      renderRoster(r);
+      play = p;
+      $("adapters").textContent = (h.adapters || []).join(", ") || "none enabled";
+      loadConfig();
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onmessage = (ev) => {
+        let msg; try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === "theme") fillTheme(msg.data);
+        if (msg.type === "roster") renderRoster(msg.data);
+        if (msg.type === "play") play = msg.data;
+      };
+      ws.onclose = () => setTimeout(boot, 2500);
+    }
+    boot();
+  </script>
+</body>
+</html>
