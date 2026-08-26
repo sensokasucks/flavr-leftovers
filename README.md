@@ -1,4 +1,4 @@
-# Fridge Workshop
+# Fridge 
 
 Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources and grew into standalone local apps that also work in OBS.
 
