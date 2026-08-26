@@ -1,0 +1,164 @@
+/* Fridge Stream Core — stream alerts
+   Compatible with Streamlabs / StreamElements alert-box CSS.
+   Override via :root variables, alerts-custom.css, or OBS Custom CSS.
+*/
+
+:root {
+  --alert-accent: #53fc18;
+  --alert-font: "Montserrat", system-ui, sans-serif;
+  --alert-name-size: 42px;
+  --alert-msg-size: 28px;
+  --alert-image-size: 96px;
+  --alert-text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85), 0 0 2px #000;
+}
+
+* { box-sizing: border-box; }
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: var(--alert-font);
+  color: #fff;
+}
+
+body.preview {
+  background: repeating-conic-gradient(#2a2a2a 0% 25%, #1a1a1a 0% 50%) 50% / 24px 24px;
+}
+
+#wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#idle-hint {
+  opacity: 0.35;
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+body:not(.preview) #idle-hint { display: none; }
+
+#alert-box {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 20px;
+  max-width: 90vw;
+  padding: 12px 20px;
+  opacity: 0;
+  transform: translateY(12px) scale(0.98);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  pointer-events: none;
+}
+#alert-box.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+#alert-box.hidden { display: none; }
+#alert-box.show:not(.hidden) { display: flex; }
+
+#alert-image-wrap {
+  flex: 0 0 auto;
+  width: var(--alert-image-size);
+  height: var(--alert-image-size);
+  position: relative;
+}
+#alert-image, #alert-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: none;
+}
+.alert-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--alert-accent), #1a1a1a);
+  opacity: 0.85;
+}
+#alert-image-wrap:has(img[style*="block"]) .alert-icon,
+#alert-image-wrap:has(video[style*="block"]) .alert-icon {
+  display: none;
+}
+
+#alert-text-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-shadow: var(--alert-text-shadow);
+}
+
+#alert-kind {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.75;
+  color: var(--alert-accent);
+}
+
+#alert-message {
+  font-size: var(--alert-name-size);
+  font-weight: 800;
+  line-height: 1.15;
+}
+#alert-message .name {
+  color: var(--alert-accent);
+}
+#alert-message .amount {
+  color: #ffd166;
+}
+
+#alert-user-message {
+  font-size: var(--alert-msg-size);
+  font-weight: 600;
+  opacity: 0.95;
+  max-width: 36ch;
+}
+
+#alert-meta {
+  font-size: 11px;
+  opacity: 0.55;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Kind accents */
+#alert-box.follower-alert { --alert-accent: #53fc18; }
+#alert-box.subscriber-alert,
+#alert-box.resub-alert,
+#alert-box.sub-gift-alert { --alert-accent: #9146ff; }
+#alert-box.cheer-alert { --alert-accent: #f97316; }
+#alert-box.raid-alert,
+#alert-box.host-alert { --alert-accent: #3b82f6; }
+#alert-box.superchat-alert { --alert-accent: #ff0000; }
+#alert-box.donation-alert { --alert-accent: #22c55e; }
+
+/* Card skin */
+body.skin-card #alert-box {
+  background: rgba(12, 12, 18, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(8px);
+}
+
+/* Custom skin — minimal chrome for external CSS packs */
+body.skin-custom #alert-box {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+body.skin-custom #alert-kind,
+body.skin-custom #alert-meta { display: none; }
+
+.test-alert #alert-meta::before {
+  content: "";
+}
