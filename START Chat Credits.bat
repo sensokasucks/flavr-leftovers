@@ -1,16 +1,28 @@
 @echo off
 REM ============================================================
-REM Fridge Chat Credits – start (Windows)
-REM Leave this window open while you stream.
+REM Fridge Workshop - start Chat Credits
+REM Double-click this from the main workshop folder.
 REM ============================================================
 setlocal EnableExtensions
 cd /d "%~dp0"
 
+set "APP=%~dp0fridge-chat-credits"
+if not exist "%APP%\main.py" (
+  echo [ERROR] Could not find fridge-chat-credits\main.py
+  echo Put this .bat next to the fridge-chat-credits folder.
+  echo.
+  pause
+  exit /b 1
+)
+
+cd /d "%APP%"
+
 if not exist ".venv\Scripts\python.exe" (
   echo [ERROR] Chat Credits is not installed yet.
   echo.
-  echo Double-click  install.bat  in this folder once.
-  echo Or from the workshop folder:  INSTALL Chat Credits.bat
+  echo First time setup:
+  echo   1. Double-click  "INSTALL Chat Credits.bat"  in this workshop folder
+  echo   2. Then run this start file again
   echo.
   pause
   exit /b 1
@@ -37,7 +49,7 @@ set EXITCODE=%ERRORLEVEL%
 echo.
 if not %EXITCODE%==0 (
   echo Chat Credits exited with code %EXITCODE%.
-  echo If you see a missing package error, run install.bat again.
+  echo If you see a missing package error, run INSTALL Chat Credits.bat again.
 ) else (
   echo Chat Credits stopped.
 )
