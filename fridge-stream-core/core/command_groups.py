@@ -26,6 +26,11 @@ DEFAULT_GROUPS: dict[str, dict[str, Any]] = {
         "bind": "points",
         "description": "Chat points commands",
     },
+    "alerts": {
+        "enabled": True,
+        "always": True,
+        "description": "Alert overlay helpers",
+    },
 }
 
 
@@ -44,9 +49,9 @@ class CommandGroups:
             for key, val in cfg_groups.items():
                 if not isinstance(val, dict):
                     continue
-                base = merged.get(key, {"enabled": True})
+                base = merged.get(str(key), {"enabled": True})
                 base.update(val)
-                merged[key] = base
+                merged[str(key)] = base
         self._raw = merged
 
     def is_enabled(self, group_id: str, *, integration_running: Optional[dict[str, bool]] = None) -> bool:
@@ -105,16 +110,7 @@ def resolve_active_groups(
     config: dict[str, Any] | None = None,
     running_games: Any = None,
     extra: Mapping[str, Any] | None = None,
-) -> dict[str, bool]:
-    """
-    Which command groups are live right now.
-
-    Matches Stream Core's refresh_command_groups() call:
-        resolve_active_groups(self.config, self.games.keys(), extra)
-
-    Returns {group_id: True/False}. Also behaves like a set of enabled
-    ids for ``"minecraft" in groups`` via ActiveGroups.
-    """
+):
     running = _as_running_map(running_games)
     if extra:
         running.update({str(k).lower(): bool(v) for k, v in extra.items()})
@@ -129,15 +125,94 @@ def resolve_active_groups(
 
 
 class ActiveGroups(dict):
-    """dict[str, bool] where ``in`` / iteration mean *enabled* groups."""
-
     def __contains__(self, key: object) -> bool:
         if not isinstance(key, str):
             return False
-        return bool(self.get(key, False))
+        return bool(dict.get(self, key, False))
 
     def __iter__(self):
         return (k for k, v in dict.items(self) if v)
 
     def enabled(self) -> set[str]:
         return {k for k, v in dict.items(self) if v}
+
+
+def _iter_commands(commands: Any):
+    if commands is None:
+        return
+    if hasattr(commands, "commands") and isinstance(getattr(commands, "commands"), dict):
+        commands = commands.commands
+    if isinstance(commands, dict):
+        iterable = commands.values()
+    elif isinstance(commands, Iterable) and not isinstance(commands, (str, bytes)):
+        iterable = commands
+    else:
+        return
+    seen: set[str] = set()
+    for cmd in iterable:
+        if isinstance(cmd, dict):
+            name = str(cmd.get("name") or "")
+            group = str(cmd.get("group") or "core")
+            enabled = bool(cmd.get("enabled", True))
+            description = str(cmd.get("description") or "")
+        else:
+            name = str(getattr(cmd, "name", "") or "")
+            group = str(getattr(cmd, "group", "core") or "core")
+            enabled = bool(getattr(cmd, "enabled", True))
+            description = str(getattr(cmd, "description", "") or "")
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        yield {
+            "name": name,
+            "group": group.strip().lower() or "core",
+            "enabled": enabled,
+            "description": description,
+        }
+
+
+def catalog_status(
+    config: dict[str, Any] | None = None,
+    running_games: Any = None,
+    extra: Mapping[str, Any] | None = None,
+    commands: Any = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    if commands is None:
+        commands = kwargs.get("commands") or kwargs.get("router")
+    groups = resolve_active_groups(config, running_games, extra)
+    cg = CommandGroups(config or {})
+    rows = []
+    for g in cg.list_groups():
+        gid = g["id"]
+        rows.append({**g, "active": bool(dict.get(groups, gid, False))})
+    command_rows = []
+    by_group: dict[str, list[str]] = {}
+    for row in _iter_commands(commands):
+        gid = row["group"]
+        row["active"] = bool(dict.get(groups, gid, gid == "core"))
+        command_rows.append(row)
+        by_group.setdefault(gid, []).append(row["name"])
+    return {
+        "ok": True,
+        "groups": rows,
+        "active": sorted(groups.enabled()),
+        "commands": command_rows,
+        "commands_by_group": by_group,
+    }
+
+
+group_catalog = catalog_status
+get_catalog = catalog_status
+list_active_groups = resolve_active_groups
+
+__all__ = [
+    "DEFAULT_GROUPS",
+    "CommandGroups",
+    "ActiveGroups",
+    "resolve_active_groups",
+    "catalog_status",
+    "group_catalog",
+    "get_catalog",
+    "list_active_groups",
+]
