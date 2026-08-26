@@ -1,0 +1,31 @@
+/* Fridge Stream Core — your alert CSS
+ *
+ * Paste Streamlabs / StreamElements / Nerd Or Die rules here, then Save
+ * in Admin → Alert test. They load after the built-in skin.
+ *
+ * If a pack fights the default look, set skin to "Custom CSS only".
+ *
+ * Tokens (set these instead of rewriting everything):
+ *   --alert-accent  --alert-font  --alert-name-size  --alert-msg-size
+ *   --alert-image-size
+ *
+ * Selectors that match Streamlabs + StreamElements:
+ *   #wrap  #alert-box
+ *   #alert-box.follower-alert  .subscriber-alert  .resub-alert
+ *   .sub-gift-alert  .raid-alert  .host-alert  .cheer-alert
+ *   .donation-alert  .superchat-alert
+ *   #alert-image-wrap  #alert-image  #alert-video
+ *   #alert-text-wrap  #alert-message  #alert-user-message
+ *   .name  .amount  .months  .viewers
+ *   .alertbox-message  .alertbox-message-name  .alertbox-message-announcement
+ *   .alertbox-message-message
+ *
+ * Drop GIFs / WebMs in overlay/assets/alerts/{kind}.gif  (follow.gif, raid.webm, …)
+ *
+ * Example — uncomment to try:
+ *
+ * #alert-box.follower-alert .name { color: #53fc18; }
+ * #alert-user-message { max-width: 28ch; }
+ */
+
+
