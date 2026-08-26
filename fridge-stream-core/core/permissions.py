@@ -1,80 +1,59 @@
-"""
-Shared permission system.
-
-Works across every platform. Admins/mods are configured once in config
-and apply to both Kick and (future) YouTube usernames.
-Temporary permits are also tracked here.
-"""
+"""Cross-platform permission checks (admin / mod / public)."""
 
 from __future__ import annotations
 
-import time
-from typing import Dict
+from typing import Iterable, Set
 
-from .models import ChatUser, PermissionLevel
+from .models import ChatUser
 
 
-class PermissionManager:
-    def __init__(self, config: dict):
-        perms = config.get("permissions", {})
-        self.admins = self._names(perms.get("admin", []))
-        self.mods = self._names(perms.get("mod", []))
-        # public is always open; the "*" entry is just documentation
-        self._temp_permits: Dict[str, float] = {}  # username -> expiry epoch
+def _norm_list(values: Iterable[str] | str | None) -> Set[str]:
+    if values is None:
+        return set()
+    if isinstance(values, str):
+        values = [values]
+    return {str(v).strip().lower() for v in values if str(v).strip()}
 
-    @staticmethod
-    def _names(val) -> set:
-        """Accept a list or a single string from hand-edited YAML."""
-        if not val:
-            return set()
-        if isinstance(val, str):
-            name = val.lower().strip()
-            return {name} if name else set()
-        return {str(u).lower().strip() for u in val if str(u).strip()}
 
-    def grant_temp(self, username: str, minutes: int = 10) -> None:
-        key = username.lower().strip()
-        if key:
-            self._temp_permits[key] = time.time() + minutes * 60
+class Permissions:
+    def __init__(self, config: dict | None = None) -> None:
+        perms = (config or {}).get("permissions") or {}
+        self.admins = _norm_list(perms.get("admin"))
+        self.mods = _norm_list(perms.get("mod"))
+        self._permits: dict[str, float] = {}
 
-    def clear_temp(self, username: str) -> None:
-        self._temp_permits.pop(username.lower().strip(), None)
+    def reload(self, config: dict | None) -> None:
+        perms = (config or {}).get("permissions") or {}
+        self.admins = _norm_list(perms.get("admin"))
+        self.mods = _norm_list(perms.get("mod"))
 
-    def _is_temp_permitted(self, username: str) -> bool:
-        key = username.lower().strip()
-        exp = self._temp_permits.get(key)
+    def permit(self, username: str, minutes: float = 5.0) -> None:
+        import time
+        self._permits[username.strip().lower()] = time.time() + max(0.1, minutes) * 60.0
+
+    def _has_permit(self, username: str) -> bool:
+        import time
+        key = username.strip().lower()
+        exp = self._permits.get(key)
         if exp is None:
             return False
-        if exp < time.time():
-            del self._temp_permits[key]
+        if time.time() > exp:
+            self._permits.pop(key, None)
             return False
         return True
 
-    def has_permission(self, user: ChatUser | str, required: PermissionLevel | str) -> bool:
-        if isinstance(required, str):
-            required = PermissionLevel(required.lower())
+    def role_of(self, user: ChatUser) -> str:
+        name = (user.username or "").strip().lower()
+        if name in self.admins or getattr(user, "is_broadcaster", False):
+            return "admin"
+        if name in self.mods or getattr(user, "is_mod", False):
+            return "mod"
+        if self._has_permit(name):
+            return "mod"
+        return "public"
 
-        if required == PermissionLevel.PUBLIC:
-            return True
-
-        name = (user.username if isinstance(user, ChatUser) else user).lower().strip()
-
-        if name in self.admins:
-            return True
-        if required == PermissionLevel.ADMIN:
-            return False
-
-        if name in self.mods or self._is_temp_permitted(name):
-            return True
-        if required == PermissionLevel.MOD:
-            return False
-
-        return False
-
-    def effective_level(self, user: ChatUser | str) -> PermissionLevel:
-        name = (user.username if isinstance(user, ChatUser) else user).lower().strip()
-        if name in self.admins:
-            return PermissionLevel.ADMIN
-        if name in self.mods or self._is_temp_permitted(name):
-            return PermissionLevel.MOD
-        return PermissionLevel.PUBLIC
+    def allows(self, user: ChatUser, required: str) -> bool:
+        order = {"public": 0, "mod": 1, "admin": 2}
+        have = order.get(self.role_of(user), 0)
+        need = order.get((required or "public").lower(), 0)
+        return have >= need
