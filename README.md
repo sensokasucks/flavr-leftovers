@@ -1,8 +1,21 @@
+# FlaVR Leftovers
+
+Streaming toolkit for the **FlaVR Leftovers** stream, maintained by Sensoka's Workshop.
+
 # Fridge Workshop
 
 Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources and grew into standalone local apps that also work in OBS.
 
 `fridge-` is the project prefix. Encoder mentions still say **XSplit / OBS** because that is where the overlays get captured.
+
+## Start here (Windows)
+
+| Double-click | What it does |
+|--------------|--------------|
+| **INSTALL Stream Core.bat** | One-time: Python venv + packages + optional setup wizard |
+| **START Stream Core.bat** | Starts the chat backbone (leave the window open while streaming) |
+
+Admin hub after start: [http://127.0.0.1:3850/admin/](http://127.0.0.1:3850/admin/)
 
 ## Projects
 

@@ -5,7 +5,7 @@ __pycache__/
 *.pyo
 *.pyd
 
-# Local config & secrets (examples are kept)
+# Local config & secrets
 config/config.yaml
 config/config.json
 .env
