@@ -18,7 +18,7 @@ EmitFn = Callable[[ChatEvent], Awaitable[None]]
 class BaseAdapter(ABC):
     platform: Platform = Platform.SYSTEM
 
-    def __init(
+    def __init__(
         self,
         config: dict | None = None,
         *,
