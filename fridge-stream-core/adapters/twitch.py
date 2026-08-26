@@ -1,157 +1,102 @@
-"""
-Twitch chat adapter (read-only).
-
-Uses anonymous IRC (justinfanXXXXX) — no OAuth required to listen.
-Optional Helix viewer polling can be added later with a client id + token.
-"""
+"""Twitch chat via anonymous IRC (no OAuth required to listen)."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
-import random
 import re
 from typing import Optional
 
 from adapters.base import BaseAdapter
-from core.event_bus import EventBus
-from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
+from core.metrics import MetricsAggregator
 
-log = logging.getLogger("adapters.twitch")
+log = logging.getLogger("fridge.twitch")
 
-HOST = "irc.chat.twitch.tv"
-PORT = 6667
-
-PRIVMSG_RE = re.compile(
-    r"^(?:@(?P<tags>[^ ]+) )?:(?P<nick>[^!]+)![^ ]+ PRIVMSG #(?P<chan>[^ ]+) :(?P<msg>.*)$"
-)
-
-
-def _parse_tags(raw: str) -> dict[str, str]:
-    out: dict[str, str] = {}
-    if not raw:
-        return out
-    for part in raw.split(";"):
-        if "=" in part:
-            k, v = part.split("=", 1)
-            out[k] = v.replace("\\s", " ")
-        else:
-            out[part] = ""
-    return out
+IRC_HOST = "irc.chat.twitch.tv"
+IRC_PORT = 6667
 
 
 class TwitchAdapter(BaseAdapter):
     platform = Platform.TWITCH
 
-    def __init__(self, config: dict, bus: EventBus, metrics: MetricsAggregator):
-        super().__init__(config, bus, metrics)
-        cfg = config.get("twitch", {})
-        self.channel = (cfg.get("channel") or "").strip().lstrip("#").lower()
-        self._task: Optional[asyncio.Task] = None
-        self._stop = asyncio.Event()
-        self._writer: Optional[asyncio.StreamWriter] = None
+    def __init__(self, config=None, *, metrics=None, emit=None):
+        super().__init__(config, metrics=metrics, emit=emit)
+        self.channel = (config or {}).get("channel", "").lstrip("#").lower()
 
-    async def start(self) -> None:
-        if not self.channel or self.channel.startswith("your_"):
-            log.warning("Twitch channel not set — adapter disabled")
+    async def run(self) -> None:
+        if not self.channel:
+            log.error("twitch.channel is empty")
             return
-        self._running = True
-        self._stop.clear()
-        self._task = asyncio.create_task(self._loop(), name="twitch-irc")
-        log.info("Twitch IRC listening on #%s", self.channel)
-
-    async def stop(self) -> None:
-        self._running = False
-        self._stop.set()
-        if self._writer:
+        nick = "justinfan%d" % (10000 + (hash(self.channel) % 80000))
+        while not self._stopping:
             try:
-                self._writer.close()
-            except Exception:
-                pass
-            self._writer = None
-        if self._task and not self._task.done():
-            self._task.cancel()
-            try:
-                await self._task
-            except asyncio.CancelledError:
-                pass
-        log.info("Twitch adapter stopped")
-
-    async def _loop(self) -> None:
-        backoff = 3.0
-        nick = f"justinfan{random.randint(10000, 99999)}"
-        while self._running:
-            try:
-                reader, writer = await asyncio.open_connection(HOST, PORT)
-                self._writer = writer
-                writer.write(
-                    (
-                        "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n"
-                        f"NICK {nick}\r\n"
-                        f"JOIN #{self.channel}\r\n"
-                    ).encode("utf-8")
-                )
+                reader, writer = await asyncio.open_connection(IRC_HOST, IRC_PORT)
+                def send(line: str) -> None:
+                    writer.write((line + "\r\n").encode("utf-8"))
+                send("PASS SCHMOOPIIE")
+                send(f"NICK {nick}")
+                send("CAP REQ :twitch.tv/tags twitch.tv/commands")
+                send(f"JOIN #{self.channel}")
                 await writer.drain()
-                log.info("Twitch IRC connected as %s on #%s", nick, self.channel)
-                backoff = 3.0
-                buf = ""
-                while self._running:
-                    data = await reader.read(4096)
-                    if not data:
+                log.info("Twitch IRC joined #%s as %s", self.channel, nick)
+                while not self._stopping:
+                    line = await reader.readline()
+                    if not line:
                         break
-                    buf += data.decode("utf-8", "ignore")
-                    while "\r\n" in buf:
-                        line, buf = buf.split("\r\n", 1)
-                        await self._on_line(writer, line)
+                    text = line.decode("utf-8", errors="replace").rstrip("\r\n")
+                    if text.startswith("PING"):
+                        send("PONG :tmi.twitch.tv")
+                        await writer.drain()
+                        continue
+                    await self._handle(text)
+                writer.close()
+                try:
+                    await writer.wait_closed()
+                except Exception:
+                    pass
             except asyncio.CancelledError:
                 raise
-            except Exception as e:
-                log.warning("Twitch IRC error: %s — retry in %.1fs", e, backoff)
-            if not self._running:
-                break
-            try:
-                await asyncio.wait_for(self._stop.wait(), timeout=backoff)
-                break
-            except asyncio.TimeoutError:
-                pass
-            backoff = min(backoff * 1.5, 30.0)
+            except Exception as exc:
+                log.warning("Twitch IRC error: %s — reconnecting", exc)
+                await asyncio.sleep(5)
 
-    async def _on_line(self, writer: asyncio.StreamWriter, line: str) -> None:
-        if not line:
+    async def _handle(self, line: str) -> None:
+        # Very small PRIVMSG parser with optional tags
+        if "PRIVMSG" not in line:
             return
-        if line.startswith("PING"):
-            writer.write(b"PONG :tmi.twitch.tv\r\n")
-            await writer.drain()
-            return
-        m = PRIVMSG_RE.match(line)
+        tags = {}
+        rest = line
+        if line.startswith("@"):
+            tag_part, rest = line[1:].split(" ", 1)
+            for part in tag_part.split(";"):
+                if "=" in part:
+                    k, v = part.split("=", 1)
+                    tags[k] = v
+        m = re.search(r":(\w+)!\w+@\w+\.tmi\.twitch\.tv PRIVMSG #\w+ :(.*)$", rest)
         if not m:
             return
-        tags = _parse_tags(m.group("tags") or "")
-        nick = m.group("nick")
-        msg = m.group("msg") or ""
-        display = tags.get("display-name") or nick
-        badges = (tags.get("badges") or "").split(",")
-        badge_names = [b.split("/")[0] for b in badges if b]
+        username, message = m.group(1), m.group(2)
+        badges_raw = tags.get("badges", "")
+        badges = [b.split("/")[0] for b in badges_raw.split(",") if b]
         user = ChatUser(
+            username=username,
+            display_name=tags.get("display-name") or username,
+            user_id=tags.get("user-id", ""),
             platform=Platform.TWITCH,
-            id=tags.get("user-id") or nick,
-            username=nick,
-            display_name=display,
-            is_mod=tags.get("mod") == "1"
-            or "moderator" in badge_names
-            or "broadcaster" in badge_names,
-            is_vip="vip" in badge_names,
-            is_subscriber=tags.get("subscriber") == "1" or "subscriber" in badge_names,
-            badges=badge_names,
-            color=tags.get("color") or None,
+            is_mod=tags.get("mod") == "1" or "moderator" in badges,
+            is_subscriber="subscriber" in badges,
+            is_vip="vip" in badges,
+            is_broadcaster="broadcaster" in badges,
+            badges=badges,
+            color=tags.get("color", ""),
         )
-        log.info("[Twitch] %s: %s", user.username, msg)
-        await self._emit(
-            ChatEvent(
-                platform=Platform.TWITCH,
-                user=user,
-                message=msg,
-                message_id=tags.get("id"),
-            )
+        event = ChatEvent(
+            user=user,
+            message=message,
+            platform=Platform.TWITCH,
+            message_id=tags.get("id", ""),
         )
+        if self.metrics:
+            self.metrics.record_message()
+        await self._emit(event)

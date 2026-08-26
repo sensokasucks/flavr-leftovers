@@ -1,54 +1,61 @@
-"""
-Abstract base for platform adapters.
-
-Every adapter must:
-  - connect / disconnect
-  - push normalized ChatEvent objects onto the EventBus
-  - periodically report viewer counts into MetricsAggregator
-  - (optional) send a reply message back to the platform
-"""
+"""Abstract chat platform adapter."""
 
 from __future__ import annotations
 
-import abc
+import asyncio
 import logging
-from typing import Optional
+from abc import ABC, abstractmethod
+from typing import Any, Callable, Awaitable, Optional
 
-from core.event_bus import EventBus
-from core.metrics import MetricsAggregator
 from core.models import ChatEvent, Platform
+from core.metrics import MetricsAggregator
 
-log = logging.getLogger("adapters.base")
+log = logging.getLogger("fridge.adapter")
+
+EmitFn = Callable[[ChatEvent], Awaitable[None]]
 
 
-class BaseAdapter(abc.ABC):
-    platform: Platform
+class BaseAdapter(ABC):
+    platform: Platform = Platform.SYSTEM
 
-    def __init__(
+    def __init(
         self,
-        config: dict,
-        bus: EventBus,
-        metrics: MetricsAggregator,
-    ):
-        self.config = config
-        self.bus = bus
+        config: dict | None = None,
+        *,
+        metrics: Optional[MetricsAggregator] = None,
+        emit: Optional[EmitFn] = None,
+    ) -> None:
+        self.config = config or {}
         self.metrics = metrics
-        self._running = False
+        self._emit_fn = emit
+        self._task: asyncio.Task | None = None
+        self._stopping = False
 
-    @abc.abstractmethod
-    async def start(self) -> None:
-        """Begin listening. Should return quickly; long-running work goes in background tasks."""
-        ...
-
-    @abc.abstractmethod
-    async def stop(self) -> None:
-        ...
-
-    async def send_message(self, text: str, reply_to: Optional[ChatEvent] = None) -> bool:
-        """Optional. Return True if the message was sent."""
-        log.debug("[%s] send_message not implemented: %s", self.platform.value, text)
-        return False
+    @property
+    def enabled(self) -> bool:
+        return bool(self.config.get("enabled", False))
 
     async def _emit(self, event: ChatEvent) -> None:
-        self.metrics.record_message()
-        await self.bus.publish_chat(event)
+        if self._emit_fn:
+            await self._emit_fn(event)
+
+    @abstractmethod
+    async def run(self) -> None:
+        """Long-running listen loop."""
+
+    async def start(self) -> None:
+        if not self.enabled:
+            log.info("%s adapter disabled", self.platform.value)
+            return
+        self._stopping = False
+        self._task = asyncio.create_task(self.run(), name=f"adapter-{self.platform.value}")
+
+    async def stop(self) -> None:
+        self._stopping = True
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._task = None
