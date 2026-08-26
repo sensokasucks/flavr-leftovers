@@ -2,65 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Fridge Minecraft Stats</title>
+  <title>Stream Stats</title>
   <link rel="stylesheet" href="overlay.css" />
 </head>
 <body>
   <div id="root">
-    <!-- Health -->
-    <div class="row health-row">
-      <div class="label">HP</div>
-      <div id="hearts" class="hearts"></div>
-      <div id="hp-text" class="value">20 / 20</div>
+    <div class="row">
+      <div class="stat" id="hp-wrap"><span class="label">HP</span><span id="hp">--</span></div>
+      <div class="stat"><span class="label">CPM</span><span id="cpm">0</span></div>
+      <div class="stat"><span class="label">Viewers</span><span id="viewers">0</span></div>
+      <div class="stat"><span class="label">Power</span><span id="power">0</span></div>
     </div>
-
-    <!-- Food + XP + Deaths -->
-    <div class="row secondary">
-      <div class="stat">
-        <span class="icon food"></span>
-        <span id="food">20</span>
-      </div>
-      <div class="stat">
-        <span class="icon xp"></span>
-        <span id="level">0</span>
-        <span class="small" id="xp-progress"></span>
-      </div>
-      <div class="stat">
-        <span class="icon death"></span>
-        <span id="deaths">0</span>
-      </div>
-      <div class="stat">
-        <span class="icon armor"></span>
-        <span id="armor">0</span>
-      </div>
-    </div>
-
-    <!-- Metrics (viewers / chat energy) -->
-    <div class="row metrics">
-      <div class="metric">
-        <span class="m-label">Viewers</span>
-        <span id="viewers">0</span>
-      </div>
-      <div class="metric">
-        <span class="m-label">CPM</span>
-        <span id="cpm">0</span>
-      </div>
-      <div class="metric">
-        <span class="m-label">Power</span>
-        <span id="power">0</span>/15
-      </div>
-    </div>
-
-    <!-- Active effects -->
-    <div id="effects" class="effects"></div>
-
-    <!-- Inventory panel (toggled by !inv) -->
-    <div id="inventory-panel" class="inventory hidden">
-      <div class="inv-title">Inventory</div>
-      <div id="inv-grid" class="inv-grid"></div>
-    </div>
+    <div id="inventory" class="inventory hidden"></div>
   </div>
-
   <script src="overlay.js"></script>
 </body>
 </html>
