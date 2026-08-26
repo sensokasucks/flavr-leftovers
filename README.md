@@ -1,4 +1,4 @@
-# Fridge 
+# Fridge Workshop
 
 Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources and grew into standalone local apps that also work in OBS.
 
@@ -12,6 +12,12 @@ Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources 
 | **START Stream Core.bat** | Starts the chat backbone (leave the window open while streaming) |
 
 Admin hub after start: [http://127.0.0.1:3850/admin/](http://127.0.0.1:3850/admin/)
+
+## Changelog
+
+Full release notes for Stream Core (and related workshop changes):
+
+→ **[fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md)**
 
 ## Projects
 
