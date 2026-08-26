@@ -29,8 +29,31 @@ class EventBus:
                 if asyncio.iscoroutine(result):
                     await result
             except Exception as exc:
-                # Never let one bad subscriber kill the bus
                 print(f"[event_bus] handler error on {event_type}: {exc}")
 
     def clear(self) -> None:
         self._subs.clear()
+
+    def on_chat(self, handler: Handler) -> None:
+        self.subscribe("chat", handler)
+
+    def on_execute(self, handler: Handler) -> None:
+        self.subscribe("execute", handler)
+
+    def on_metrics(self, handler: Handler) -> None:
+        self.subscribe("metrics", handler)
+
+    def on_alert(self, handler: Handler) -> None:
+        self.subscribe("alert", handler)
+
+    async def publish_chat(self, payload: Any) -> None:
+        await self.publish("chat", payload)
+
+    async def publish_execute(self, payload: Any) -> None:
+        await self.publish("execute", payload)
+
+    async def publish_metrics(self, payload: Any) -> None:
+        await self.publish("metrics", payload)
+
+    async def publish_alert(self, payload: Any) -> None:
+        await self.publish("alert", payload)

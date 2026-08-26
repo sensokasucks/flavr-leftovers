@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Iterable, Set
+from typing import Iterable, Set, Union
 
-from .models import ChatUser
+from .models import ChatUser, PermissionLevel
 
 
 def _norm_list(values: Iterable[str] | str | None) -> Set[str]:
@@ -31,6 +31,9 @@ class Permissions:
         import time
         self._permits[username.strip().lower()] = time.time() + max(0.1, minutes) * 60.0
 
+    def grant_temp(self, username: str, minutes: float = 5.0) -> None:
+        self.permit(username, minutes)
+
     def _has_permit(self, username: str) -> bool:
         import time
         key = username.strip().lower()
@@ -53,7 +56,19 @@ class Permissions:
         return "public"
 
     def allows(self, user: ChatUser, required: str) -> bool:
-        order = {"public": 0, "mod": 1, "admin": 2}
+        order = {"public": 0, "sub": 0, "vip": 1, "mod": 1, "admin": 2}
         have = order.get(self.role_of(user), 0)
         need = order.get((required or "public").lower(), 0)
         return have >= need
+
+    def has_permission(self, user: ChatUser, required: Union[str, PermissionLevel]) -> bool:
+        if isinstance(required, PermissionLevel):
+            required = required.value
+        return self.allows(user, str(required or "public"))
+
+
+class PermissionManager(Permissions):
+    """Alias used by main.py / CommandRouter."""
+
+
+__all__ = ["Permissions", "PermissionManager"]
