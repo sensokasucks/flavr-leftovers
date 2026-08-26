@@ -1,59 +1,96 @@
-"""In-process async pub/sub event bus."""
+"""
+Simple in-process async event bus.
+
+Adapters publish ChatEvents.
+Core (and any other subscribers) listen.
+Later this can be swapped for Redis/NATS without changing the rest of the code.
+"""
 
 from __future__ import annotations
 
 import asyncio
-from collections import defaultdict
-from typing import Any, Awaitable, Callable, DefaultDict, List
+import logging
+from typing import Any, Awaitable, Callable, Dict, List, Set
 
-Handler = Callable[[Any], Awaitable[None] | None]
+from .models import ChatEvent, ChatReply, ExecuteRequest, MetricsSnapshot
+
+log = logging.getLogger("core.event_bus")
+
+ChatHandler = Callable[[ChatEvent], Awaitable[None]]
+ExecuteHandler = Callable[[ExecuteRequest], Awaitable[None]]
+MetricsHandler = Callable[[MetricsSnapshot], Awaitable[None]]
+ReplyHandler = Callable[[ChatReply], Awaitable[None]]
+AlertHandler = Callable[[dict], Awaitable[None]]
 
 
 class EventBus:
-    def __init__(self) -> None:
-        self._subs: DefaultDict[str, List[Handler]] = defaultdict(list)
+    def __init__(self):
+        self._chat_handlers: List[ChatHandler] = []
+        self._execute_handlers: List[ExecuteHandler] = []
+        self._metrics_handlers: List[MetricsHandler] = []
+        self._reply_handlers: List[ReplyHandler] = []
+        self._alert_handlers: List[AlertHandler] = []
         self._lock = asyncio.Lock()
 
-    def subscribe(self, event_type: str, handler: Handler) -> None:
-        self._subs[event_type].append(handler)
+    def on_chat(self, handler: ChatHandler) -> None:
+        self._chat_handlers.append(handler)
 
-    def unsubscribe(self, event_type: str, handler: Handler) -> None:
-        if handler in self._subs[event_type]:
-            self._subs[event_type].remove(handler)
+    def on_execute(self, handler: ExecuteHandler) -> None:
+        self._execute_handlers.append(handler)
 
-    async def publish(self, event_type: str, payload: Any = None) -> None:
-        handlers = list(self._subs.get(event_type, []))
+    def on_metrics(self, handler: MetricsHandler) -> None:
+        self._metrics_handlers.append(handler)
+
+    def on_reply(self, handler: ReplyHandler) -> None:
+        """Adapters / overlay bridge: Core wants to say something in chat."""
+        self._reply_handlers.append(handler)
+
+    def on_alert(self, handler: AlertHandler) -> None:
+        """Follow / sub / raid / Super Chat / test alerts for the overlay."""
+        self._alert_handlers.append(handler)
+
+    async def publish_chat(self, event: ChatEvent) -> None:
+        handlers = list(self._chat_handlers)
         for h in handlers:
             try:
-                result = h(payload)
-                if asyncio.iscoroutine(result):
-                    await result
-            except Exception as exc:
-                print(f"[event_bus] handler error on {event_type}: {exc}")
+                await h(event)
+            except Exception:
+                log.exception("chat handler error")
 
-    def clear(self) -> None:
-        self._subs.clear()
+    async def publish_execute(self, req: ExecuteRequest) -> None:
+        handlers = list(self._execute_handlers)
+        for h in handlers:
+            try:
+                await h(req)
+            except Exception:
+                log.exception("execute handler error")
 
-    def on_chat(self, handler: Handler) -> None:
-        self.subscribe("chat", handler)
+    async def publish_metrics(self, snap: MetricsSnapshot) -> None:
+        handlers = list(self._metrics_handlers)
+        for h in handlers:
+            try:
+                await h(snap)
+            except Exception:
+                log.exception("metrics handler error")
 
-    def on_execute(self, handler: Handler) -> None:
-        self.subscribe("execute", handler)
+    async def publish_reply(self, reply: ChatReply) -> None:
+        handlers = list(self._reply_handlers)
+        if not handlers:
+            log.info("[reply/%s] %s", reply.platform.value, reply.message)
+            return
+        for h in handlers:
+            try:
+                await h(reply)
+            except Exception:
+                log.exception("reply handler error")
 
-    def on_metrics(self, handler: Handler) -> None:
-        self.subscribe("metrics", handler)
-
-    def on_alert(self, handler: Handler) -> None:
-        self.subscribe("alert", handler)
-
-    async def publish_chat(self, payload: Any) -> None:
-        await self.publish("chat", payload)
-
-    async def publish_execute(self, payload: Any) -> None:
-        await self.publish("execute", payload)
-
-    async def publish_metrics(self, payload: Any) -> None:
-        await self.publish("metrics", payload)
-
-    async def publish_alert(self, payload: Any) -> None:
-        await self.publish("alert", payload)
+    async def publish_alert(self, payload: dict[str, Any]) -> None:
+        handlers = list(self._alert_handlers)
+        if not handlers:
+            log.info("[alert/%s] %s", payload.get("kind"), payload.get("headline"))
+            return
+        for h in handlers:
+            try:
+                await h(payload)
+            except Exception:
+                log.exception("alert handler error")

@@ -1,6 +1,8 @@
-Optional static assets for overlays.
+Drop custom icons here:
 
-Alert media: place files under assets/alerts/ named by kind:
-  follow.gif, sub.webm, bits.png, raid.gif, superchat.webp, donation.gif, …
+  heart.png        – full heart
+  heart_half.png   – half heart (optional)
+  heart_empty.png  – empty heart container
 
-See ALERTS.md in the parent overlay folder.
+Recommended size: 16×16 or 32×32 PNG with transparency.
+If the files are missing the overlay falls back to CSS hearts (❤ / ♡).

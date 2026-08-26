@@ -79,13 +79,20 @@ CREATE INDEX IF NOT EXISTS idx_ledger_user ON points_ledger(user_id, created_at 
 
 
 class Store:
-    def __init__(self, db_path: Path | str, points_cfg: dict | None = None):
+    def __init__(
+        self,
+        db_path: Path | str,
+        points_cfg: dict | None = None,
+        chat_log_cfg: dict | None = None,
+    ):
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         cfg = points_cfg or {}
-        self.enabled = bool(cfg.get("enabled", True))
+        self.enabled = bool(cfg.get("enabled", False))
         self.per_message = int(cfg.get("per_message", 1))
         self.cooldown_sec = float(cfg.get("cooldown_sec", 30))
+        log_cfg = chat_log_cfg or {}
+        self.log_chat = bool(log_cfg.get("enabled", False))
         self._last_award: dict[int, float] = {}  # user_id -> last award time
         self._lock = asyncio.Lock()
         self._init_db()
@@ -226,7 +233,7 @@ class Store:
             return new_bal
 
     async def process_chat(self, event: ChatEvent) -> dict:
-        """Log message, ensure user exists, maybe award chat points."""
+        """Ensure user exists, optionally log message, maybe award chat points."""
         platform = event.platform.value
         uid = await self.get_or_create_user(
             platform,
@@ -234,7 +241,8 @@ class Store:
             event.user.username,
             event.user.display_name,
         )
-        await self._run(self._log_chat_sync, event, uid)
+        if self.log_chat:
+            await self._run(self._log_chat_sync, event, uid)
 
         awarded = 0
         balance = None
@@ -252,7 +260,36 @@ class Store:
                 self._last_award[uid] = now
                 awarded = self.per_message
 
-        return {"user_id": uid, "awarded": awarded, "balance": balance}
+        return {"user_id": uid, "awarded": awarded, "balance": balance, "logged": self.log_chat}
+
+    async def get_balance_for_platform(
+        self, platform: str, platform_user_id: str, username: str = ""
+    ) -> Optional[int]:
+        """Return points balance for a platform identity, or None if unknown."""
+
+        def _sync():
+            with self._connect() as conn:
+                row = conn.execute(
+                    "SELECT u.points FROM identities i "
+                    "JOIN users u ON u.id = i.user_id "
+                    "WHERE i.platform=? AND i.platform_user_id=?",
+                    (platform, str(platform_user_id)),
+                ).fetchone()
+                if row:
+                    return int(row["points"])
+                if username:
+                    row = conn.execute(
+                        "SELECT u.points FROM identities i "
+                        "JOIN users u ON u.id = i.user_id "
+                        "WHERE i.platform=? AND lower(i.username)=lower(?) "
+                        "ORDER BY i.last_seen DESC LIMIT 1",
+                        (platform, username),
+                    ).fetchone()
+                    if row:
+                        return int(row["points"])
+                return None
+
+        return await self._run(_sync)
 
     async def adjust_points(
         self, user_id: int, delta: int, reason: str = "admin adjust", source: str = "admin"

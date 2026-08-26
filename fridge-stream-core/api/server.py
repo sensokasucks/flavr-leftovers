@@ -16,9 +16,10 @@ from typing import Any, Dict, List, Optional, Set
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
+import os
 
 from api.admin_routes import create_admin_router
 
@@ -63,7 +64,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     app = FastAPI(
         title="Fridge Stream Core",
-        version="0.7.1",
+        version="0.11.0",
         lifespan=lifespan,
     )
     app.add_middleware(
@@ -177,6 +178,9 @@ def create_app(core_state: "CoreState") -> FastAPI:
             history = getattr(core_state, "recent_chat", None) or []
             if history:
                 await ws.send_json({"type": "chat_history", "data": list(history)})
+            alerts = getattr(core_state, "recent_alerts", None) or []
+            if alerts:
+                await ws.send_json({"type": "alert_history", "data": list(alerts)})
             while True:
                 data = await ws.receive_text()
                 if data == "ping":
@@ -195,6 +199,13 @@ def create_app(core_state: "CoreState") -> FastAPI:
     async def websocket_root(ws: WebSocket):
         await _ws_handler(ws)
 
+    @app.get("/api/overlay/alerts-settings")
+    async def overlay_alert_settings():
+        """Public: overlay polls this so skin/CSS changes apply without a restart."""
+        from core.alerts import read_alert_settings
+
+        return read_alert_settings()
+
     # ------------------------------------------------------------------
     # Static overlay (if present)
     # ------------------------------------------------------------------
@@ -212,6 +223,13 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
         @app.get("/", response_class=HTMLResponse)
         async def root():
+            # Live-preview / STREAM_CORE_PREVIEW: land on the admin hub
+            if os.environ.get("STREAM_CORE_PREVIEW", "").strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            ):
+                return RedirectResponse(url="/admin/", status_code=302)
             # Rewrite relative asset paths so HTML works from both / and /overlay/
             index = overlay_dir / "overlay.html"
             if index.exists():
@@ -237,4 +255,9 @@ class CoreState:
         self.config: dict = {}
         self.build_state = None  # set by create_app
         self.recent_chat: list = []
+        self.recent_alerts: list = []
         self.store = None
+        self.fire_alert = None
+        self.test_command = None
+        self.test_metrics = None
+        self.core = None

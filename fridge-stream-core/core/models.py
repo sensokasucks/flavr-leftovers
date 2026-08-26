@@ -17,135 +17,160 @@ class Platform(str, Enum):
     KICK = "kick"
     YOUTUBE = "youtube"
     TWITCH = "twitch"
-    SYSTEM = "system"
 
 
 class PermissionLevel(str, Enum):
     PUBLIC = "public"
-    SUB = "sub"
-    VIP = "vip"
     MOD = "mod"
     ADMIN = "admin"
 
 
 @dataclass
 class ChatUser:
+    platform: Platform
+    id: str
     username: str
     display_name: str = ""
-    user_id: str = ""
-    id: str = ""
-    platform: Platform = Platform.KICK
     is_mod: bool = False
-    is_subscriber: bool = False
     is_vip: bool = False
-    is_broadcaster: bool = False
+    is_subscriber: bool = False
     badges: list[str] = field(default_factory=list)
-    color: str = ""
+    color: Optional[str] = None          # hex if available
+    profile_image_url: Optional[str] = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         if not self.display_name:
             self.display_name = self.username
-        if not self.id and self.user_id:
-            self.id = self.user_id
-        if not self.user_id and self.id:
-            self.user_id = self.id
+        # normalize username for permission lookups
+        self.username = (self.username or "").lower().strip()
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["platform"] = self.platform.value
+        return d
 
 
 @dataclass
 class ChatEvent:
+    """Normalized chat message from any platform."""
+    platform: Platform
     user: ChatUser
     message: str
-    platform: Platform
-    raw: Any = None
-    ts: float = field(default_factory=time.time)
-    timestamp: float = 0.0
-    is_command: bool = False
-    command_name: str = ""
-    args: list[str] = field(default_factory=list)
-    message_id: str = ""
-    emotes: list[dict] = field(default_factory=list)
-    paid: bool = False
-    is_paid: bool = False
-    paid_amount: Any = None
-    paid_currency: str = ""
+    timestamp: float = field(default_factory=time.time)
+    message_id: Optional[str] = None
+    raw: dict = field(default_factory=dict)
 
-    def __post_init__(self) -> None:
-        if not self.timestamp:
-            self.timestamp = self.ts
-        else:
-            self.ts = self.timestamp
-        if self.is_paid and not self.paid:
-            self.paid = True
-        if self.paid and not self.is_paid:
-            self.is_paid = True
+    # Parsed command fields (filled by Core after routing)
+    is_command: bool = False
+    command_name: Optional[str] = None
+    args: list[str] = field(default_factory=list)
+
+    # Monetization (Channel Points / Super Chat / etc.)
+    paid_amount: Optional[float] = None
+    paid_currency: Optional[str] = None
+    is_paid: bool = False
+    reward_id: Optional[str] = None      # platform-specific reward/redemption id
+    reward_title: Optional[str] = None
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["platform"] = self.platform.value
+        d["user"] = self.user.to_dict()
+        return d
+
+
+@dataclass
+class MetricsSnapshot:
+    """Aggregated live metrics that game integrations and overlays consume."""
+    viewers: int = 0                     # total or primary platform
+    viewers_by_platform: dict[str, int] = field(default_factory=dict)
+    cpm: float = 0.0                     # chat messages per minute (windowed)
+    command_rate: float = 0.0            # successful commands in window
+    power_level: int = 0                 # 0–15, same scale as Chat Dynamo
+    timestamp: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 @dataclass
 class CommandDefinition:
+    """Loaded from config/commands.json. Platform-agnostic."""
     name: str
     aliases: list[str] = field(default_factory=list)
     permission: PermissionLevel = PermissionLevel.PUBLIC
     description: str = ""
     args: list[str] = field(default_factory=list)
-    template: str = ""
+    template: str = ""                   # e.g. "execute at {player} run summon {arg1} ..."
     qty_template: Optional[str] = None
     default_qty: int = 1
     max_qty: int = 8
     default_seconds: int = 30
     max_seconds: int = 120
     allowed_values: list[str] = field(default_factory=list)
-    cost: int = 0
-    special: Any = None
+    cost: int = 0                        # channel points / equivalent cost
+    special: Optional[str] = None        # e.g. "show_inventory"
     examples: list[str] = field(default_factory=list)
     enabled: bool = True
+    # Feature group: command is ignored unless this group is active.
+    # "core" = always on; "points" = points system; "minecraft" = MC integration; etc.
     group: str = "core"
+    # Higher priority wins when two commands claim the same name or alias.
+    priority: int = 0
+    # Who handles the command: "game" (default) fans out to game integrations;
+    # "core" is answered inside Stream Core (points, polls, help) and may reply in chat.
+    handler: str = "game"
+    # Optional per-platform overrides later if needed
+    platform_overrides: dict[str, Any] = field(default_factory=dict)
+
+    def matches(self, name: str) -> bool:
+        n = name.lower()
+        return n == self.name.lower() or n in [a.lower() for a in self.aliases]
+
+
+@dataclass
+class ChatReply:
+    """
+    Outbound message Core wants to send back to chat.
+
+    Adapters that support write (future OAuth / bot tokens) subscribe to
+    EventBus replies and post them. Until then, replies are logged and
+    shown on the chat overlay as a system message.
+    """
+    platform: Platform
+    message: str
+    reply_to_user: Optional[str] = None
+    reply_to_message_id: Optional[str] = None
+    # If set, only this platform should attempt to send; otherwise all write-capable adapters
+    target_platform: Optional[Platform] = None
+    is_system: bool = True
+    timestamp: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict:
+        d = asdict(self)
+        d["platform"] = self.platform.value
+        if self.target_platform is not None:
+            d["target_platform"] = self.target_platform.value
+        return d
 
 
 @dataclass
 class ExecuteRequest:
-    command: str = ""
-    command_name: str = ""
-    args: list[str] = field(default_factory=list)
-    quantity: int = 1
+    """What Core sends to a game integration when a command is approved."""
+    command_name: str
+    template: str                        # fully rendered command string or action
+    args: list[str]
     qty: int = 1
-    seconds: int = 0
-    user: Optional[ChatUser] = None
-    platform: Platform = Platform.SYSTEM
-    template: str = ""
+    user: ChatUser | None = None
     original_message: str = ""
-    special: Any = None
+    platform: Platform = Platform.KICK
+    special: Optional[str] = None
     cost: int = 0
-    meta: dict = field(default_factory=dict)
     metadata: dict = field(default_factory=dict)
 
-    def __post_init__(self) -> None:
-        if self.command_name and not self.command:
-            self.command = self.command_name
-        if self.command and not self.command_name:
-            self.command_name = self.command
-        if self.qty and self.quantity == 1:
-            self.quantity = self.qty
-        if self.quantity and self.qty == 1:
-            self.qty = self.quantity
-        if self.metadata and not self.meta:
-            self.meta = self.metadata
-        if self.meta and not self.metadata:
-            self.metadata = self.meta
-        if self.metadata.get("seconds") and not self.seconds:
-            try:
-                self.seconds = int(self.metadata["seconds"])
-            except (TypeError, ValueError):
-                pass
-
-
-@dataclass
-class MetricsSnapshot:
-    viewers: int = 0
-    viewers_by_platform: dict = field(default_factory=dict)
-    cpm: float = 0.0
-    command_rate: float = 0.0
-    power_level: int = 0
-    ts: float = field(default_factory=time.time)
-
     def to_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        d["platform"] = self.platform.value
+        if self.user:
+            d["user"] = self.user.to_dict()
+        return d

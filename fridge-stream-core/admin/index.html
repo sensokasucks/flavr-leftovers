@@ -19,13 +19,216 @@
   </header>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="users">Users &amp; Points</button>
+    <button class="tab active" data-tab="status">Status</button>
+    <button class="tab" data-tab="sources">Sources &amp; overlays</button>
+    <button class="tab" data-tab="integrations">Integrations</button>
+    <button class="tab" data-tab="alerts">Alert test</button>
+    <button class="tab" data-tab="users">Users &amp; Points</button>
     <button class="tab" data-tab="chat">Chat History</button>
     <button class="tab" data-tab="config">Config</button>
   </nav>
 
+  <!-- Status hub -->
+  <section id="tab-status" class="panel active">
+    <p class="tab-intro">Live view of what Stream Core is running. Refresh after you start or stop adapters/games (restart Core after config changes).</p>
+    <div class="toolbar">
+      <button id="status-refresh" class="primary">Refresh status</button>
+      <span id="status-updated" class="muted"></span>
+    </div>
+    <div id="status-body" class="status-grid">
+      <p class="muted">Save your admin token above, then click Refresh.</p>
+    </div>
+  </section>
+
+  <!-- Sources / overlays -->
+  <section id="tab-sources" class="panel">
+    <p class="tab-intro">Copy these into XSplit or OBS as <strong>Webpage</strong> (or Browser) sources. Use a transparent background where noted. Related Fridge tools are listed even if they run as separate apps.</p>
+    <div class="toolbar">
+      <button id="sources-refresh">Refresh list</button>
+    </div>
+    <table id="sources-table">
+      <thead>
+        <tr><th>Source</th><th>URL</th><th>Notes</th><th></th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Integrations test bench -->
+  <section id="tab-integrations" class="panel">
+    <p class="tab-intro">
+      Test chat commands and game features without going live in chat.
+      <strong>Dry run</strong> only renders the template; <strong>Live execute</strong>
+      sends the real request to the game integration (e.g. Minecraft server mod).
+      Each game gets its own sub-panel so future integrations stay organized.
+    </p>
+
+    <div class="integ-layout">
+      <!-- Shared command tester -->
+      <fieldset class="cfg-card integ-cmd-card">
+        <legend>Command tester</legend>
+        <p class="hint">
+          Uses the same CommandRouter as live chat (prefix, groups, permissions, templates).
+          Default role is admin so permission gates do not block tests.
+        </p>
+        <label>Message
+          <input id="integ-message" type="text" placeholder="!spawn creeper 2" autocomplete="off" />
+        </label>
+        <div class="row2">
+          <label>Username
+            <input id="integ-username" type="text" value="TestAdmin" />
+          </label>
+          <label>Platform
+            <select id="integ-platform">
+              <option value="kick">kick</option>
+              <option value="twitch">twitch</option>
+              <option value="youtube">youtube</option>
+            </select>
+          </label>
+        </div>
+        <div class="integ-role-row">
+          <label class="check"><input type="checkbox" id="integ-admin" checked /> Admin</label>
+          <label class="check"><input type="checkbox" id="integ-mod" /> Mod</label>
+          <label class="check"><input type="checkbox" id="integ-sub" /> Subscriber</label>
+        </div>
+        <div class="form-row" style="margin-top:12px; gap:8px; flex-wrap:wrap">
+          <button class="primary" id="integ-dry" type="button">Dry run</button>
+          <button id="integ-live" type="button" title="Calls the live game integration">Live execute</button>
+          <span id="integ-cmd-status" class="muted"></span>
+        </div>
+        <pre id="integ-cmd-result" class="integ-result" hidden></pre>
+      </fieldset>
+
+      <!-- Per-game sub-panels injected by admin.js -->
+      <div id="integ-games" class="integ-games"></div>
+
+      <!-- Shared overlays -->
+      <fieldset class="cfg-card" id="integ-shared-overlays-card">
+        <legend>Shared overlays</legend>
+        <p class="hint">Not game-specific. Alerts have a dedicated tab with presets and CSS editor.</p>
+        <div id="integ-shared-overlays" class="integ-overlay-list"></div>
+      </fieldset>
+    </div>
+  </section>
+
+  <!-- Alert test -->
+  <section id="tab-alerts" class="panel">
+    <p class="tab-intro">
+      Fire a test alert so you can check layout, duration, and text in OBS / XSplit
+      without a real follow or Super Chat. Add
+      <code>/overlay/alerts.html</code>
+      as a <strong>transparent Webpage source</strong>, paste your admin token above
+      (fresh install default is <code>change-me</code>), then click a preset or fill the form.
+      The preview on the right uses a checkerboard so you can see the card.
+    </p>
+    <div class="alert-split">
+      <div class="alert-controls">
+        <fieldset class="cfg-card">
+          <legend>Presets</legend>
+          <p class="hint">Fires immediately using the username / platform / extra fields below.</p>
+          <div id="alert-presets" class="alert-preset-row"></div>
+        </fieldset>
+        <fieldset class="cfg-card">
+          <legend>Custom</legend>
+          <label>Kind
+            <select id="alert-kind"></select>
+          </label>
+          <div class="row2">
+            <label>Username
+              <input id="alert-username" type="text" value="TestViewer" />
+            </label>
+            <label>Platform
+              <select id="alert-platform">
+                <option value="kick">kick</option>
+                <option value="twitch">twitch</option>
+                <option value="youtube">youtube</option>
+              </select>
+            </label>
+          </div>
+          <div class="row2">
+            <label>Amount
+              <input id="alert-amount" type="number" step="0.01" min="0" placeholder="e.g. 4.99 or 500" />
+            </label>
+            <label>Currency
+              <input id="alert-currency" type="text" value="USD" />
+            </label>
+          </div>
+          <div class="row2">
+            <label>Months (resub)
+              <input id="alert-months" type="number" min="1" value="3" />
+            </label>
+            <label>Qty (gifted)
+              <input id="alert-qty" type="number" min="1" value="5" />
+            </label>
+          </div>
+          <div class="row2">
+            <label>Viewers (raid)
+              <input id="alert-viewers" type="number" min="1" value="42" />
+            </label>
+            <label>Duration (ms)
+              <input id="alert-duration" type="number" min="1500" max="30000" step="500" value="6000" />
+            </label>
+          </div>
+          <label>Optional message
+            <input id="alert-message" type="text" placeholder="Thanks for the raid!" />
+          </label>
+          <div class="form-row" style="margin-top:12px">
+            <button class="primary" id="alert-fire">Fire test alert</button>
+            <span id="alert-status" class="muted"></span>
+          </div>
+        </fieldset>
+        <fieldset class="cfg-card">
+          <legend>Look (CSS)</legend>
+          <p class="hint">
+            Overlay HTML uses Streamlabs / StreamElements alert-box ids and classes,
+            so CSS from those packs (or OBS Custom CSS) can drop in.
+            Classic = usual streamer look. Custom CSS only = your rules, no default chrome.
+          </p>
+          <div class="skin-row" id="alert-skin-row">
+            <label class="check"><input type="radio" name="alert-skin" id="alert-skin-classic" value="classic" checked /> Classic</label>
+            <label class="check"><input type="radio" name="alert-skin" id="alert-skin-card" value="card" /> Card</label>
+            <label class="check"><input type="radio" name="alert-skin" id="alert-skin-custom" value="custom" /> Custom CSS only</label>
+          </div>
+          <label>Custom CSS
+            <textarea id="alert-css" rows="10" spellcheck="false" placeholder="Paste Streamlabs / StreamElements CSS here…"></textarea>
+          </label>
+          <div class="form-row" style="margin-top:12px">
+            <button class="primary" id="alert-css-save" type="button">Save CSS</button>
+            <button id="alert-css-reload" type="button">Reload preview</button>
+            <span id="alert-css-status" class="muted"></span>
+          </div>
+          <details class="alert-css-help">
+            <summary>Selector cheat sheet</summary>
+            <p class="hint">
+              <code>#alert-box</code>
+              <code>.follower-alert</code>
+              <code>.subscriber-alert</code>
+              <code>.raid-alert</code>
+              <code>.cheer-alert</code>
+              <code>.donation-alert</code>
+              <code>#alert-message</code>
+              <code>#alert-user-message</code>
+              <code>.name</code>
+              <code>.amount</code>
+              · GIFs: <code>overlay/assets/alerts/follow.gif</code>
+            </p>
+          </details>
+        </fieldset>
+      </div>
+      <div class="alert-preview-wrap">
+        <div class="alert-preview-label">Live overlay preview</div>
+        <iframe
+          id="alert-preview"
+          title="Alert overlay preview"
+          src="/overlay/alerts.html?preview=1"
+        ></iframe>
+        <p class="hint">Same overlay OBS will show. Tests queue if you fire several in a row.</p>
+      </div>
+    </div>
+  </section>
+
   <!-- Users -->
-  <section id="tab-users" class="panel active">
+  <section id="tab-users" class="panel">
     <div class="toolbar">
       <input id="user-q" placeholder="Search name / username…" />
       <button id="user-search">Search</button>
@@ -48,6 +251,10 @@
 
   <!-- Chat -->
   <section id="tab-chat" class="panel">
+    <p class="tab-intro">Stored message history (separate from the live overlay). Off by default — turn on <strong>Save chat history</strong> in Config if you want this tab to fill.</p>
+    <p id="chat-log-banner" class="config-banner" hidden>
+      Chat logging is currently <strong>off</strong>. New messages are not saved. Existing rows (if any) still show below.
+    </p>
     <div class="toolbar">
       <input id="chat-user-id" placeholder="User ID (optional)" />
       <select id="chat-platform">
@@ -74,7 +281,8 @@
   <section id="tab-config" class="panel">
     <div class="config-banner" id="config-banner">
       <strong>Save writes the same files tech users edit by hand.</strong>
-      After saving, <em>restart Stream Core</em> for changes to take effect.
+      After saving, <em>restart Stream Core</em> for platform/game toggles.
+      Command groups and command definitions hot-reload immediately.
       <span class="muted" id="config-paths"></span>
     </div>
 
@@ -88,10 +296,17 @@
     <div class="config-grid">
       <fieldset class="cfg-card">
         <legend>Core</legend>
-        <label>Host <input id="cfg-core-host" type="text" /></label>
-        <label>Port <input id="cfg-core-port" type="number" min="1" max="65535" /></label>
-        <label>Command prefix <input id="cfg-core-prefix" type="text" maxlength="4" /></label>
-        <label>Log level
+        <p class="hint">HTTP server that serves overlays, admin, and APIs. Leave host on 127.0.0.1 unless you know you need LAN access.</p>
+        <label>Host <span class="field-help">Bind address</span>
+          <input id="cfg-core-host" type="text" />
+        </label>
+        <label>Port <span class="field-help">Default 3850 — overlays use this</span>
+          <input id="cfg-core-port" type="number" min="1" max="65535" />
+        </label>
+        <label>Command prefix <span class="field-help">Character that starts chat commands</span>
+          <input id="cfg-core-prefix" type="text" maxlength="4" />
+        </label>
+        <label>Log level <span class="field-help">DEBUG is noisy; INFO is normal</span>
           <select id="cfg-core-log">
             <option>DEBUG</option>
             <option>INFO</option>
@@ -103,8 +318,9 @@
 
       <fieldset class="cfg-card">
         <legend>Kick</legend>
+        <p class="hint">Public chat socket + viewer poll. Chatroom id is auto-detected and saved when possible.</p>
         <label class="check"><input id="cfg-kick-enabled" type="checkbox" /> Enabled</label>
-        <label>Channel slug
+        <label>Channel slug <span class="field-help">kick.com/<strong>this</strong> only</span>
           <input id="cfg-kick-slug" type="text" placeholder="kick.com/THIS_PART" />
         </label>
         <label>Viewer poll (seconds)
@@ -114,15 +330,16 @@
 
       <fieldset class="cfg-card">
         <legend>Twitch</legend>
+        <p class="hint">Read-only anonymous IRC — no OAuth needed to listen.</p>
         <label class="check"><input id="cfg-tw-enabled" type="checkbox" /> Enabled</label>
-        <label>Channel
+        <label>Channel <span class="field-help">twitch.tv/<strong>this</strong></span>
           <input id="cfg-tw-channel" type="text" placeholder="twitch.tv/THIS_PART" />
         </label>
-        <p class="hint">Read-only anonymous IRC — no OAuth needed to listen.</p>
       </fieldset>
 
       <fieldset class="cfg-card">
         <legend>YouTube</legend>
+        <p class="hint">Live chat reader. innertube needs the live video id each stream; official mode needs an API key.</p>
         <label class="check"><input id="cfg-yt-enabled" type="checkbox" /> Enabled</label>
         <label>Mode
           <select id="cfg-yt-mode">
@@ -141,8 +358,9 @@
 
       <fieldset class="cfg-card">
         <legend>Minecraft</legend>
+        <p class="hint">Talks to the Fabric client/server mods. Turning this off also disables the <code>minecraft</code> command group (!spawn, !give, …).</p>
         <label class="check"><input id="cfg-mc-enabled" type="checkbox" /> Enabled (opt-in)</label>
-        <label>In-game player name
+        <label>In-game player name <span class="field-help">Exact name commands target</span>
           <input id="cfg-mc-player" type="text" />
         </label>
         <label>Client mod URL
@@ -155,28 +373,34 @@
 
       <fieldset class="cfg-card">
         <legend>Permissions</legend>
-        <p class="hint">One username per line. Matched case-insensitively across platforms.</p>
-        <label>Admins
+        <p class="hint">One username per line. Matched case-insensitively across every platform.</p>
+        <label>Admins <span class="field-help">Full control + !permit</span>
           <textarea id="cfg-perm-admin" rows="4" placeholder="your_kick_name"></textarea>
         </label>
-        <label>Mods
+        <label>Mods <span class="field-help">Mod-tier commands only</span>
           <textarea id="cfg-perm-mod" rows="3" placeholder="mod_name"></textarea>
         </label>
       </fieldset>
 
       <fieldset class="cfg-card">
         <legend>Chat points</legend>
+        <p class="hint">In-house points for chatting. Off by default. When on, enables the <code>points</code> command group (!points). Admin token unlocks this dashboard.</p>
         <label class="check"><input id="cfg-pts-enabled" type="checkbox" /> Enabled</label>
         <label>Points per message
           <input id="cfg-pts-per" type="number" min="0" />
         </label>
-        <label>Cooldown (seconds)
+        <label>Cooldown (seconds) <span class="field-help">Anti-spam between awards</span>
           <input id="cfg-pts-cd" type="number" min="0" />
         </label>
-        <label>Admin token
+        <label>Admin token <span class="field-help">Paste into the header above</span>
           <input id="cfg-pts-token" type="text" autocomplete="off" />
         </label>
-        <p class="hint">Changing the admin token requires re-saving it in the header above after restart.</p>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Chat history log</legend>
+        <p class="hint">Writes every message to SQLite for this dashboard's Chat History tab and CSV export. The live overlay does not need this. Off by default.</p>
+        <label class="check"><input id="cfg-chatlog-enabled" type="checkbox" /> Save chat history</label>
       </fieldset>
     </div>
 
@@ -219,15 +443,50 @@
           <label>Show inventory (seconds)
             <input id="cfg-ov-inv" type="number" min="1" max="120" />
           </label>
+          <label>Alert duration (ms)
+            <input id="cfg-ov-alert-ms" type="number" min="1500" max="30000" step="500" />
+          </label>
         </fieldset>
       </div>
     </details>
+
+    <div class="cfg-commands" id="cfg-groups-wrap">
+      <div class="cfg-commands-head">
+        <h2>Command groups</h2>
+        <div class="config-actions">
+          <button class="primary" id="grp-save">Save groups</button>
+          <button id="grp-reload">Hot-reload</button>
+          <button id="grp-add">Add group</button>
+          <span id="grp-status" class="muted"></span>
+        </div>
+      </div>
+      <p class="hint" style="margin:0 0 10px">
+        Disable a whole set of commands at once. Optional <code>bind</code> ties a group to an integration
+        (<code>minecraft</code> = game enabled <em>and</em> running; <code>points</code> = points.enabled).
+        <code>core</code> is always on. Changes apply without restarting Core.
+      </p>
+      <div id="grp-conflicts" class="conflict-banner" hidden></div>
+      <table id="grp-table">
+        <thead>
+          <tr>
+            <th>Id</th>
+            <th>On</th>
+            <th>Always</th>
+            <th>Bind</th>
+            <th>Live</th>
+            <th>Description</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
 
     <div class="cfg-commands">
       <div class="cfg-commands-head">
         <h2>Chat commands</h2>
         <div class="config-actions">
-          <button class="primary" id="cmd-save">Save commands.json</button>
+          <button class="primary" id="cmd-save">Save + hot-reload</button>
           <button id="cmd-reload">Reload</button>
           <button id="cmd-add">Add command</button>
           <span id="cmd-status" class="muted"></span>
@@ -237,7 +496,7 @@
         <div class="list-pane">
           <table id="cmd-table">
             <thead>
-              <tr><th>Name</th><th>Permission</th><th>Cost</th><th>Description</th></tr>
+              <tr><th>Name</th><th>Group</th><th>Permission</th><th>Pri</th><th>Description</th></tr>
             </thead>
             <tbody></tbody>
           </table>

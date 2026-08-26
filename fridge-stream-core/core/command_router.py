@@ -10,13 +10,14 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from .models import (
     ChatEvent,
     CommandDefinition,
     ExecuteRequest,
     PermissionLevel,
+    Platform,
 )
 from .permissions import PermissionManager
 
@@ -30,33 +31,91 @@ class CommandRouter:
         permission_manager: PermissionManager,
         command_prefix: str = "!",
         default_player: str = "Player",
+        enabled_groups: Optional[set] = None,
     ):
         self.prefix = command_prefix
         self.player = default_player
         self.perms = permission_manager
+        self.commands_path = Path(commands_path)
+        # token (name or alias) -> definition (winner after conflict resolution)
         self.commands: Dict[str, CommandDefinition] = {}
-        self.active_groups: set[str] = set()
-        self._load(commands_path)
+        # canonical name -> definition
+        self.definitions: Dict[str, CommandDefinition] = {}
+        self.conflicts: List[dict] = []
+        # Groups whose commands are active. "core" is always implied.
+        self.enabled_groups: set = set(enabled_groups or {"core"})
+        self.enabled_groups.add("core")
+        self._load(self.commands_path)
 
-    def set_active_groups(self, groups) -> None:
-        if groups is None:
-            self.active_groups = set()
+    def set_enabled_groups(self, groups: set) -> None:
+        """Update active feature groups (called after games/points start or admin toggle)."""
+        self.enabled_groups = set(groups) | {"core"}
+        log.info("Command groups active: %s", sorted(self.enabled_groups))
+
+    def known_groups(self) -> set:
+        return {(c.group or "core").lower() for c in self.definitions.values()}
+
+    def unique_commands(self) -> List[CommandDefinition]:
+        return list(self.definitions.values())
+
+    def reload(
+        self,
+        path: Path | str | None = None,
+        command_prefix: Optional[str] = None,
+        default_player: Optional[str] = None,
+    ) -> dict:
+        """Hot-reload command definitions from disk. Groups are left as-is."""
+        if path:
+            self.commands_path = Path(path)
+        if command_prefix is not None:
+            self.prefix = command_prefix
+        if default_player is not None:
+            self.player = default_player
+        self._load(self.commands_path)
+        return {
+            "loaded": len(self.definitions),
+            "tokens": len(self.commands),
+            "conflicts": list(self.conflicts),
+        }
+
+    def _claim_token(self, token: str, cmd: CommandDefinition) -> None:
+        token = (token or "").lower().strip()
+        if not token:
             return
-        if isinstance(groups, dict):
-            self.active_groups = {str(k) for k, v in groups.items() if v}
-        else:
-            self.active_groups = {str(g) for g in groups}
-
-    def group_enabled(self, group_id: str) -> bool:
-        gid = (group_id or "core").strip().lower() or "core"
-        if gid == "core":
-            return True
-        if not self.active_groups:
-            return True
-        return gid in self.active_groups
+        existing = self.commands.get(token)
+        if existing is None or existing.name == cmd.name:
+            self.commands[token] = cmd
+            return
+        winner, loser = existing, cmd
+        if cmd.priority > existing.priority:
+            winner, loser = cmd, existing
+        self.conflicts.append({
+            "token": token,
+            "winner": winner.name,
+            "loser": loser.name,
+            "winner_priority": winner.priority,
+            "loser_priority": loser.priority,
+            "reason": (
+                "higher priority"
+                if winner.priority != loser.priority
+                else "first definition wins (equal priority)"
+            ),
+        })
+        self.commands[token] = winner
+        log.warning(
+            "Command conflict on '%s%s': %s beats %s (%s)",
+            self.prefix,
+            token,
+            winner.name,
+            loser.name,
+            "priority" if winner.priority != loser.priority else "order",
+        )
 
     def _load(self, path: Path | str) -> None:
         path = Path(path)
+        self.commands = {}
+        self.definitions = {}
+        self.conflicts = []
         if not path.exists():
             log.warning("commands file not found: %s", path)
             return
@@ -75,7 +134,7 @@ class CommandRouter:
                 continue
             perm = data.get("permission", "public")
             try:
-                perm_level = PermissionLevel(str(perm).lower())
+                perm_level = PermissionLevel(perm.lower())
             except ValueError:
                 perm_level = PermissionLevel.PUBLIC
 
@@ -98,6 +157,17 @@ class CommandRouter:
             if isinstance(allowed, str):
                 allowed = [allowed]
 
+            group = (data.get("group") or data.get("integration") or "core")
+            group = str(group).lower().strip() or "core"
+            handler = (data.get("handler") or "game")
+            handler = str(handler).lower().strip() or "game"
+            # Heuristic: Minecraft-style templates default to minecraft group
+            if group == "core" and handler == "game" and (
+                "minecraft" in (data.get("template") or "").lower()
+                or data.get("special") == "show_inventory"
+            ):
+                group = "minecraft"
+
             cmd = CommandDefinition(
                 name=name.lower(),
                 aliases=[str(a).lower() for a in aliases],
@@ -115,18 +185,44 @@ class CommandRouter:
                 special=data.get("special"),
                 examples=[str(e) for e in examples],
                 enabled=bool(data.get("enabled", True)),
-                group=str(data.get("group") or "core").strip().lower() or "core",
+                group=group,
+                handler=handler,
+                priority=_int(data.get("priority", 0), 0),
             )
-            self.commands[cmd.name] = cmd
+            prev = self.definitions.get(cmd.name)
+            if prev and prev.name == cmd.name:
+                self.conflicts.append({
+                    "token": cmd.name,
+                    "winner": prev.name,
+                    "loser": cmd.name,
+                    "winner_priority": prev.priority,
+                    "loser_priority": cmd.priority,
+                    "reason": "duplicate command name in file",
+                })
+                if cmd.priority > prev.priority:
+                    self.definitions[cmd.name] = cmd
+                continue
+            self.definitions[cmd.name] = cmd
+            self._claim_token(cmd.name, cmd)
             for alias in cmd.aliases:
-                self.commands[alias] = cmd
+                if alias == cmd.name:
+                    continue
+                self._claim_token(alias, cmd)
 
-        log.info("Loaded %d command definitions", len({c.name for c in self.commands.values()}))
+        log.info(
+            "Loaded %d command definitions (%d conflicts)",
+            len(self.definitions),
+            len(self.conflicts),
+        )
 
     def find(self, name: str) -> Optional[CommandDefinition]:
         return self.commands.get(name.lower())
 
     def parse_message(self, event: ChatEvent) -> bool:
+        """
+        Mutates the ChatEvent in-place: sets is_command, command_name, args.
+        Returns True if it looks like a command (starts with prefix).
+        """
         text = (event.message or "").strip()
         if not text.startswith(self.prefix):
             return False
@@ -141,9 +237,16 @@ class CommandRouter:
         return True
 
     def try_execute(self, event: ChatEvent) -> Tuple[Optional[ExecuteRequest], Optional[str]]:
+        """
+        Full pipeline for a single chat event that already looks like a command.
+
+        Returns (ExecuteRequest, None) on success
+                (None, reason_string) on rejection
+        """
         if not event.is_command or not event.command_name:
             return None, "not a command"
 
+        # Built-in !permit (admin only)
         if event.command_name == "permit":
             if not self.perms.has_permission(event.user, PermissionLevel.ADMIN):
                 return None, "no permission for permit"
@@ -157,26 +260,33 @@ class CommandRouter:
             if target:
                 self.perms.grant_temp(target, minutes)
                 log.info("Temp permit: %s for %d min (by %s)", target, minutes, event.user.username)
-            return None, "permit handled"
+            return None, "permit handled"  # not forwarded to game
 
         cmd = self.find(event.command_name)
         if not cmd or not cmd.enabled:
             return None, "unknown command"
 
-        if not self.group_enabled(getattr(cmd, "group", "core") or "core"):
-            return None, f"group {cmd.group} disabled"
+        # Feature group gate: e.g. minecraft commands off when MC integration is off
+        group = (cmd.group or "core").lower()
+        if group not in self.enabled_groups:
+            return None, f"group '{group}' disabled"
 
         if not self.perms.has_permission(event.user, cmd.permission):
             return None, f"requires {cmd.permission.value}"
 
-        if cmd.cost > 0 and not getattr(event, "is_paid", False):
+        # Cost gate (future Channel Points / Super Chat). For now just check field.
+        # Real deduction will live in the platform adapters later.
+        if cmd.cost > 0 and not event.is_paid:
+            # still allow if the user is admin (testing convenience)
             if not self.perms.has_permission(event.user, PermissionLevel.ADMIN):
                 return None, f"requires cost {cmd.cost}"
 
+        # Build template context
         qty = cmd.default_qty
         seconds = cmd.default_seconds
         args = list(event.args)
 
+        # Heuristic: if first arg looks like a number and the command has qty, treat it as qty
         if args and cmd.args and any("qty" in a for a in cmd.args):
             try:
                 maybe_qty = int(args[-1])
@@ -195,10 +305,12 @@ class CommandRouter:
             except ValueError:
                 pass
 
+        # allowed_values check (e.g. weather clear/rain)
         if cmd.allowed_values and args:
             if args[0].lower() not in cmd.allowed_values:
                 return None, f"invalid value, allowed: {cmd.allowed_values}"
 
+        # Render template
         ctx = {
             "player": self.player,
             "qty": str(qty),

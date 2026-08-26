@@ -1,12 +1,9 @@
-Optional per-kind alert media.
+Drop alert media here, named by kind:
 
-Place files named by kind, e.g.:
-  follow.gif
-  sub.webm
-  bits.png
-  raid.gif
-  superchat.webp
-  donation.gif
+  follow.gif       subscribe.png     resub.webp
+  gift.gif         raid.webm         host.png
+  bits.gif         superchat.webp    donation.gif
 
-Supported by the alerts overlay when present.
-Kinds: follow, sub, resub, gift, raid, host, bits, superchat, donation.
+The overlay tries .webm, then .gif / .webp / .png / .svg.
+Transparent background. Typical size 200–400px.
+If a file is missing, the default glowing tile is used (classic / card skins).

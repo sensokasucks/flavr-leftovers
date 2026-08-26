@@ -1,164 +1,296 @@
 /* Fridge Stream Core — stream alerts
    Compatible with Streamlabs / StreamElements alert-box CSS.
    Override via :root variables, alerts-custom.css, or OBS Custom CSS.
+   Skins: body.skin-classic | body.skin-card | body.skin-custom
 */
 
 :root {
+  --alert-font: "Montserrat", "Segoe UI", system-ui, sans-serif;
+  --alert-text: #f4f6fb;
+  --alert-muted: #c5cddc;
   --alert-accent: #53fc18;
-  --alert-font: "Montserrat", system-ui, sans-serif;
-  --alert-name-size: 42px;
-  --alert-msg-size: 28px;
+  --alert-accent-follow: #53fc18;
+  --alert-accent-sub: #c9a6ff;
+  --alert-accent-cheer: #bf94ff;
+  --alert-accent-donation: #ffd166;
+  --alert-accent-raid: #5ce1ff;
+  --alert-accent-host: #53fc18;
+  --alert-accent-superchat: #ff7a73;
+  --alert-name-size: 34px;
+  --alert-msg-size: 18px;
   --alert-image-size: 96px;
-  --alert-text-shadow: 0 2px 8px rgba(0, 0, 0, 0.85), 0 0 2px #000;
+  --alert-radius: 18px;
+  --alert-card-bg: rgba(12, 14, 20, 0.92);
+  --alert-shadow: 0 2px 0 #000, 0 4px 18px rgba(0, 0, 0, 0.85);
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
 html, body {
-  margin: 0;
-  padding: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
   background: transparent;
+  overflow: hidden;
   font-family: var(--alert-font);
-  color: #fff;
+  color: var(--alert-text);
+  user-select: none;
 }
 
 body.preview {
-  background: repeating-conic-gradient(#2a2a2a 0% 25%, #1a1a1a 0% 50%) 50% / 24px 24px;
+  background-color: #12151c;
+  background-image:
+    linear-gradient(45deg, #1a1f2a 25%, transparent 25%),
+    linear-gradient(-45deg, #1a1f2a 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #1a1f2a 75%),
+    linear-gradient(-45deg, transparent 75%, #1a1f2a 75%);
+  background-size: 28px 28px;
+  background-position: 0 0, 0 14px, 14px -14px, -14px 0;
 }
 
-#wrap {
-  position: relative;
-  width: 100%;
-  height: 100%;
+#wrap,
+.widget-AlertBox {
+  position: absolute;
+  inset: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
+  padding: 24px 20px 36px;
+  pointer-events: none;
 }
 
 #idle-hint {
-  opacity: 0.35;
-  font-size: 14px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-body:not(.preview) #idle-hint { display: none; }
-
-#alert-box {
-  display: flex;
-  flex-direction: row;
+  display: none;
+  position: absolute;
+  inset: 0;
   align-items: center;
-  gap: 20px;
-  max-width: 90vw;
-  padding: 12px 20px;
+  justify-content: center;
+  color: #8b95a8;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+body.preview #idle-hint { display: flex; }
+body.preview #idle-hint.gone { display: none; }
+
+/* ---- presence ---- */
+#alert-box.hidden {
   opacity: 0;
-  transform: translateY(12px) scale(0.98);
-  transition: opacity 0.35s ease, transform 0.35s ease;
+  visibility: hidden;
   pointer-events: none;
 }
-#alert-box.show {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-}
-#alert-box.hidden { display: none; }
-#alert-box.show:not(.hidden) { display: flex; }
 
-#alert-image-wrap {
-  flex: 0 0 auto;
+/* kind accents (Streamlabs class names) */
+#alert-box.follower-alert,
+#alert-box.host-alert { --alert-accent: var(--alert-accent-follow); }
+#alert-box.subscriber-alert,
+#alert-box.resub-alert,
+#alert-box.sub-gift-alert,
+#alert-box.gift-alert { --alert-accent: var(--alert-accent-sub); }
+#alert-box.raid-alert { --alert-accent: var(--alert-accent-raid); }
+#alert-box.cheer-alert,
+#alert-box.bits-alert { --alert-accent: var(--alert-accent-cheer); }
+#alert-box.donation-alert { --alert-accent: var(--alert-accent-donation); }
+#alert-box.superchat-alert { --alert-accent: var(--alert-accent-superchat); }
+
+/* ---- media slot ---- */
+#alert-image-wrap,
+.alert-image {
+  position: relative;
   width: var(--alert-image-size);
   height: var(--alert-image-size);
-  position: relative;
+  flex-shrink: 0;
 }
-#alert-image, #alert-video {
+#alert-image,
+#alert-video {
+  display: none;
   width: 100%;
   height: 100%;
   object-fit: contain;
-  display: none;
 }
+#alert-image-wrap.has-image #alert-image,
+#alert-image-wrap.has-video #alert-video { display: block; }
+#alert-image-wrap.has-image .alert-icon,
+#alert-image-wrap.has-video .alert-icon { display: none; }
+
 .alert-icon {
   width: 100%;
   height: 100%;
-  border-radius: 12px;
-  background: linear-gradient(135deg, var(--alert-accent), #1a1a1a);
-  opacity: 0.85;
-}
-#alert-image-wrap:has(img[style*="block"]) .alert-icon,
-#alert-image-wrap:has(video[style*="block"]) .alert-icon {
-  display: none;
-}
-
-#alert-text-wrap {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-shadow: var(--alert-text-shadow);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.35), transparent 42%),
+    var(--alert-accent);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    0 0 28px rgba(83, 252, 24, 0.45);
+  box-shadow:
+    0 8px 24px rgba(0, 0, 0, 0.45),
+    0 0 28px color-mix(in srgb, var(--alert-accent) 55%, transparent);
 }
 
-#alert-kind {
-  font-size: 12px;
+/* ---- shared type ---- */
+.alert-kind {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  letter-spacing: 0.12em;
-  opacity: 0.75;
   color: var(--alert-accent);
+  margin-bottom: 4px;
+  text-shadow: 0 0 12px color-mix(in srgb, var(--alert-accent) 50%, transparent);
 }
 
-#alert-message {
+#alert-message,
+.alertbox-message-text,
+.alert-text {
   font-size: var(--alert-name-size);
   font-weight: 800;
   line-height: 1.15;
+  text-shadow: var(--alert-shadow);
+  color: var(--alert-text);
 }
-#alert-message .name {
+
+#alert-message .name,
+.alertbox-message-name,
+.name {
+  color: var(--alert-accent);
+  font-weight: 800;
+}
+
+#alert-message .amount,
+#alert-message .months,
+#alert-message .viewers,
+.amount, .months, .viewers {
   color: var(--alert-accent);
 }
-#alert-message .amount {
-  color: #ffd166;
-}
 
-#alert-user-message {
+#alert-user-message,
+.alertbox-message-message,
+.alert-message {
+  margin-top: 8px;
   font-size: var(--alert-msg-size);
   font-weight: 600;
-  opacity: 0.95;
-  max-width: 36ch;
+  font-style: italic;
+  color: var(--alert-muted);
+  text-shadow: 0 2px 10px #000;
 }
+#alert-user-message:empty,
+.alert-message:empty { display: none; }
 
-#alert-meta {
-  font-size: 11px;
-  opacity: 0.55;
-  letter-spacing: 0.06em;
+.alert-meta {
+  margin-top: 10px;
+  font-size: 12px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+  color: #8b95a8;
+  font-weight: 700;
+}
+.alert-meta:empty { display: none; }
+
+.test-flag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 179, 71, 0.5);
+  color: #ffb347;
+  font-size: 10px;
+  letter-spacing: 0.08em;
 }
 
-/* Kind accents */
-#alert-box.follower-alert { --alert-accent: #53fc18; }
-#alert-box.subscriber-alert,
-#alert-box.resub-alert,
-#alert-box.sub-gift-alert { --alert-accent: #9146ff; }
-#alert-box.cheer-alert { --alert-accent: #f97316; }
-#alert-box.raid-alert,
-#alert-box.host-alert { --alert-accent: #3b82f6; }
-#alert-box.superchat-alert { --alert-accent: #ff0000; }
-#alert-box.donation-alert { --alert-accent: #22c55e; }
+/* ============================================================
+   Skin: classic  — the usual streamer alert (text-shadow, no card)
+   ============================================================ */
+body.skin-classic #alert-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 12px;
+  min-width: min(92%, 420px);
+  max-width: 640px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  transform-origin: 50% 100%;
+}
 
-/* Card skin */
+body.skin-classic #alert-box.show {
+  animation: alert-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+body.skin-classic #alert-box.hide {
+  animation: alert-out 0.32s ease-in forwards;
+}
+
+/* ============================================================
+   Skin: card  — boxed panel (previous default)
+   ============================================================ */
 body.skin-card #alert-box {
-  background: rgba(12, 12, 18, 0.88);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 16px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  min-width: min(92%, 420px);
+  max-width: 560px;
+  padding: 18px 22px 16px;
+  border-radius: var(--alert-radius);
+  background: linear-gradient(180deg, rgba(16, 20, 28, 0.94), var(--alert-card-bg));
+  border: 1px solid color-mix(in srgb, var(--alert-accent) 40%, transparent);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.55),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  transform-origin: 50% 100%;
+}
+body.skin-card #alert-box.show {
+  animation: alert-in 0.38s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+body.skin-card #alert-box.hide {
+  animation: alert-out 0.32s ease-in forwards;
 }
 
-/* Custom skin — minimal chrome for external CSS packs */
+/* ============================================================
+   Skin: custom  — reset chrome so pasted SL / SE CSS wins
+   ============================================================ */
 body.skin-custom #alert-box {
   background: transparent;
   border: none;
   box-shadow: none;
-  text-shadow: none;
+  padding: 0;
+  min-width: 0;
+  max-width: none;
+  border-radius: 0;
+  text-align: initial;
+  gap: 0;
 }
-body.skin-custom #alert-kind,
-body.skin-custom #alert-meta { display: none; }
+body.skin-custom .alert-kind,
+body.skin-custom .alert-meta,
+body.skin-custom .alert-icon {
+  display: none;
+}
+body.skin-custom #alert-box.show,
+body.skin-custom #alert-box.hide {
+  animation: none;
+}
+body.skin-custom #alert-box.show {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+}
 
-.test-alert #alert-meta::before {
-  content: "";
+@keyframes alert-in {
+  from { opacity: 0; transform: translateY(22px) scale(0.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes alert-out {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to   { opacity: 0; transform: translateY(-10px) scale(0.98); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body.skin-classic #alert-box.show,
+  body.skin-classic #alert-box.hide,
+  body.skin-card #alert-box.show,
+  body.skin-card #alert-box.hide { animation: none; }
+  #alert-box.show { opacity: 1; transform: none; visibility: visible; }
 }

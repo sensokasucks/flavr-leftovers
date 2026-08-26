@@ -22,6 +22,16 @@ from core.config import (
     save_commands,
     save_config,
 )
+from core.command_groups import catalog_status
+from core.alerts import (
+    SKINS,
+    build_alert,
+    kind_catalog,
+    read_alert_settings,
+    read_custom_css,
+    write_alert_settings,
+    write_custom_css,
+)
 
 log = logging.getLogger("api.admin")
 
@@ -58,6 +68,57 @@ class CommandsSaveBody(BaseModel):
     commands: Dict[str, Any]
 
 
+class CommandGroupsSaveBody(BaseModel):
+    """Replace the command_groups section of config.yaml and hot-apply."""
+
+    groups: Dict[str, Any]
+
+
+class AlertTestBody(BaseModel):
+    """Fire a test (or live-shaped) alert on the overlay."""
+
+    kind: str = "follow"
+    username: str = "TestViewer"
+    display_name: str = ""
+    platform: str = "kick"
+    amount: Optional[float] = None
+    currency: str = ""
+    months: Optional[int] = None
+    qty: Optional[int] = None
+    viewers: Optional[int] = None
+    message: str = ""
+    duration_ms: Optional[int] = None
+
+
+class AlertStyleBody(BaseModel):
+    """Skin + optional custom CSS for the alerts overlay (no Core restart)."""
+
+    skin: Optional[str] = None
+    css: Optional[str] = None
+
+
+class CommandTestBody(BaseModel):
+    """Simulate a chat command through the real router (admin Integrations tab)."""
+
+    message: str = Field(..., description="Full chat text, e.g. !spawn creeper 2")
+    username: str = "TestAdmin"
+    display_name: str = ""
+    platform: str = "kick"
+    is_mod: bool = False
+    is_admin: bool = True
+    is_subscriber: bool = False
+    dry_run: bool = True
+
+
+class MetricsTestBody(BaseModel):
+    """Push synthetic metrics to game integrations + overlays."""
+
+    viewers: int = 42
+    cpm: float = 5.0
+    command_rate: float = 1.0
+    power_level: int = Field(8, ge=0, le=15)
+
+
 def create_admin_router(core_state) -> APIRouter:
     router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -84,6 +145,121 @@ def create_admin_router(core_state) -> APIRouter:
     async def stats(x_admin_token: Optional[str] = Header(None)):
         _auth(x_admin_token)
         return await _store().stats()
+
+    @router.get("/status")
+    async def runtime_status(x_admin_token: Optional[str] = Header(None)):
+        """
+        Hub status: which adapters/games are running, metrics snapshot,
+        active command groups, and overlay / related tool URLs.
+        """
+        _auth(x_admin_token)
+        cfg = getattr(core_state, "config", None) or load_config()
+        metrics = {}
+        if core_state.metrics:
+            snap = core_state.metrics.snapshot()
+            metrics = {
+                "viewers": snap.viewers,
+                "viewers_by_platform": getattr(snap, "viewers_by_platform", {}),
+                "cpm": snap.cpm,
+                "power_level": snap.power_level,
+                "command_rate": snap.command_rate,
+            }
+
+        adapters_live = list((core_state.adapters or {}).keys())
+        games_live = list((core_state.games or {}).keys())
+        router = core_state.router
+        groups = sorted(router.enabled_groups) if router else ["core"]
+
+        # Config intent vs live
+        platforms = {}
+        for key in ("kick", "twitch", "youtube"):
+            section = cfg.get(key) or {}
+            platforms[key] = {
+                "configured_enabled": bool(section.get("enabled")),
+                "running": key in adapters_live,
+                "detail": section.get("channel_slug")
+                or section.get("channel")
+                or section.get("video_id")
+                or "",
+            }
+        games_cfg = {
+            "minecraft": {
+                "configured_enabled": bool((cfg.get("minecraft") or {}).get("enabled")),
+                "running": "minecraft" in games_live,
+                "player_name": (cfg.get("minecraft") or {}).get("player_name", ""),
+            }
+        }
+
+        port = int((cfg.get("core") or {}).get("port", 3850))
+        host = (cfg.get("core") or {}).get("host", "127.0.0.1")
+        base = f"http://{host}:{port}"
+
+        sources = [
+            {
+                "name": "Admin hub (this page)",
+                "url": f"{base}/admin/",
+                "notes": "Main control panel",
+            },
+            {
+                "name": "Kick / live chat overlay",
+                "url": f"{base}/overlay/chat.html",
+                "notes": "Transparent Webpage source — chat with emotes",
+            },
+            {
+                "name": "Minecraft / metrics overlay",
+                "url": f"{base}/overlay/overlay.html",
+                "notes": "HP, CPM, power level, inventory flash",
+            },
+            {
+                "name": "Stream alerts overlay",
+                "url": f"{base}/overlay/alerts.html",
+                "notes": "Transparent Webpage source — follow / sub / raid / Super Chat. Test from the Alerts tab.",
+            },
+            {
+                "name": "Chat Credits overlay",
+                "url": "http://127.0.0.1:3854/overlay/credits.html",
+                "notes": "Ending credits roll (Fridge Chat Credits app)",
+            },
+            {
+                "name": "Chat Credits control desk",
+                "url": "http://127.0.0.1:3854/",
+                "notes": "Start fridge-chat-credits separately",
+            },
+            {
+                "name": "Factorio stats overlay",
+                "url": "http://127.0.0.1:3847/overlay.html",
+                "notes": "Fridge Factorio Stats bridge",
+            },
+            {
+                "name": "Reactive Image HTTP",
+                "url": "http://127.0.0.1:3851/status",
+                "notes": "Audio-reactive avatar control API",
+            },
+        ]
+
+        cmd_count = 0
+        if router:
+            cmd_count = len({c.name for c in router.commands.values() if c.enabled})
+
+        return {
+            "ok": True,
+            "core": {
+                "host": host,
+                "port": port,
+                "command_prefix": (cfg.get("core") or {}).get("command_prefix", "!"),
+            },
+            "platforms": platforms,
+            "games": games_cfg,
+            "adapters_running": adapters_live,
+            "games_running": games_live,
+            "command_groups_active": groups,
+            "commands_loaded": cmd_count,
+            "points_enabled": bool((cfg.get("points") or {}).get("enabled", False)),
+            "chat_log_enabled": bool((cfg.get("chat_log") or {}).get("enabled", False)),
+            "metrics": metrics,
+            "sources": sources,
+            "note": "Restart Stream Core after changing config for platform/game toggles to apply.",
+        }
 
     @router.get("/users")
     async def list_users(
@@ -214,21 +390,35 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         if not isinstance(body.config, dict) or not body.config:
             raise HTTPException(400, "config object required")
+        incoming = dict(body.config)
+        # Preserve command_groups unless the payload includes them
+        if "command_groups" not in incoming:
+            live = getattr(core_state, "config", None) or load_config()
+            if isinstance(live.get("command_groups"), dict):
+                incoming["command_groups"] = live["command_groups"]
         try:
-            path = save_config(body.config)
+            path = save_config(incoming)
         except Exception as e:
             log.exception("save_config failed")
             raise HTTPException(500, f"Failed to save config: {e}") from e
         # Update in-memory view so subsequent GETs match disk until restart
-        # (runtime behaviour still requires restart)
+        # (runtime behaviour still requires restart for adapters/games)
         try:
             core_state.config = load_config()
         except Exception:
             pass
+        groups_note = ""
+        refresh = getattr(core_state, "refresh_command_groups", None)
+        if callable(refresh):
+            try:
+                active = refresh()
+                groups_note = f" Command groups hot-applied: {', '.join(active)}."
+            except Exception:
+                log.exception("refresh_command_groups after config save failed")
         return {
             "ok": True,
             "path": str(path),
-            "message": "Saved. Restart Stream Core for changes to take effect.",
+            "message": "Saved. Restart Stream Core for platform/game toggles." + groups_note,
         }
 
     @router.get("/commands")
@@ -236,10 +426,13 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         cmds = load_commands()
         _, cmd_path = config_file_info()
+        router = getattr(core_state, "router", None)
         return {
             "commands": cmds,
             "commands_path": cmd_path,
-            "note": "Changes are written to disk. Restart Stream Core to apply.",
+            "conflicts": list(getattr(router, "conflicts", []) or []),
+            "groups_active": sorted(getattr(router, "enabled_groups", {"core"})),
+            "note": "Save hot-reloads commands into the running process.",
         }
 
     @router.put("/commands")
@@ -247,11 +440,10 @@ def create_admin_router(core_state) -> APIRouter:
         body: CommandsSaveBody,
         x_admin_token: Optional[str] = Header(None),
     ):
-        """Write commands.json. Restart Core to apply."""
+        """Write commands.json and hot-reload the router."""
         _auth(x_admin_token)
         if not isinstance(body.commands, dict):
             raise HTTPException(400, "commands object required")
-        # Basic sanity: each command should be a dict
         for name, defn in body.commands.items():
             if not isinstance(defn, dict):
                 raise HTTPException(400, f"Command '{name}' must be an object")
@@ -260,10 +452,396 @@ def create_admin_router(core_state) -> APIRouter:
         except Exception as e:
             log.exception("save_commands failed")
             raise HTTPException(500, f"Failed to save commands: {e}") from e
+        info = {}
+        reload_fn = getattr(core_state, "reload_commands", None)
+        if callable(reload_fn):
+            try:
+                info = reload_fn() or {}
+            except Exception as e:
+                log.exception("hot-reload commands failed")
+                raise HTTPException(500, f"Saved but reload failed: {e}") from e
+        conflicts = info.get("conflicts") or []
+        msg = f"Saved and hot-reloaded {info.get('loaded', '?')} commands."
+        if conflicts:
+            msg += f" {len(conflicts)} name/alias conflict(s) — see details."
         return {
             "ok": True,
             "path": str(path),
-            "message": "Saved. Restart Stream Core for changes to take effect.",
+            "message": msg,
+            "conflicts": conflicts,
+            "groups_active": info.get("groups_active") or [],
         }
+
+    @router.get("/command-groups")
+    async def get_command_groups(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        cfg = getattr(core_state, "config", None) or load_config()
+        router = getattr(core_state, "router", None)
+        extra = router.known_groups() if router else set()
+        games = list((getattr(core_state, "games", None) or {}).keys())
+        return {
+            "groups": catalog_status(cfg, games, extra),
+            "active": sorted(getattr(router, "enabled_groups", {"core"})),
+            "conflicts": list(getattr(router, "conflicts", []) or []),
+            "bind_options": ["", "points", "minecraft"],
+        }
+
+    @router.put("/command-groups")
+    async def put_command_groups(
+        body: CommandGroupsSaveBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """Write command_groups into config.yaml and hot-apply enablement."""
+        _auth(x_admin_token)
+        if not isinstance(body.groups, dict):
+            raise HTTPException(400, "groups object required")
+        cleaned = {}
+        for raw_name, spec in body.groups.items():
+            name = str(raw_name or "").strip().lower()
+            if not name:
+                continue
+            if not isinstance(spec, dict):
+                raise HTTPException(400, f"Group '{name}' must be an object")
+            cleaned[name] = spec
+        if "core" not in cleaned:
+            cleaned["core"] = {"enabled": True, "always": True, "bind": None}
+        live = getattr(core_state, "config", None) or load_config()
+        live = dict(live)
+        live["command_groups"] = cleaned
+        try:
+            path = save_config(live)
+            core_state.config = load_config()
+        except Exception as e:
+            log.exception("save command_groups failed")
+            raise HTTPException(500, f"Failed to save groups: {e}") from e
+        active = []
+        refresh = getattr(core_state, "refresh_command_groups", None)
+        if callable(refresh):
+            active = refresh()
+        cfg = core_state.config
+        router = getattr(core_state, "router", None)
+        extra = router.known_groups() if router else set()
+        games = list((getattr(core_state, "games", None) or {}).keys())
+        return {
+            "ok": True,
+            "path": str(path),
+            "message": "Groups saved and hot-applied. No Core restart needed.",
+            "groups": catalog_status(cfg, games, extra),
+            "active": active,
+        }
+
+    @router.post("/command-groups/reload")
+    async def reload_command_groups(x_admin_token: Optional[str] = Header(None)):
+        """Recompute groups + optionally reload commands.json without a save."""
+        _auth(x_admin_token)
+        reload_fn = getattr(core_state, "reload_commands", None)
+        info = {}
+        if callable(reload_fn):
+            info = reload_fn() or {}
+        else:
+            refresh = getattr(core_state, "refresh_command_groups", None)
+            if callable(refresh):
+                info["groups_active"] = refresh()
+        return {"ok": True, **info}
+
+    @router.get("/alerts/kinds")
+    async def alert_kinds(x_admin_token: Optional[str] = Header(None)):
+        """Catalog of overlay alert kinds for the test tab."""
+        _auth(x_admin_token)
+        ov = (getattr(core_state, "config", None) or {}).get("overlay") or {}
+        return {
+            "kinds": kind_catalog(),
+            "platforms": ["kick", "twitch", "youtube"],
+            "default_duration_ms": int(ov.get("alert_duration_ms") or 6000),
+            "overlay_url": "/overlay/alerts.html",
+            "skins": list(SKINS),
+        }
+
+    @router.post("/alerts/test")
+    async def fire_test_alert(
+        body: AlertTestBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """Broadcast a test alert to every connected overlay (and the admin preview)."""
+        _auth(x_admin_token)
+        ov = (getattr(core_state, "config", None) or {}).get("overlay") or {}
+        duration = body.duration_ms
+        if duration is None:
+            duration = int(ov.get("alert_duration_ms") or 6000)
+        try:
+            payload = build_alert(
+                kind=body.kind,
+                username=body.username,
+                display_name=body.display_name,
+                platform=body.platform,
+                amount=body.amount,
+                currency=body.currency or "",
+                months=body.months,
+                qty=body.qty,
+                viewers=body.viewers,
+                message=body.message,
+                duration_ms=duration,
+                is_test=True,
+            )
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+
+        fire = getattr(core_state, "fire_alert", None)
+        if fire:
+            await fire(payload)
+        else:
+            # Fallback: WS only (Core not fully wired)
+            mgr = getattr(core_state, "ws_manager", None)
+            if mgr:
+                await mgr.broadcast({"type": "alert", "data": payload})
+        return {"ok": True, "alert": payload}
+
+    @router.get("/alerts/style")
+    async def get_alert_style(x_admin_token: Optional[str] = Header(None)):
+        """Live overlay skin + custom CSS (no restart)."""
+        _auth(x_admin_token)
+        settings = read_alert_settings()
+        return {
+            "skin": settings.get("skin") or "classic",
+            "css_version": settings.get("css_version") or 0,
+            "css": read_custom_css(),
+            "skins": list(SKINS),
+        }
+
+    @router.put("/alerts/style")
+    async def put_alert_style(
+        body: AlertStyleBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """Write overlay/alerts-custom.css and/or skin. Overlay picks this up live."""
+        _auth(x_admin_token)
+        settings = read_alert_settings()
+        if body.skin is not None:
+            skin = (body.skin or "").strip().lower()
+            if skin not in SKINS:
+                raise HTTPException(400, f"Unknown skin '{body.skin}'. Valid: {', '.join(SKINS)}")
+            settings = write_alert_settings(skin=skin)
+        if body.css is not None:
+            try:
+                settings = write_custom_css(body.css)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        return {
+            "ok": True,
+            "skin": settings.get("skin") or "classic",
+            "css_version": settings.get("css_version") or 0,
+            "message": "Saved — overlay reloads CSS on the next poll (a few seconds).",
+        }
+
+    # ------------------------------------------------------------------
+    # Integrations test bench (per-game command / metrics / overlay)
+    # ------------------------------------------------------------------
+
+    @router.get("/integrations")
+    async def list_integrations(x_admin_token: Optional[str] = Header(None)):
+        """
+        Catalog for the Integrations tab: running games, commands by group,
+        health, and overlay URLs so the UI can build sub-panels.
+        """
+        _auth(x_admin_token)
+        cfg = getattr(core_state, "config", None) or load_config()
+        router = core_state.router
+        games_live = list((core_state.games or {}).keys())
+        groups = sorted(router.enabled_groups) if router else ["core"]
+        prefix = (cfg.get("core") or {}).get("command_prefix", "!")
+        port = int((cfg.get("core") or {}).get("port", 3850))
+        host = (cfg.get("core") or {}).get("host", "127.0.0.1")
+        base = f"http://{host}:{port}"
+
+        # Commands grouped for sub-panels
+        by_group: Dict[str, list] = {}
+        if router:
+            seen = set()
+            for cmd in router.commands.values():
+                if cmd.name in seen:
+                    continue
+                seen.add(cmd.name)
+                g = (cmd.group or "core").lower()
+                by_group.setdefault(g, []).append({
+                    "name": cmd.name,
+                    "aliases": list(cmd.aliases or []),
+                    "permission": cmd.permission.value if cmd.permission else "public",
+                    "description": cmd.description or "",
+                    "args": list(cmd.args or []),
+                    "examples": list(cmd.examples or []),
+                    "template": cmd.template or "",
+                    "special": cmd.special,
+                    "handler": cmd.handler or "game",
+                    "enabled": bool(cmd.enabled),
+                    "cost": int(cmd.cost or 0),
+                })
+            for g in by_group:
+                by_group[g].sort(key=lambda c: c["name"])
+
+        # Known game slots (configured even if not running) + any live extras
+        known = ["minecraft"]
+        for g in games_live:
+            if g not in known:
+                known.append(g)
+
+        game_panels = []
+        for name in known:
+            section = cfg.get(name) or {}
+            running = name in games_live
+            health = False
+            health_detail = "not running"
+            game_obj = (core_state.games or {}).get(name)
+            if game_obj:
+                try:
+                    health = bool(await game_obj.health())
+                    health_detail = "ok" if health else "unreachable"
+                except Exception as e:
+                    health = False
+                    health_detail = str(e)
+
+            overlays = []
+            if name == "minecraft":
+                overlays = [
+                    {
+                        "name": "Minecraft / metrics overlay",
+                        "url": f"{base}/overlay/overlay.html",
+                        "notes": "HP, CPM, power level, inventory flash",
+                    },
+                ]
+
+            game_panels.append({
+                "id": name,
+                "label": name.replace("_", " ").title(),
+                "configured_enabled": bool(section.get("enabled")),
+                "running": running,
+                "health": health,
+                "health_detail": health_detail,
+                "player_name": section.get("player_name") or section.get("player") or "",
+                "client_mod_url": section.get("client_mod_url", ""),
+                "server_mod_url": section.get("server_mod_url", ""),
+                "command_group": name,
+                "commands": by_group.get(name, []),
+                "overlays": overlays,
+            })
+
+        core_commands = by_group.get("core", []) + by_group.get("points", [])
+        shared_overlays = [
+            {
+                "name": "Chat overlay",
+                "url": f"{base}/overlay/chat.html",
+                "notes": "Transparent Webpage — live chat + emotes",
+            },
+            {
+                "name": "Alerts overlay",
+                "url": f"{base}/overlay/alerts.html",
+                "notes": "Transparent Webpage — use Alert test tab for presets",
+            },
+        ]
+
+        return {
+            "ok": True,
+            "prefix": prefix,
+            "command_groups_active": groups,
+            "games": game_panels,
+            "core_commands": core_commands,
+            "shared_overlays": shared_overlays,
+            "platforms": ["kick", "twitch", "youtube"],
+        }
+
+    @router.post("/commands/test")
+    async def test_command(
+        body: CommandTestBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """
+        Run a chat command through the real CommandRouter.
+
+        dry_run=true (default): parse + permission + template only.
+        dry_run=false: execute against the live game integration (Minecraft mods, etc.).
+        """
+        _auth(x_admin_token)
+        fn = getattr(core_state, "test_command", None)
+        if not fn:
+            raise HTTPException(503, "Core test_command not wired — restart Stream Core")
+        msg = (body.message or "").strip()
+        if not msg:
+            raise HTTPException(400, "message is required")
+        try:
+            return await fn(
+                msg,
+                username=body.username or "TestAdmin",
+                display_name=body.display_name or "",
+                platform=body.platform or "kick",
+                is_mod=bool(body.is_mod),
+                is_admin=bool(body.is_admin),
+                is_subscriber=bool(body.is_subscriber),
+                dry_run=bool(body.dry_run),
+            )
+        except Exception as e:
+            log.exception("commands/test failed")
+            raise HTTPException(500, str(e)) from e
+
+    @router.post("/games/{game_id}/metrics-test")
+    async def test_game_metrics(
+        game_id: str,
+        body: MetricsTestBody,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """
+        Push synthetic metrics (viewers / CPM / power level) to game integrations
+        and connected overlays. game_id is recorded for the UI; metrics fan out
+        to every running game the same way live chat does.
+        """
+        _auth(x_admin_token)
+        fn = getattr(core_state, "test_metrics", None)
+        if not fn:
+            raise HTTPException(503, "Core test_metrics not wired — restart Stream Core")
+        try:
+            result = await fn(
+                viewers=body.viewers,
+                cpm=body.cpm,
+                command_rate=body.command_rate,
+                power_level=body.power_level,
+            )
+            result["requested_game"] = (game_id or "").lower().strip()
+            return result
+        except Exception as e:
+            log.exception("metrics-test failed")
+            raise HTTPException(500, str(e)) from e
+
+    @router.get("/games/{game_id}/health")
+    async def game_health(
+        game_id: str,
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """Ping a single game integration's health endpoint."""
+        _auth(x_admin_token)
+        gid = (game_id or "").lower().strip()
+        game = (core_state.games or {}).get(gid)
+        if not game:
+            return {
+                "ok": False,
+                "game": gid,
+                "running": False,
+                "health": False,
+                "detail": "integration not running (enable in config and restart)",
+            }
+        try:
+            healthy = bool(await game.health())
+            return {
+                "ok": True,
+                "game": gid,
+                "running": True,
+                "health": healthy,
+                "detail": "ok" if healthy else "unreachable",
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "game": gid,
+                "running": True,
+                "health": False,
+                "detail": str(e),
+            }
 
     return router

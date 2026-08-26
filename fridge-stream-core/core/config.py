@@ -76,12 +76,36 @@ DEFAULTS: Dict[str, Any] = {
     },
     "overlay": {
         "show_inventory_seconds": 12,
+        "alert_duration_ms": 6000,
     },
     "points": {
-        "enabled": True,
+        "enabled": False,
         "per_message": 1,
         "cooldown_sec": 30,
         "admin_token": "change-me",
+    },
+    "chat_log": {
+        "enabled": False,  # persist messages to SQLite (Chat History tab)
+    },
+    "command_groups": {
+        "core": {
+            "enabled": True,
+            "always": True,
+            "bind": None,
+            "description": "Built-in Core commands (!help, !permit)",
+        },
+        "points": {
+            "enabled": True,
+            "always": False,
+            "bind": "points",
+            "description": "Chat points (!points / !balance)",
+        },
+        "minecraft": {
+            "enabled": True,
+            "always": False,
+            "bind": "minecraft",
+            "description": "Minecraft integration (!spawn, !give, …)",
+        },
     },
 }
 
