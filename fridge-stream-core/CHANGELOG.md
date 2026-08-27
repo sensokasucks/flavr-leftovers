@@ -7,6 +7,16 @@ Dates are when the work landed in this tree.
 
 ---
 
+## [0.13.1] — 2026-08-27
+
+### Fixed
+
+- Admin Credits API was missing the movie-cast fields and write routes, so the Credits tab could not load styles, pin jobs, or change `!credit` permission after 0.13.0.
+  - `GET /api/admin/credits` now includes `cast` (styles, current style, pins, `command_permission`, job cap).
+  - Added `PUT /credits/cast/style`, `PUT /credits/cast/file`, `POST /credits/cast/pin`, `PUT /credits/command-permission`.
+
+---
+
 ## [0.13.0] — 2026-08-26
 
 Movie-style end credits on top of the 0.12 unique-chatter roll. Same day as 0.12.x.
