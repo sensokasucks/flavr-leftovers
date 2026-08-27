@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from core.models import ChatEvent
+from core.cast import CastBoard, JOB_MAX, clamp_job, parse_identity, parse_quoted_args
 
 log = logging.getLogger("core.credits")
 
@@ -59,6 +60,8 @@ LOOK_DEFAULTS: dict[str, Any] = {
     "row_gap_px": 10,
     "max_width_px": 920,
     "custom_font_url": "",
+    "style_id": "names",
+    "command_permission": "mod",
 }
 
 
@@ -116,6 +119,8 @@ class CreditsEngine:
             "generation": 0,
         }
         self.session_path = root / "data" / "credits_session.json"
+        self.cast = CastBoard(root, allow_alert_groups=True)
+        self.command_permission = "mod"
         self.configure(config)
         self.load()
 
@@ -135,6 +140,12 @@ class CreditsEngine:
         self.session_path = path if path.is_absolute() else self.root / path
         look = {k: cfg[k] for k in LOOK_DEFAULTS if k in cfg}
         self.theme = {**LOOK_DEFAULTS, **look}
+        perm = str(cfg.get("command_permission") or "mod").lower()
+        self.command_permission = perm if perm in ("public", "mod", "admin") else "mod"
+        sid = str(self.theme.get("style_id") or cfg.get("style_id") or "names")
+        self.cast.set_style(sid)
+        self.theme["style_id"] = self.cast.style_id
+        self.theme["style"] = self.cast.get_style().get("style") or "names"
         if self.theme.get("mode") in ("loop", "once", "hold"):
             self.play["mode"] = self.theme["mode"]
         log.info("Credits %s — %s unique", "on" if self.enabled else "off", len(self.chatters))
@@ -242,13 +253,14 @@ class CreditsEngine:
         by: dict[str, int] = {}
         for c in items:
             by[c.platform] = by.get(c.platform, 0) + 1
-        return {
+        snap = {
             "started_at": self.started_at,
             "count": len(items),
             "by_platform": by,
             "enabled": self.enabled,
             "chatters": [c.to_dict() for c in items],
         }
+        return self.cast.decorate(snap, self.started_at)
 
     def public_play(self) -> dict:
         return {k: v for k, v in self.play.items() if k != "frozen_roster"}
@@ -263,18 +275,8 @@ class CreditsEngine:
             freeze = bool(body["freeze"])
             self.play["freeze"] = freeze
             if freeze:
-                frozen_sort = self.theme.get("sort") or "first_seen"
-                items = self.list_chatters(frozen_sort)
-                by: dict[str, int] = {}
-                for c in items:
-                    by[c.platform] = by.get(c.platform, 0) + 1
-                self.play["frozen_roster"] = {
-                    "started_at": self.started_at,
-                    "count": len(items),
-                    "by_platform": by,
-                    "enabled": self.enabled,
-                    "chatters": [c.to_dict() for c in items],
-                }
+                self.play["frozen_roster"] = None
+                self.play["frozen_roster"] = self.snapshot()
             else:
                 self.play["frozen_roster"] = None
         if body.get("restart"):
@@ -287,6 +289,37 @@ class CreditsEngine:
         for k, v in body.items():
             self.theme[k] = v
         return self.theme
+
+    def note_alert(self, kind: str, platform: str, username: str) -> None:
+        self.cast.tag_alert(kind, platform, username)
+
+    def apply_credit_command(self, raw_message: str, default_platform: str, set_by: str) -> str:
+        # strip command token
+        text = raw_message or ""
+        text = text.split(None, 1)[1] if text.split() else ""
+        parts = parse_quoted_args(text)
+        if not parts or not parts[0]:
+            return 'Usage: !credit "name" "job title"   or   !credit "name" clear'
+        plat, user = parse_identity(parts[0], default_platform)
+        if not user:
+            return "Need a name in quotes."
+        if len(parts) == 1:
+            ov = self.cast.find_override(plat, user)
+            if ov:
+                return f"{user} is pinned as {ov.get('job')}"
+            return f"{user} has no pinned job"
+        second = parts[1].strip()
+        if second.lower() == "clear":
+            self.cast.unpin(plat, user)
+            return f"Cleared credit pin for {user}"
+        job = clamp_job(second)
+        if not job:
+            return "Job title is empty."
+        if len(second) > JOB_MAX:
+            return f"Job title max is {JOB_MAX} characters."
+        self.cast.pin(plat or default_platform, user, job, set_by=set_by)
+        where = plat or default_platform
+        return f"Pinned {where}:{user} as {job}"
 
     def look_for_config(self) -> dict:
         """Subset to write back into config.yaml credits:."""

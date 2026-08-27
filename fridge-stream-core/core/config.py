@@ -119,6 +119,8 @@ DEFAULTS: Dict[str, Any] = {
         "show_platform": True,
         "show_message_count": False,
         "highlight_mods": True,
+        "style_id": "names",
+        "command_permission": "mod",
         "font_family": '"Palatino Linotype", Palatino, "Times New Roman", Georgia, serif',
         "title_size_px": 54,
         "name_size_px": 22,
@@ -158,6 +160,12 @@ DEFAULTS: Dict[str, Any] = {
             "always": False,
             "bind": "factorio",
             "description": "Factorio stats overlay (Fridge Factorio Stats bridge)",
+        },
+        "credits": {
+            "enabled": True,
+            "always": False,
+            "bind": "credits",
+            "description": "End credits (!credit / !credits)",
         },
     },
 }

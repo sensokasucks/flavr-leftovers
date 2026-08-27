@@ -87,6 +87,7 @@ DEFAULTS: dict[str, Any] = {
         "row_gap_px": 10,
         "max_width_px": 920,
         "custom_font_url": "",
+        "style_id": "names",
     },
 }
 

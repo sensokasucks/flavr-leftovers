@@ -1,0 +1,70 @@
+{
+  "id": "movie",
+  "label": "Movie",
+  "style": "movie",
+  "overflow": "Additional Voices",
+  "top_talkers": 5,
+  "departments": [
+    {
+      "id": "production",
+      "title": "Production",
+      "jobs": [
+        "Showrunner",
+        "Director",
+        "Producer",
+        "1st AD",
+        "Script Supervisor"
+      ]
+    },
+    {
+      "id": "camera",
+      "title": "Camera",
+      "jobs": [
+        "Director of Photography",
+        "Camera Operator",
+        "Key Grip",
+        "Best Boy Grip",
+        "Gaffer"
+      ]
+    },
+    {
+      "id": "sound",
+      "title": "Sound",
+      "jobs": [
+        "Sound Mixer",
+        "Boom Operator",
+        "Foley Artist",
+        "Chat Whisperer"
+      ]
+    },
+    {
+      "id": "chaos",
+      "title": "Department of Chaos",
+      "jobs": [
+        "Emotional Support Chat",
+        "Official First-er",
+        "Lurker Liaison",
+        "Raid Hype Captain",
+        "Bit Accountant",
+        "Craft Services"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "mods",
+      "title": "Moderation Unit",
+      "source": "mods"
+    },
+    {
+      "id": "subs",
+      "title": "Season Regulars",
+      "source": "subs"
+    },
+    {
+      "id": "top",
+      "title": "Starring",
+      "source": "top"
+    }
+  ]
+}

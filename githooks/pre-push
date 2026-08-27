@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# FlaVR Leftovers — pre-push
+# Runs Stream Core unit tests when Python is available.
+# Skip with: SKIP_HOOKS=1 git push ...
+set -euo pipefail
+
+if [[ "${SKIP_HOOKS:-}" == "1" ]]; then
+  exit 0
+fi
+
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
+CORE="$ROOT/fridge-stream-core"
+
+if [[ ! -d "$CORE/tests" ]]; then
+  exit 0
+fi
+
+PY=""
+if [[ -x "$CORE/.venv/Scripts/python.exe" ]]; then
+  PY="$CORE/.venv/Scripts/python.exe"
+elif [[ -x "$CORE/.venv/bin/python" ]]; then
+  PY="$CORE/.venv/bin/python"
+elif command -v python3 >/dev/null 2>&1; then
+  PY=python3
+elif command -v python >/dev/null 2>&1; then
+  PY=python
+fi
+
+if [[ -z "$PY" ]]; then
+  echo "[pre-push] No Python found — skipping tests."
+  exit 0
+fi
+
+echo "[pre-push] Running fridge-stream-core tests..."
+cd "$CORE"
+if ! "$PY" -m pytest tests/ -q --tb=line 2>/dev/null; then
+  # Fallback if pytest not installed: unittest discovery
+  if ! "$PY" -m unittest discover -s tests -p 'test_*.py' -q; then
+    echo "[pre-push] Tests failed. Fix or: SKIP_HOOKS=1 git push"
+    exit 1
+  fi
+fi
+
+echo "[pre-push] Tests OK."
+exit 0

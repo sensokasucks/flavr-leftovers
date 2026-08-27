@@ -207,6 +207,29 @@
         </select>
         <button id="btn-seed">Add</button>
       </div>
+      <hr style="border:0;border-top:1px solid var(--line);margin:14px 0" />
+      <h2>Movie style</h2>
+      <label>Style file</label>
+      <select id="cast-style"></select>
+      <p class="meta">Copy <code>config/cast/movie.json</code> to add your own style. Jobs max 50 characters.</p>
+      <div class="row" style="margin-top:8px">
+        <button class="primary" id="btn-cast-style">Use this style</button>
+      </div>
+      <label>Pin a name (stays across streams)</label>
+      <div class="row">
+        <input type="text" id="pin-name" placeholder="username" style="flex:1" />
+        <select id="pin-plat">
+          <option value="twitch">twitch</option>
+          <option value="kick">kick</option>
+          <option value="youtube">youtube</option>
+        </select>
+      </div>
+      <input type="text" id="pin-job" maxlength="50" placeholder="job title (50 chars)" />
+      <div class="row" style="margin-top:8px">
+        <button id="btn-pin">Pin</button>
+        <button id="btn-unpin">Clear pin</button>
+      </div>
+      <div class="list" id="pin-list"></div>
     </section>
 
     <section class="card">
@@ -362,6 +385,57 @@
       platform: $("seed-plat").value,
     });
 
+    function fillPins(list) {
+      const el = $("pin-list");
+      if (!el) return;
+      el.innerHTML = (list || []).map((p) =>
+        `<div class="person"><div><b>${esc(p.username)}</b>
+          <div class="meta">${esc(p.platform)} · ${esc(p.job)}</div></div></div>`
+      ).join("") || `<div class="meta">No pinned names</div>`;
+    }
+
+    async function loadCast() {
+      try {
+        const data = await fetch("/api/cast").then((x) => x.json());
+        const sel = $("cast-style");
+        if (sel) {
+          sel.innerHTML = (data.styles || []).map((s) =>
+            `<option value="${esc(s.id)}" ${s.id === data.style_id ? "selected" : ""}>${esc(s.label)} (${esc(s.style)})</option>`
+          ).join("");
+        }
+        fillPins(data.overrides || []);
+      } catch (e) { /* ignore */ }
+    }
+    if ($("btn-cast-style")) {
+      $("btn-cast-style").onclick = async () => {
+        await fetch("/api/cast/style", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ style_id: $("cast-style").value }),
+        });
+      };
+    }
+    if ($("btn-pin")) {
+      $("btn-pin").onclick = async () => {
+        const data = await post("/api/cast/pin", {
+          username: $("pin-name").value,
+          platform: $("pin-plat").value,
+          job: $("pin-job").value,
+        });
+        fillPins(data.overrides || []);
+      };
+    }
+    if ($("btn-unpin")) {
+      $("btn-unpin").onclick = async () => {
+        const data = await post("/api/cast/pin", {
+          username: $("pin-name").value,
+          platform: $("pin-plat").value,
+          clear: true,
+        });
+        fillPins(data.overrides || []);
+      };
+    }
+
     function lines(s) {
       return String(s || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
     }
@@ -473,6 +547,7 @@
       play = p;
       $("adapters").textContent = (h.adapters || []).join(", ") || "none enabled";
       loadConfig();
+      loadCast();
       const proto = location.protocol === "https:" ? "wss" : "ws";
       const ws = new WebSocket(`${proto}://${location.host}/ws`);
       ws.onmessage = (ev) => {

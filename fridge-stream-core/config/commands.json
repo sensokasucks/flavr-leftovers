@@ -10,6 +10,28 @@
     "cost": 0,
     "examples": ["!points", "!balance"]
   },
+  "credit": {
+    "aliases": ["job", "cast"],
+    "permission": "public",
+    "description": "Pin a chatter's movie-credits job. Usage: !credit \"name\" \"job title\"",
+    "args": ["name", "job"],
+    "group": "credits",
+    "handler": "core",
+    "special": "credit_set",
+    "cost": 0,
+    "examples": ["!credit \"bob\" \"Gaffer\"", "!credit \"kick:bob\" clear"]
+  },
+  "credits": {
+    "aliases": ["roster"],
+    "permission": "public",
+    "description": "How many unique chatters are on the credits roll",
+    "args": [],
+    "group": "credits",
+    "handler": "core",
+    "special": "credits_count",
+    "cost": 0,
+    "examples": ["!credits"]
+  },
   "help": {
     "aliases": ["commands"],
     "permission": "public",

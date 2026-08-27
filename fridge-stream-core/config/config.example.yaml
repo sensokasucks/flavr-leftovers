@@ -125,4 +125,8 @@ command_groups:
     enabled: true
     bind: factorio
     description: "Factorio stats overlay (Fridge Factorio Stats bridge)"
+  credits:
+    enabled: true
+    bind: credits
+    description: "End credits (!credit / !credits)"
 

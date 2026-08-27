@@ -46,6 +46,12 @@ DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
         "bind": "factorio",
         "description": "Factorio stats overlay (Fridge Factorio Stats bridge)",
     },
+    "credits": {
+        "enabled": True,
+        "always": False,
+        "bind": "credits",
+        "description": "End credits (!credit / !credits)",
+    },
 }
 
 # Game ids that must be running, not just enabled in config.

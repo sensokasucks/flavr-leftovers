@@ -60,6 +60,7 @@ class AppState:
         }
         self.adapters: dict = {}
         self.bus = None
+        self.cast = None
 
 
 def _theme_path(state: AppState) -> Path:
@@ -92,6 +93,11 @@ def roster_payload(state: AppState) -> dict:
         snap = state.play["frozen_roster"]
     else:
         snap = state.roster.snapshot(sort=sort)
+        if getattr(state, "cast", None):
+            style = state.cast.get_style()
+            snap["style"] = style.get("style") or "names"
+            snap["style_id"] = state.cast.style_id
+            snap = state.cast.decorate(snap, state.roster.started_at)
     return snap
 
 
@@ -222,8 +228,7 @@ def create_app(state: AppState) -> FastAPI:
             freeze = bool(body["freeze"])
             state.play["freeze"] = freeze
             if freeze:
-                sort = state.theme.get("sort") or "first_seen"
-                state.play["frozen_roster"] = state.roster.snapshot(sort=sort)
+                state.play["frozen_roster"] = roster_payload(state)
             else:
                 state.play["frozen_roster"] = None
         if body.get("restart"):
@@ -259,6 +264,63 @@ def create_app(state: AppState) -> FastAPI:
             message=body.get("message") or "(seed)",
         ))
         return {"ok": True, "count": len(state.roster.chatters)}
+
+    @app.get("/api/cast")
+    async def get_cast():
+        board = state.cast
+        if not board:
+            return {"styles": [], "style_id": "names", "overrides": []}
+        return {
+            "styles": board.list_styles(),
+            "style_id": board.style_id,
+            "style": board.get_style(),
+            "overrides": list(board.overrides.values()),
+            "job_max": 50,
+        }
+
+    @app.put("/api/cast/style")
+    async def put_cast_style(body: dict[str, Any]):
+        board = state.cast
+        if not board:
+            return JSONResponse({"ok": False}, status_code=503)
+        sid = board.set_style(str(body.get("style_id") or body.get("id") or "names"))
+        state.theme["style_id"] = sid
+        state.theme["style"] = board.get_style().get("style") or "names"
+        save_theme(state)
+        snap = roster_payload(state)
+        await manager.broadcast({"type": "theme", "data": state.theme})
+        await manager.broadcast({"type": "roster", "data": snap})
+        return {"ok": True, "style_id": sid, "style": board.get_style()}
+
+    @app.put("/api/cast/file")
+    async def put_cast_file(body: dict[str, Any]):
+        board = state.cast
+        if not board:
+            return JSONResponse({"ok": False}, status_code=503)
+        try:
+            saved = board.save_style(body)
+        except ValueError as e:
+            return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        return {"ok": True, "style": saved, "styles": board.list_styles()}
+
+    @app.post("/api/cast/pin")
+    async def pin_cast(body: dict[str, Any]):
+        board = state.cast
+        if not board:
+            return JSONResponse({"ok": False}, status_code=503)
+        name = (body.get("username") or "").strip().lstrip("@")
+        plat = (body.get("platform") or "twitch").lower()
+        job = body.get("job") or ""
+        if (body.get("clear") or str(job).lower() == "clear"):
+            board.unpin(plat, name)
+        else:
+            try:
+                board.pin(plat, name, job, set_by="desk")
+            except ValueError as e:
+                return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+        snap = roster_payload(state)
+        await manager.broadcast({"type": "roster", "data": snap})
+        return {"ok": True, "overrides": list(board.overrides.values())}
 
     @app.websocket("/ws")
     async def ws_endpoint(ws: WebSocket):

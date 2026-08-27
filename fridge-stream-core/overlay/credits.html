@@ -143,6 +143,37 @@
     .plat-h.twitch { color: var(--twitch); }
     .plat-h.youtube { color: var(--youtube); }
     .plat-h.manual { color: var(--manual); }
+    .job-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 10px;
+      align-items: baseline;
+      margin: 4px 0;
+      text-align: left;
+    }
+    .job-row .job {
+      text-align: right;
+      color: var(--muted);
+      font-size: calc(var(--name-size) - 2px);
+      letter-spacing: var(--track);
+      text-shadow: var(--shadow);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .job-row .who {
+      text-align: left;
+      font-size: var(--name-size);
+      letter-spacing: var(--track);
+      text-shadow: var(--shadow);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .job-row .dots {
+      border-bottom: 1px dotted rgba(243,226,176,0.35);
+      height: 0.7em;
+    }
   </style>
 </head>
 <body>
@@ -241,15 +272,43 @@
     }
 
     function rosterKey(r) {
-      return (r.chatters || []).map((c) => c.platform + ":" + c.username).join("|");
+      const jobs = (r.chatters || []).map((c) => c.job || "").join(",");
+      return (r.style || "") + "~" + jobs + "~" + (r.chatters || []).map((c) => c.platform + ":" + c.username).join("|");
     }
 
     function themeKey(t) {
       return [
         t.title, t.subtitle, t.footer, t.section_label, t.columns, t.sort,
         t.group_by_platform, t.show_platform, t.show_message_count, t.highlight_mods,
-        t.name_size_px, t.title_size_px, t.font_family,
+        t.name_size_px, t.title_size_px, t.font_family, t.style_id, t.style,
       ].join("~");
+    }
+
+    function jobRow(row) {
+      const hl = theme.highlight_mods !== false && row.is_mod;
+      return `<div class="job-row">
+        <div class="job">${esc(row.job || "")}</div>
+        <div class="dots"></div>
+        <div class="who${hl ? " mod" : ""}">${esc(row.display_name || row.username)}</div>
+      </div>`;
+    }
+
+    function renderMovie(cast, cols) {
+      if (!cast) return "";
+      let html = "";
+      for (const g of cast.groups || []) {
+        if (!(g.chatters || []).length) continue;
+        html += `<div class="section">${esc(g.title || g.id)}</div>${grid(g.chatters, cols)}`;
+      }
+      for (const d of cast.departments || []) {
+        if (!(d.rows || []).length) continue;
+        html += `<div class="section">${esc(d.title)}</div>${d.rows.map(jobRow).join("")}`;
+      }
+      const extra = (cast.overflow && cast.overflow.chatters) || [];
+      if (extra.length) {
+        html += `<div class="section">${esc((cast.overflow && cast.overflow.title) || "Additional Voices")}</div>${grid(extra, cols)}`;
+      }
+      return html;
     }
 
     function renderNames() {
@@ -261,10 +320,13 @@
       const label = theme.section_label || "Chatters";
       const group = !!theme.group_by_platform;
       const chatters = roster.chatters || [];
+      const movie = (roster.style || theme.style) === "movie" && roster.cast;
 
       let body = "";
       if (!chatters.length) {
         body = `<div class="empty">Waiting for chat</div>`;
+      } else if (movie) {
+        body = renderMovie(roster.cast, cols);
       } else if (group) {
         const buckets = {};
         for (const c of chatters) {

@@ -357,6 +357,32 @@ class StreamCore:
                 text = f"@{event.user.display_name or event.user.username}: no points account yet — chat a bit first!"
             else:
                 text = f"@{event.user.display_name or event.user.username}: you have {bal} points"
+        elif special == "credit_set":
+            if not self.credits.enabled:
+                text = "Credits are off."
+            else:
+                from core.models import PermissionLevel
+                need = (self.credits.command_permission or "mod").lower()
+                if need == "public":
+                    ok = True
+                elif need == "mod":
+                    ok = self.perms.has_permission(event.user, PermissionLevel.MOD) or event.user.is_mod
+                else:
+                    ok = self.perms.has_permission(event.user, PermissionLevel.ADMIN)
+                if not ok:
+                    text = "Only mods / admins can set credits."
+                else:
+                    text = self.credits.apply_credit_command(
+                        event.message,
+                        event.platform.value,
+                        event.user.username,
+                    )
+                    if self.state.ws_manager:
+                        await self.state.ws_manager.broadcast(
+                            {"type": "credits_roster", "data": self.credits.snapshot()}
+                        )
+        elif special == "credits_count":
+            text = f"Credits roster: {len(self.credits.chatters)} unique chatters"
         elif special == "help":
             names = sorted({
                 c.name for c in self.router.commands.values()
@@ -603,6 +629,14 @@ class StreamCore:
                 log.exception("alert WS broadcast failed")
         tag = "TEST" if payload.get("is_test") else payload.get("kind")
         log.info("[alert/%s] %s", tag, payload.get("headline"))
+        try:
+            self.credits.note_alert(
+                payload.get("kind") or "",
+                payload.get("platform") or "",
+                payload.get("username") or "",
+            )
+        except Exception:
+            log.exception("credits alert tag failed")
 
     async def _alert_from_paid_chat(self, event: ChatEvent) -> None:
         """Turn Super Chat / bits into an overlay alert (same pipeline as tests)."""

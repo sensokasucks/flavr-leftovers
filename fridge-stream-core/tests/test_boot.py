@@ -252,5 +252,29 @@ class CreditsEngineTests(unittest.TestCase):
         self.assertIn("/api/credits/theme", html)
 
 
+class CastBoardTests(unittest.TestCase):
+    def test_job_cap_and_quotes(self):
+        from core.cast import clamp_job, parse_quoted_args
+        self.assertEqual(len(clamp_job("x" * 80)), 50)
+        parts = parse_quoted_args('!credit "bob" clear')
+        self.assertIn("bob", parts)
+        self.assertIn("clear", parts)
+
+    def test_pin_survives_decorate(self):
+        from core.cast import CastBoard
+        with tempfile.TemporaryDirectory() as tmp:
+            board = CastBoard(Path(tmp), allow_alert_groups=True)
+            board.set_style("movie")
+            board.pin("kick", "bob", "Gaffer")
+            snap = board.decorate({
+                "chatters": [{
+                    "platform": "kick", "username": "bob", "display_name": "Bob",
+                    "messages": 3, "is_mod": True, "is_subscriber": False, "is_vip": False,
+                }]
+            }, started_at=1)
+            self.assertEqual(snap["style"], "movie")
+            self.assertEqual(snap["chatters"][0].get("job"), "Gaffer")
+
+
 if __name__ == "__main__":
     unittest.main()

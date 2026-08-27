@@ -26,7 +26,8 @@ from adapters.kick import KickAdapter
 from adapters.stream_core import StreamCoreIngest
 from adapters.twitch import TwitchAdapter
 from adapters.youtube import YouTubeAdapter
-from api.server import AppState, create_app, load_theme, roster_payload
+from api.server import AppState, create_app, load_theme
+from core.cast import CastBoard, roster_payload
 from core.config import load_config
 from core.event_bus import EventBus
 from core.models import ChatEvent, ChatUser, Platform
@@ -61,7 +62,12 @@ class ChatCredits:
         self.state.roster = self.roster
         self.state.root = ROOT
         self.state.bus = self.bus
+        self.cast = CastBoard(ROOT, allow_alert_groups=False)
+        self.cast.set_style((config.get("credits") or {}).get("style_id") or "names")
+        self.state.cast = self.cast
         load_theme(self.state)
+        self.state.theme["style_id"] = self.cast.style_id
+        self.state.theme["style"] = self.cast.get_style().get("style") or "names"
         if os.environ.get("CREDITS_DEMO") == "1":
             # Preview pane is not a transparent compositor — use a solid stage.
             if (self.state.theme.get("background") or "transparent") == "transparent":

@@ -1599,6 +1599,20 @@
       fillCreditsTheme(data.theme);
       creditsPlay = data.play || creditsPlay;
       renderCreditsRoster(data.roster);
+      const cast = data.cast || {};
+      const sel = $("crd-style");
+      if (sel) {
+        sel.innerHTML = (cast.styles || []).map((s) =>
+          `<option value="${escapeHtml(s.id)}" ${s.id === cast.style_id ? "selected" : ""}>${escapeHtml(s.label)}</option>`
+        ).join("");
+      }
+      if ($("crd-cmd-perm")) $("crd-cmd-perm").value = cast.command_permission || "mod";
+      const pins = $("crd-pins");
+      if (pins) {
+        pins.innerHTML = (cast.overrides || []).map((p) =>
+          `${escapeHtml(p.platform)}:${escapeHtml(p.username)} — ${escapeHtml(p.job)}`
+        ).join("<br>") || "No pins";
+      }
       const iframe = $("crd-preview");
       if (iframe) iframe.src = "/overlay/credits.html?t=" + Date.now();
     } catch (e) {
@@ -1666,6 +1680,50 @@
         body: JSON.stringify({
           username: $("crd-seed-name").value,
           platform: $("crd-seed-plat").value,
+        }),
+      });
+      initCreditsTab(true);
+    };
+  }
+  if ($("crd-style-save")) {
+    $("crd-style-save").onclick = async () => {
+      try {
+        await api("/api/admin/credits/cast/style", {
+          method: "PUT",
+          body: JSON.stringify({ style_id: $("crd-style").value }),
+        });
+        await api("/api/admin/credits/command-permission", {
+          method: "PUT",
+          body: JSON.stringify({ command_permission: $("crd-cmd-perm").value }),
+        });
+        $("crd-style-status").textContent = "Saved";
+        initCreditsTab(true);
+      } catch (e) {
+        $("crd-style-status").textContent = String(e.message || e);
+      }
+    };
+  }
+  if ($("crd-pin")) {
+    $("crd-pin").onclick = async () => {
+      await api("/api/admin/credits/cast/pin", {
+        method: "POST",
+        body: JSON.stringify({
+          username: $("crd-pin-name").value,
+          platform: $("crd-pin-plat").value,
+          job: $("crd-pin-job").value,
+        }),
+      });
+      initCreditsTab(true);
+    };
+  }
+  if ($("crd-unpin")) {
+    $("crd-unpin").onclick = async () => {
+      await api("/api/admin/credits/cast/pin", {
+        method: "POST",
+        body: JSON.stringify({
+          username: $("crd-pin-name").value,
+          platform: $("crd-pin-plat").value,
+          clear: true,
         }),
       });
       initCreditsTab(true);

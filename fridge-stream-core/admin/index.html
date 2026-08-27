@@ -183,6 +183,40 @@
           </div>
         </fieldset>
         <fieldset class="cfg-card">
+          <legend>Movie style</legend>
+          <p class="hint">Copy <code>config/cast/movie.json</code> to add styles. Job titles max 50 characters. Raid / follow / gift blocks are Core-only.</p>
+          <label>Style
+            <select id="crd-style"></select>
+          </label>
+          <label>Who can use !credit
+            <select id="crd-cmd-perm">
+              <option value="mod">Mods + admins</option>
+              <option value="admin">Admins only</option>
+              <option value="public">Anyone in chat</option>
+            </select>
+          </label>
+          <div class="form-row" style="margin-top:8px; gap:8px">
+            <button class="primary" id="crd-style-save" type="button">Save style</button>
+            <span id="crd-style-status" class="muted"></span>
+          </div>
+          <label>Pin name <input id="crd-pin-name" type="text" placeholder="username or kick:user" /></label>
+          <div class="row2">
+            <label>Platform
+              <select id="crd-pin-plat">
+                <option value="twitch">twitch</option>
+                <option value="kick">kick</option>
+                <option value="youtube">youtube</option>
+              </select>
+            </label>
+            <label>Job <input id="crd-pin-job" type="text" maxlength="50" /></label>
+          </div>
+          <div class="form-row" style="gap:8px">
+            <button id="crd-pin" type="button">Pin</button>
+            <button id="crd-unpin" type="button">Clear pin</button>
+          </div>
+          <div id="crd-pins" class="muted"></div>
+        </fieldset>
+        <fieldset class="cfg-card">
           <legend>Test name</legend>
           <div class="row2">
             <label>Username <input id="crd-seed-name" type="text" placeholder="viewer" /></label>

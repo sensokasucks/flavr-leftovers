@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -948,6 +948,14 @@ def create_admin_router(core_state) -> APIRouter:
             "play": eng.public_play(),
             "roster": eng.snapshot(),
             "overlay": "/overlay/credits.html",
+            "cast": {
+                "styles": eng.cast.list_styles(),
+                "style_id": eng.cast.style_id,
+                "style": eng.cast.get_style(),
+                "overrides": list(eng.cast.overrides.values()),
+                "command_permission": eng.command_permission,
+                "job_max": 50,
+            },
         }
 
     @router.put("/credits/enabled")
@@ -1027,5 +1035,70 @@ def create_admin_router(core_state) -> APIRouter:
         eng.ingest(event, force=True)
         await _credits_broadcast(eng)
         return {"ok": True, "count": len(eng.chatters)}
+
+    @router.put("/credits/cast/style")
+    async def credits_cast_style(
+        body: Dict[str, Any] = Body(default={}),
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        sid = eng.cast.set_style(str(body.get("style_id") or body.get("id") or "names"))
+        eng.theme["style_id"] = sid
+        eng.theme["style"] = eng.cast.get_style().get("style") or "names"
+        _persist_credits_look(eng)
+        await _credits_broadcast(eng)
+        return {"ok": True, "style_id": sid, "style": eng.cast.get_style()}
+
+    @router.put("/credits/cast/file")
+    async def credits_cast_file(
+        body: Dict[str, Any] = Body(default={}),
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        try:
+            saved = eng.cast.save_style(body)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        return {"ok": True, "style": saved, "styles": eng.cast.list_styles()}
+
+    @router.post("/credits/cast/pin")
+    async def credits_cast_pin(
+        body: Dict[str, Any] = Body(default={}),
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        name = str(body.get("username") or "").strip().lstrip("@")
+        plat = str(body.get("platform") or "twitch").lower()
+        if body.get("clear") or str(body.get("job") or "").lower() == "clear":
+            eng.cast.unpin(plat, name)
+        else:
+            try:
+                eng.cast.pin(plat, name, body.get("job") or "", set_by="admin")
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+        await _credits_broadcast(eng)
+        return {"ok": True, "overrides": list(eng.cast.overrides.values())}
+
+    @router.put("/credits/command-permission")
+    async def credits_cmd_perm(
+        body: Dict[str, Any] = Body(default={}),
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        perm = str(body.get("command_permission") or "mod").lower()
+        if perm not in ("public", "mod", "admin"):
+            perm = "mod"
+        eng.command_permission = perm
+        cfg = getattr(core_state, "config", None) or load_config()
+        section = dict(cfg.get("credits") or {})
+        section["command_permission"] = perm
+        cfg["credits"] = section
+        core_state.config = cfg
+        save_config(cfg)
+        return {"ok": True, "command_permission": perm}
 
     return router
