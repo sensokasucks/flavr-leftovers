@@ -6,6 +6,8 @@ It listens to the platforms you enable, keeps **one unique row per chatter per p
 
 Nothing here talks to Minecraft, Factorio, or Stream Core unless you opt in. The process is one Python asyncio loop + a tiny JSON session file.
 
+**Non-tech install (Windows):** follow **[INSTALL.md](INSTALL.md)** — install Python once (pip is included; you never run pip yourself), then double-click **INSTALL Chat Credits.bat**. You do **not** need Stream Core.
+
 ```
 Twitch IRC ─┐
 Kick Pusher─┤
@@ -24,20 +26,28 @@ Core ingest─┘                                      ─► / control desk
 
 Typical idle cost is a few tens of MB of RAM for the Python process.
 
-## Quick start
+## Quick start (Windows)
+
+1. Install [Python 3.10+](https://www.python.org/downloads/) and tick **Add python.exe to PATH**.
+2. From the workshop folder, double-click **`INSTALL Chat Credits.bat`** (once).
+3. Double-click **`START Chat Credits.bat`** whenever you stream.
+4. Open [http://127.0.0.1:3854/](http://127.0.0.1:3854/) — enable Twitch / Kick, Save config, restart once.
+5. Webpage source: `http://127.0.0.1:3854/overlay/credits.html` (transparent).
+
+Full click-by-click: **[INSTALL.md](INSTALL.md)**.
+
+Inside this folder you can also use `install.bat` / `start.bat`.
+
+### Manual / macOS / Linux
 
 ```bash
 cd fridge-chat-credits
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-.venv\Scripts\activate
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-
-# edit config/config.yaml — enable twitch / kick / youtube / ingest
+# edit config/config.yaml — or use the control-desk Config section
 python main.py
 ```
-
-On Windows you can also double-click `start.bat`.
 
 ### URLs
 
@@ -55,10 +65,7 @@ If you already run Stream Core, you can skip this standalone app and use **Admin
 Use a **transparent** Webpage source, full canvas or a centered column.
 
 The overlay crawls with a pixel `requestAnimationFrame` loop (not CSS
-`@keyframes`). CEF in XSplit/OBS was dropping the CSS animation: an inline
-`animation: none` reset was overriding `animation-name`, and `translateY(100%)`
-is a percentage of the *reel*, not the viewport, so the roll never actually
-moved. Speed is `credits.speed_px_per_sec` in real pixels.
+`@keyframes`). Speed is `credits.speed_px_per_sec` in real pixels.
 
 **Roll credits** freezes the unique list and restarts the crawl from below the
 frame. New chatters in live mode are appended without jumping the roll back to
@@ -178,7 +185,9 @@ Bound to `127.0.0.1` by default.
 fridge-chat-credits/
 ├── main.py
 ├── requirements.txt
-├── start.bat
+├── INSTALL.md         # click-by-click for non-tech users
+├── install.bat        # one-time Windows install
+├── start.bat          # start while streaming
 ├── config/config.yaml
 ├── core/          models, bus, roster, config
 ├── adapters/      twitch, kick, youtube, stream_core

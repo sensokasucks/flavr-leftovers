@@ -10,8 +10,22 @@ Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources 
 |--------------|--------------|
 | **INSTALL Stream Core.bat** | One-time: Python venv + packages + optional setup wizard |
 | **START Stream Core.bat** | Starts the chat backbone (leave the window open while streaming) |
+| **INSTALL Chat Credits.bat** | One-time: Python venv + packages for the **standalone** credits app (does not need Stream Core) |
+| **START Chat Credits.bat** | Starts the unique-chatter credits roll (leave the window open while streaming) |
 
-Admin hub after start: [http://127.0.0.1:3850/admin/](http://127.0.0.1:3850/admin/)
+Chat Credits click-by-click: **[fridge-chat-credits/INSTALL.md](fridge-chat-credits/INSTALL.md)**  
+You install Python from python.org (tick **Add to PATH**). Pip is included — you never install pip yourself.
+
+Admin hub after Stream Core start: [http://127.0.0.1:3850/admin/](http://127.0.0.1:3850/admin/)  
+Chat Credits control desk: [http://127.0.0.1:3854/](http://127.0.0.1:3854/)
+
+If Stream Core is already running, you can skip standalone credits and use **Admin → Credits** instead.
+
+## Changelog
+
+Full release notes for Stream Core (and related workshop changes):
+
+→ **[fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md)**
 
 ## Projects
 

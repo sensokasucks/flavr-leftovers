@@ -7,6 +7,45 @@ Dates are when the work landed in this tree.
 
 ---
 
+## [0.13.1] — 2026-08-27
+
+### Fixed
+
+- Admin Credits API was missing the movie-cast fields and write routes, so the Credits tab could not load styles, pin jobs, or change `!credit` permission after 0.13.0.
+  - `GET /api/admin/credits` now includes `cast` (styles, current style, pins, `command_permission`, job cap).
+  - Added `PUT /credits/cast/style`, `PUT /credits/cast/file`, `POST /credits/cast/pin`, `PUT /credits/command-permission`.
+
+---
+
+## [0.13.0] — 2026-08-26
+
+Movie-style end credits on top of the 0.12 unique-chatter roll. Same day as 0.12.x.
+
+### Added
+
+- **Cast styles** in `config/cast/*.json` (shipped style: `movie.json`). Copy that file to add another look. Styles are `names` (plain roster) or `movie` (departments + jobs).
+- **Persistent job pins** in `data/cast_overrides.json` — survive session reset and roll.
+- **Groups** from the style file: mods, subs, starring (top talkers). Core also tags raiders / followers / gifted-subs from the alert bus.
+- Chat commands (group `credits`, binds to `credits.enabled`):
+  - `!credit "name" "job title"` — pin a job (aliases `!job`, `!cast`).
+  - `!credit "name" clear` — unpin.
+  - `!credits` — unique chatter count.
+- `credits.command_permission`: `mod` (default), `admin`, or `public`.
+- Job titles capped at **50** characters.
+- Command group `credits` in `config.yaml` / admin Config (hot-reload with the rest of the groups).
+- Same movie-cast module lives in standalone **fridge-chat-credits** (`core/cast.py` + control desk), so the :3854 app can use the same styles without Core.
+
+### Changed
+
+- Credits overlay uses a pixel `requestAnimationFrame` crawl (`credits.speed_px_per_sec`) so XSplit/OBS CEF actually scrolls (CSS `@keyframes` + `translateY(%)` did not).
+- Admin → Credits can pick a cast style and show pinned jobs.
+
+### Docs
+
+- Root workshop README links here: [fridge-stream-core/CHANGELOG.md](CHANGELOG.md).
+
+---
+
 ## [0.12.1] — 2026-08-26
 
 ### Added
