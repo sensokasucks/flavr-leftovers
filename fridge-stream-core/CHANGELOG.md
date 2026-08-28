@@ -7,6 +7,72 @@ Dates are when the work landed in this tree.
 
 ---
 
+## [0.16.0] — 2026-08-28
+
+Workshop snapshot: Fridge Market wired into Minecraft + Factorio, plus **Granvir** as a new game slot.
+
+### Added
+
+- **Granvir** stats package (`fridge-granvir-stats`) + Core game slot (`games/granvir.py`).
+  - BepInEx plugin serves HTTP **:3855** (`GET /stats`, health, overlay pages).
+  - Host-only writes (co-op safe). `mock/mock_server.py` for overlay work without the game.
+  - Overlays: health, heat, campaign, squad, combined.
+  - Config: `granvir.enabled` (default off) + `granvir.bridge_url` (`http://127.0.0.1:3855`).
+
+- **Minecraft × Fridge Market**
+  - Chat Dynamo RF = stream power × average `price/base` of configured tickers (default `STEVE`, `FRG`), clamped in Admin → Market.
+  - New blocks: `fridge_minecraft:dividend_vault` (eats TRE / RF) and `fridge_minecraft:dividend_chest` (hopper-fed, burns smeltables for furnace XP).
+  - Core polls the server mod (`GET /api/market`) and pays pro-rata dividends to `market_holdings` via `store.pay_dividend`.
+  - Admin tab **Market**: dynamo symbols / clamp, vault + chest rates, grant shares, test payout, live pending RF/XP.
+  - Knobs live in `minecraft.market.*` (hot-saved from the tab; Config tab no longer wipes them).
+
+### Design
+
+- **Fridge Market** — points stock book for chat, game-priced listings, admin events.
+  - Spec: [docs/MARKET.md](docs/MARKET.md). Trading commands / admin tab still later.
+  - Separate from OpenTTD Chat Fund (`!invest` stays a one-way cash injection).
+  - Per-game streamer company, death dip, dividend vault, shared `game.signal` catalog.
+  - Optional per-trigger cooldowns (`cooldown_sec` + `cooldown_scope`) so spawn-camps cannot floor a ticker.
+
+### Added
+
+- Factorio **Power Vault** + **Item Vault** flush work to `POST /api/market/dividend`.
+  - Power work (MJ) pays `PWR` holders; item counts pay `FACT` holders.
+  - Chat Dynamo output is `power_level × (PWR price / PWR base)` (clamped 0.25–3×).
+  - Holdings table `market_holdings` + pro-rata `store.pay_dividend` (dust burned if nobody is invested).
+- Market **preview tape** (`core/market.py`) ticks seed listings for overlays.
+- Overlays: `/overlay/market.html` (ticker), `/overlay/market-board.html`, `/overlay/market-chart.html`.
+- Public API: `GET /api/market/state`, `GET /api/market/history`, `POST /api/market/signal` (cooldown-aware).
+
+---
+
+## [0.15.0] — 2026-08-27
+
+### Added
+
+- **OpenTTD game slot** (`games/openttd.py`) — Admin Port client (vanilla + JGRPP).
+  - Opt-in `openttd.enabled`; default port 3977.
+  - Commands (group `openttd`): `!companies` / `!tickers`, `!quote`, `!invest`, `!ottdfund`, `!ottdsay`, `!ottdpause` / `!ottdunpause`.
+  - Chat Fund ledger in SQLite; points debit via Core store.
+  - Overlays: `/overlay/openttd.html`, `/overlay/openttd-ticker.html`, `GET /api/openttd/state`.
+  - Game Script **FridgeChatFund** (`gamescripts/FridgeChatFund`) applies `ChangeBankBalance` from Admin Port JSON.
+  - Does **not** use vanilla/JGR 25% share slots (removed on trunk; exploit-prone on JGR).
+  - Docs: `games/OPENTTD.md`.
+
+---
+
+## [0.14.0] — 2026-08-27
+
+### Added
+
+- **Factorio Chat Dynamo** — same stream power source as Minecraft’s Chat Dynamo.
+  - Stream Core already computes `power_level` 0–15 from viewers / CPM / commands.
+  - `games/factorio.py` now POSTs that snapshot to the Factorio bridge `POST /api/metrics`.
+  - Fridge Factorio Stats 1.1.0 adds the `fridge-chat-dynamo` electric-energy-interface. Output scales 0 → startup max MW (default 6 MW at level 15).
+  - Bridge RCON command: `/fridge-power <0-15>`. Craft the dynamo or `/fridge-give-dynamo`.
+
+---
+
 ## [0.13.1] — 2026-08-27
 
 ### Fixed
