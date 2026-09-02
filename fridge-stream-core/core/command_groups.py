@@ -50,7 +50,7 @@ DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
         "enabled": True,
         "always": False,
         "bind": "credits",
-        "description": "End credits (!credit / !credits)",
+        "description": "End credits (!credit / !credits / !credits roll)",
     },
 }
 

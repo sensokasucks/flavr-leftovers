@@ -98,10 +98,18 @@ credits:
   sort: "first_seen"            # first_seen | name | messages | last_seen
   columns: 2
   speed_px_per_sec: 42
+  duration_sec: 0               # 0 = use speed; else crawl lasts this many seconds
+  letterbox: true
+  grain: true
+  vignette: true
   gap_after_loop_sec: 2.5
   mode: "loop"                  # loop | once | hold
   show_platform: true
   highlight_mods: true
+  highlight_vips: true
+  announce_roll: true
+  style_id: "movie"             # movie (Studio) | names
+  command_permission: "mod"     # mod | admin | public  — who can !credit / !credits roll
   background: "transparent"
 
 # Command groups. Toggle in Admin → Config without restarting Core.

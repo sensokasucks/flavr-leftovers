@@ -152,6 +152,7 @@
           <label>Title <input id="crd-title" type="text" /></label>
           <label>Subtitle <input id="crd-subtitle" type="text" /></label>
           <label>Footer <input id="crd-footer" type="text" /></label>
+          <label>Section label <input id="crd-section" type="text" /></label>
           <div class="row2">
             <label>Columns
               <select id="crd-columns"><option>1</option><option>2</option><option>3</option></select>
@@ -167,8 +168,14 @@
           </div>
           <div class="row2">
             <label>Speed (px/s) <input id="crd-speed" type="number" min="10" max="200" /></label>
-            <label>Name size <input id="crd-namesize" type="number" min="12" max="48" /></label>
+            <label>Target time (sec) <input id="crd-duration" type="number" min="0" max="600" /></label>
           </div>
+          <div class="row2">
+            <label>Name size <input id="crd-namesize" type="number" min="12" max="48" /></label>
+            <label>Title size <input id="crd-titlesize" type="number" min="24" max="96" /></label>
+          </div>
+          <label>Font family <input id="crd-font" type="text" /></label>
+          <label>Custom font URL <input id="crd-fonturl" type="text" placeholder="https://…stylesheet.css" /></label>
           <div class="row2">
             <label>Title color <input id="crd-titlecolor" type="text" /></label>
             <label>Name color <input id="crd-namecolor" type="text" /></label>
@@ -177,6 +184,11 @@
           <label class="check"><input type="checkbox" id="crd-dots" /> Platform dots</label>
           <label class="check"><input type="checkbox" id="crd-counts" /> Message counts</label>
           <label class="check"><input type="checkbox" id="crd-mods" /> Highlight mods</label>
+          <label class="check"><input type="checkbox" id="crd-vips" /> Highlight VIPs</label>
+          <label class="check"><input type="checkbox" id="crd-letterbox" /> Letterbox</label>
+          <label class="check"><input type="checkbox" id="crd-grain" /> Film grain</label>
+          <label class="check"><input type="checkbox" id="crd-vignette" /> Vignette</label>
+          <label class="check"><input type="checkbox" id="crd-announce" /> Chat-announce when rolling</label>
           <div class="form-row" style="margin-top:10px">
             <button class="primary" id="crd-save-look" type="button">Save look</button>
             <span id="crd-look-status" class="muted"></span>
@@ -184,20 +196,67 @@
         </fieldset>
         <fieldset class="cfg-card">
           <legend>Movie style</legend>
-          <p class="hint">Copy <code>config/cast/movie.json</code> to add styles. Job titles max 50 characters. Raid / follow / gift blocks are Core-only.</p>
+          <p class="hint">Copy <code>config/cast/movie.json</code> to add styles. Job titles max 50 characters. Raid / follow / gift / host / cheer blocks are Core-only. Raiders and follows join the roll even if they never typed.</p>
           <label>Style
             <select id="crd-style"></select>
           </label>
-          <label>Who can use !credit
+          <label>Who can use !credit / !credits roll
             <select id="crd-cmd-perm">
               <option value="mod">Mods + admins</option>
               <option value="admin">Admins only</option>
               <option value="public">Anyone in chat</option>
             </select>
           </label>
+          <p class="hint">Chat commands (when credits are enabled): <code>!credit "name" "job"</code> · <code>!credits me</code> · <code>!credits who "name"</code> · <code>!credits roll</code> / <code>once</code> / <code>live</code> / <code>pause</code></p>
           <div class="form-row" style="margin-top:8px; gap:8px">
-            <button class="primary" id="crd-style-save" type="button">Save style</button>
+            <button class="primary" id="crd-style-save" type="button">Use this style</button>
             <span id="crd-style-status" class="muted"></span>
+          </div>
+          <div id="movie-editor">
+            <label>Studio <input id="mv-studio" type="text" maxlength="80" /></label>
+            <label>MPAA line <input id="mv-mpaa" type="text" maxlength="80" /></label>
+            <label>Location line <input id="mv-location" type="text" maxlength="120" /></label>
+            <label>Overflow heading <input id="mv-overflow" type="text" maxlength="80" /></label>
+            <div class="row2">
+              <label>Starring count <input id="mv-top" type="number" min="0" max="30" /></label>
+              <label>Card hold (sec) <input id="mv-card-hold" type="number" min="0.5" max="12" step="0.1" /></label>
+            </div>
+            <div class="row2">
+              <label>End hold (sec) <input id="mv-end-hold" type="number" min="0" max="20" step="0.1" /></label>
+              <label>Stinger hold (sec) <input id="mv-stinger-hold" type="number" min="0.5" max="12" step="0.1" /></label>
+            </div>
+            <label class="check"><input type="checkbox" id="mv-assoc" /> “In association with” card</label>
+            <p class="hint">Opening cards</p>
+            <label class="check"><input type="checkbox" id="mv-open-mpaa" /> MPAA bumper</label>
+            <label class="check"><input type="checkbox" id="mv-open-studio" /> Studio production</label>
+            <label class="check"><input type="checkbox" id="mv-open-title" /> Title</label>
+            <label class="check"><input type="checkbox" id="mv-open-assoc" /> Association / location</label>
+            <label class="check"><input type="checkbox" id="mv-open-dir" /> Directed by (pinned job)</label>
+            <div class="row2">
+              <label>Job match <input id="mv-dir-match" type="text" maxlength="50" /></label>
+              <label>Card label <input id="mv-dir-label" type="text" maxlength="50" /></label>
+            </div>
+            <label class="check"><input type="checkbox" id="mv-open-write" /> Written by (pinned job)</label>
+            <div class="row2">
+              <label>Job match <input id="mv-write-match" type="text" maxlength="50" /></label>
+              <label>Card label <input id="mv-write-label" type="text" maxlength="50" /></label>
+            </div>
+            <label class="check"><input type="checkbox" id="mv-open-star" /> Starring card</label>
+            <label class="check"><input type="checkbox" id="mv-open-runtime" /> Runtime card (“A 4 hour production”)</label>
+            <label>Legal (one line each, {year} {studio} {duration} {count} ok) <textarea id="mv-legal" rows="5"></textarea></label>
+            <p class="hint">Stinger</p>
+            <label class="check"><input type="checkbox" id="mv-stinger-on" /> Show stinger</label>
+            <label>Kicker <input id="mv-stinger-kicker" type="text" maxlength="80" /></label>
+            <label>Line <input id="mv-stinger-line" type="text" maxlength="80" /></label>
+            <p class="hint">Departments — jobs one per line. Raid / follow / gift / host / cheer groups stay Core-only.</p>
+            <div id="mv-depts"></div>
+            <button type="button" id="mv-add-dept">Add department</button>
+            <p class="hint">Name groups</p>
+            <div id="mv-groups"></div>
+            <div class="form-row" style="margin-top:10px">
+              <button class="primary" id="btn-movie-save" type="button">Save movie style</button>
+              <span id="mv-save-status" class="muted"></span>
+            </div>
           </div>
           <label>Pin name <input id="crd-pin-name" type="text" placeholder="username or kick:user" /></label>
           <div class="row2">
@@ -229,6 +288,7 @@
             </label>
           </div>
           <button id="crd-seed" type="button">Add to roll</button>
+          <p class="hint" style="margin-top:8px"><a id="crd-csv" href="/api/admin/credits/roster.csv">Download roster CSV</a></p>
         </fieldset>
       </div>
       <div>

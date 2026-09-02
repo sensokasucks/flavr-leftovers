@@ -7,6 +7,8 @@ Protected by a simple shared token from config (points.admin_token).
 
 from __future__ import annotations
 
+import csv
+import io
 import logging
 from typing import Any, Dict, Optional
 
@@ -955,6 +957,7 @@ def create_admin_router(core_state) -> APIRouter:
                 "overrides": list(eng.cast.overrides.values()),
                 "command_permission": eng.command_permission,
                 "job_max": 50,
+                "allow_alert_groups": True,
             },
         }
 
@@ -1061,6 +1064,7 @@ def create_admin_router(core_state) -> APIRouter:
             saved = eng.cast.save_style(body)
         except ValueError as e:
             raise HTTPException(400, str(e))
+        await _credits_broadcast(eng)
         return {"ok": True, "style": saved, "styles": eng.cast.list_styles()}
 
     @router.post("/credits/cast/pin")
@@ -1100,5 +1104,36 @@ def create_admin_router(core_state) -> APIRouter:
         core_state.config = cfg
         save_config(cfg)
         return {"ok": True, "command_permission": perm}
+
+    @router.get("/credits/roster.csv")
+    async def credits_csv(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        eng = _credits()
+        snap = eng.snapshot()
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["platform", "username", "display_name", "messages", "first_seen", "mod", "vip", "sub", "job", "origin", "alert_note"])
+        job_map = {}
+        for c in snap.get("chatters") or []:
+            job_map[f"{c.get('platform')}:{c.get('username')}"] = c.get("job") or ""
+        for c in snap.get("chatters") or []:
+            writer.writerow([
+                c.get("platform"),
+                c.get("username"),
+                c.get("display_name"),
+                c.get("messages"),
+                c.get("first_seen"),
+                int(bool(c.get("is_mod"))),
+                int(bool(c.get("is_vip"))),
+                int(bool(c.get("is_subscriber"))),
+                c.get("job") or job_map.get(f"{c.get('platform')}:{c.get('username')}", ""),
+                c.get("origin") or "chat",
+                c.get("alert_note") or "",
+            ])
+        return Response(
+            content=buf.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": "attachment; filename=credits-roster.csv"},
+        )
 
     return router

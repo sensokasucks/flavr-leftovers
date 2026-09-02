@@ -41,11 +41,17 @@ LOOK_DEFAULTS: dict[str, Any] = {
     "sort": "first_seen",
     "columns": 2,
     "speed_px_per_sec": 42,
+    "duration_sec": 0,
+    "letterbox": True,
+    "grain": True,
+    "vignette": True,
     "gap_after_loop_sec": 2.5,
     "mode": "loop",
     "show_platform": True,
     "show_message_count": False,
     "highlight_mods": True,
+    "highlight_vips": True,
+    "announce_roll": True,
     "font_family": '"Palatino Linotype", Palatino, "Times New Roman", Georgia, serif',
     "title_size_px": 54,
     "name_size_px": 22,
@@ -60,7 +66,7 @@ LOOK_DEFAULTS: dict[str, Any] = {
     "row_gap_px": 10,
     "max_width_px": 920,
     "custom_font_url": "",
-    "style_id": "names",
+    "style_id": "movie",
     "command_permission": "mod",
 }
 
@@ -77,6 +83,8 @@ class Chatter:
     is_mod: bool = False
     is_vip: bool = False
     is_subscriber: bool = False
+    origin: str = "chat"
+    alert_note: str = ""
 
     @property
     def key(self) -> str:
@@ -89,8 +97,8 @@ class Chatter:
     def from_dict(cls, data: dict[str, Any]) -> "Chatter":
         return cls(
             platform=str(data.get("platform") or ""),
-            username=str(data.get("username") or ""),
-            display_name=str(data.get("display_name") or data.get("username") or ""),
+            username=str(data.get("username") or "").lstrip("@").strip().lower(),
+            display_name=str(data.get("display_name") or data.get("username") or "").lstrip("@").strip(),
             first_seen=float(data.get("first_seen") or 0),
             last_seen=float(data.get("last_seen") or 0),
             messages=int(data.get("messages") or 1),
@@ -98,6 +106,8 @@ class Chatter:
             is_mod=bool(data.get("is_mod")),
             is_vip=bool(data.get("is_vip")),
             is_subscriber=bool(data.get("is_subscriber")),
+            origin=str(data.get("origin") or "chat"),
+            alert_note=str(data.get("alert_note") or ""),
         )
 
 
@@ -142,7 +152,7 @@ class CreditsEngine:
         self.theme = {**LOOK_DEFAULTS, **look}
         perm = str(cfg.get("command_permission") or "mod").lower()
         self.command_permission = perm if perm in ("public", "mod", "admin") else "mod"
-        sid = str(self.theme.get("style_id") or cfg.get("style_id") or "names")
+        sid = str(self.theme.get("style_id") or cfg.get("style_id") or "movie")
         self.cast.set_style(sid)
         self.theme["style_id"] = self.cast.style_id
         self.theme["style"] = self.cast.get_style().get("style") or "names"
@@ -159,6 +169,7 @@ class CreditsEngine:
             log.exception("credits session unreadable")
             return
         self.started_at = float(data.get("started_at") or self.started_at)
+        self.cast.load_tags(data)
         for item in data.get("chatters") or []:
             try:
                 c = Chatter.from_dict(item)
@@ -174,6 +185,7 @@ class CreditsEngine:
             "saved_at": time.time(),
             "chatters": [c.to_dict() for c in self.chatters.values()],
         }
+        payload.update(self.cast.dump_tags())
         tmp = self.session_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         tmp.replace(self.session_path)
@@ -230,6 +242,7 @@ class CreditsEngine:
         self.started_at = time.time()
         self.play["frozen_roster"] = None
         self.play["freeze"] = False
+        self.cast.load_tags({"tags": {}, "alert_notes": {}})
         self._dirty = True
         self.save()
 
@@ -260,7 +273,7 @@ class CreditsEngine:
             "enabled": self.enabled,
             "chatters": [c.to_dict() for c in items],
         }
-        return self.cast.decorate(snap, self.started_at)
+        return self.cast.decorate(snap, self.started_at, title=self.theme.get("title") or "")
 
     def public_play(self) -> dict:
         return {k: v for k, v in self.play.items() if k != "frozen_roster"}
@@ -290,8 +303,135 @@ class CreditsEngine:
             self.theme[k] = v
         return self.theme
 
-    def note_alert(self, kind: str, platform: str, username: str) -> None:
-        self.cast.tag_alert(kind, platform, username)
+    def note_alert(self, kind: str, platform: str, username: str, extra: Optional[dict] = None) -> Optional[Chatter]:
+        return self.ingest_alert(kind, platform, username, extra=extra)
+
+    def ingest_alert(
+        self,
+        kind: str,
+        platform: str,
+        username: str,
+        display_name: str = "",
+        extra: Optional[dict] = None,
+    ) -> Optional[Chatter]:
+        """Raiders / follows / gifts join the roll even if they never typed."""
+        if not self.enabled:
+            return None
+        extra = extra or {}
+        user = (username or "").lstrip("@").strip().lower()
+        if not user or user in self.ignore:
+            return None
+        plat = (platform or extra.get("platform") or "twitch").lower()
+        if plat not in ("twitch", "kick", "youtube", "manual"):
+            plat = "twitch"
+        name = (display_name or extra.get("display_name") or username or user).lstrip("@").strip() or user
+        self.cast.tag_alert(kind, plat, user, extra=extra)
+        from core.cast import alert_note as _note
+        note = _note(kind, extra)
+        now = time.time()
+        key = f"{plat}:{user}"
+        existing = self.chatters.get(key)
+        sub_kinds = ("subscribe", "resub", "gift")
+        if existing:
+            existing.last_seen = now
+            if name:
+                existing.display_name = name
+            if (kind or "").lower() in sub_kinds:
+                existing.is_subscriber = True
+            if note:
+                existing.alert_note = note
+            self._dirty = True
+            return existing
+        chatter = Chatter(
+            platform=plat,
+            username=user,
+            display_name=name,
+            first_seen=now,
+            last_seen=now,
+            messages=0,
+            is_subscriber=(kind or "").lower() in sub_kinds,
+            origin="alert",
+            alert_note=note,
+        )
+        self.chatters[key] = chatter
+        self._dirty = True
+        log.info("Credits alert [%s/%s] %s", kind, plat, name)
+        return chatter
+
+    def job_for(self, platform: str, username: str) -> Optional[str]:
+        uname = (username or "").lstrip("@").strip().lower()
+        plat = (platform or "").lower()
+        ov = self.cast.find_override(plat, uname)
+        if ov and ov.get("job"):
+            return str(ov["job"])
+        snap = self.snapshot()
+        def match(row: dict) -> bool:
+            if str(row.get("username") or "").lower() != uname:
+                return False
+            return (not plat) or str(row.get("platform") or "") == plat
+        cast = snap.get("cast") or {}
+        for dept in cast.get("departments") or []:
+            for row in dept.get("rows") or []:
+                if match(row) and row.get("job"):
+                    return str(row["job"])
+        for row in cast.get("thanks") or []:
+            if match(row) and row.get("job"):
+                return str(row["job"])
+        for c in snap.get("chatters") or []:
+            if match(c) and c.get("job"):
+                return str(c["job"])
+        return None
+
+    def handle_credits_chat(self, raw: str, *, username: str, platform: str) -> tuple[str, Optional[dict], bool]:
+        """Parse !credits … → (reply, optional play payload, needs_mod)."""
+        bits = (raw or "").split()
+        cmd = bits[0].lstrip("!").lower() if bits else ""
+        rest = (raw or "").split(None, 1)[1] if len(bits) > 1 else ""
+        tokens = rest.split()
+        sub = tokens[0].lower() if tokens else ""
+        if cmd in ("rollcredits", "endcredits"):
+            sub = "roll"
+        quoted = parse_quoted_args(rest)
+        n = len(self.chatters)
+        if sub in ("", "count", "roster"):
+            return f"Credits roster: {n} unique chatter{'s' if n != 1 else ''}", None, False
+        if sub in ("me",):
+            if f"{platform}:{username.lower()}" not in self.chatters:
+                return "You're not on the credits roll yet — say hi in chat!", None, False
+            job = self.job_for(platform, username)
+            if job:
+                return f"You're in the credits as {job}.", None, False
+            return "You're in the credits (no pinned job yet).", None, False
+        if sub == "who":
+            ident = quoted[0] if quoted else (tokens[1] if len(tokens) > 1 else "")
+            plat, user = parse_identity(ident, platform)
+            if not user:
+                return 'Usage: !credits who "name"', None, False
+            job = self.job_for(plat, user)
+            if job:
+                return f"{user} is credited as {job}.", None, False
+            return f"{user} has no pinned job.", None, False
+        if sub in ("roll", "go"):
+            return f"Rolling credits — {n} unique chatters.", {
+                "playing": True, "mode": "loop", "freeze": True, "restart": True,
+            }, True
+        if sub == "once":
+            return f"Credits playing once — {n} unique chatters.", {
+                "playing": True, "mode": "once", "freeze": True, "restart": True,
+            }, True
+        if sub == "live":
+            return "Credits list is live again.", {"freeze": False, "playing": True}, True
+        if sub == "hold":
+            return "Credits holding.", {"mode": "hold", "playing": True}, True
+        if sub == "pause":
+            return "Credits paused.", {"playing": False}, True
+        if sub == "play":
+            return "Credits playing.", {"playing": True}, True
+        return (
+            'Usage: !credits  ·  !credits me  ·  !credits who "name"  ·  !credits roll',
+            None,
+            False,
+        )
 
     def apply_credit_command(self, raw_message: str, default_platform: str, set_by: str) -> str:
         # strip command token

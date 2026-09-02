@@ -21,6 +21,7 @@
       --twitch: #bf94ff;
       --youtube: #ff6b6b;
       --manual: #9ad0ff;
+      --letterbox: 0px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body {
@@ -36,8 +37,6 @@
       width: 100%; height: 100%;
       overflow: hidden;
     }
-    /* Pixel crawl via JS — CSS keyframes cannot target a dynamic reel height
-       (and inline animation:none was swallowing animation-name in CEF/OBS). */
     #reel {
       position: absolute;
       top: 0;
@@ -73,9 +72,9 @@
       opacity: 0.7;
     }
     .section {
-      margin: 8px 0 22px;
+      margin: 36px 0 18px;
       font-size: calc(var(--name-size) - 4px);
-      letter-spacing: 0.28em;
+      letter-spacing: 0.32em;
       text-transform: uppercase;
       color: var(--muted);
       text-shadow: var(--shadow);
@@ -98,6 +97,15 @@
       padding: 0 6px;
     }
     .name.mod { color: var(--mod); }
+    .name.vip { color: var(--mod); opacity: 0.92; }
+    .name .note {
+      display: block;
+      font-size: calc(var(--name-size) - 7px);
+      color: var(--muted);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
     .dot {
       display: inline-block;
       width: 0.55em;
@@ -120,7 +128,7 @@
       margin-top: 48px;
       font-size: calc(var(--name-size) + 6px);
       color: var(--title-color);
-      letter-spacing: 0.12em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
       text-shadow: var(--shadow);
     }
@@ -155,7 +163,8 @@
       text-align: right;
       color: var(--muted);
       font-size: calc(var(--name-size) - 2px);
-      letter-spacing: var(--track);
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
       text-shadow: var(--shadow);
       overflow: hidden;
       text-overflow: ellipsis;
@@ -174,11 +183,145 @@
       border-bottom: 1px dotted rgba(243,226,176,0.35);
       height: 0.7em;
     }
+    .crew-cols {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      column-gap: 40px;
+      row-gap: 4px;
+    }
+    .crew-cols .job-row {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 12px;
+    }
+    .crew-cols .dots { display: none; }
+    .billing {
+      margin: 18px 0 8px;
+    }
+    .billing .bill-role {
+      font-size: calc(var(--name-size) - 4px);
+      letter-spacing: 0.38em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .billing .bill-name {
+      font-size: calc(var(--name-size) + 10px);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--title-color);
+      text-shadow: var(--shadow);
+    }
+    .legal {
+      margin-top: 56px;
+      color: var(--muted);
+      letter-spacing: 0.08em;
+      font-size: calc(var(--name-size) - 6px);
+      line-height: 1.7;
+      text-transform: uppercase;
+    }
+    .legal div { margin: 4px 0; }
+    #cards, #stinger {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      z-index: 4;
+      padding: 10vh 8vw;
+      pointer-events: none;
+      background: #000;
+    }
+    #cards.hidden, #stinger.hidden { display: none; }
+    #reel.parked {
+      opacity: 0;
+      visibility: hidden;
+    }
+    .card-kicker {
+      font-size: calc(var(--name-size) - 2px);
+      letter-spacing: 0.42em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 16px;
+      text-shadow: var(--shadow);
+    }
+    .card-line {
+      font-size: calc(var(--title-size) * 0.62);
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--title-color);
+      text-shadow: var(--shadow);
+      max-width: 18ch;
+      line-height: 1.2;
+    }
+    .card-line.small {
+      font-size: calc(var(--name-size) + 4px);
+      max-width: min(90vw, 28em);
+      letter-spacing: 0.18em;
+    }
+    .mpaa-box {
+      border: 2px solid var(--title-color);
+      padding: 14px 22px;
+      letter-spacing: 0.22em;
+      text-transform: uppercase;
+      color: var(--title-color);
+      font-size: calc(var(--name-size) - 2px);
+    }
+    .lb {
+      position: absolute;
+      left: 0; right: 0;
+      height: var(--letterbox);
+      background: #000;
+      z-index: 6;
+      pointer-events: none;
+      display: none;
+    }
+    body.letterbox .lb { display: block; }
+    #lb-top { top: 0; }
+    #lb-bot { bottom: 0; }
+    #vignette {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+      box-shadow: inset 0 0 140px 50px rgba(0,0,0,0.72);
+    }
+    body.vignette #vignette { display: block; }
+    #grain {
+      position: absolute; inset: -20%;
+      pointer-events: none;
+      z-index: 5;
+      display: none;
+      opacity: 0.07;
+      mix-blend-mode: overlay;
+      background-image:
+        repeating-radial-gradient(circle at 12% 18%, #fff 0 0.6px, transparent 0.7px 4px),
+        repeating-linear-gradient(90deg, rgba(255,255,255,0.15) 0 1px, transparent 1px 3px);
+      animation: grain 0.45s steps(2) infinite;
+    }
+    body.grain #grain { display: block; }
+    @keyframes grain {
+      0% { transform: translate(0,0); }
+      100% { transform: translate(-1.4%, 1.1%); }
+    }
   </style>
 </head>
 <body>
   <div id="stage">
     <div id="reel"></div>
+    <div id="cards" class="hidden">
+      <div class="card-kicker" id="card-kicker"></div>
+      <div class="card-line" id="card-line"></div>
+    </div>
+    <div id="stinger" class="hidden">
+      <div class="card-kicker" id="stinger-kicker"></div>
+      <div class="card-line" id="stinger-line"></div>
+    </div>
+    <div id="vignette"></div>
+    <div id="grain"></div>
+    <div class="lb" id="lb-top"></div>
+    <div class="lb" id="lb-bot"></div>
   </div>
   <script>
     const PLATFORM_ORDER = ["twitch", "kick", "youtube", "manual"];
@@ -202,6 +345,10 @@
       gapUntil: 0,
       generation: -1,
       started: false,
+      phase: "crawl",
+      cardIndex: 0,
+      cardUntil: 0,
+      endUntil: 0,
     };
 
     function num(v, fallback) {
@@ -219,6 +366,16 @@
         else out[k] = v;
       }
       return out;
+    }
+
+    function movieLook() {
+      const look = (roster.cast && roster.cast.look) || {};
+      const movie = (roster.style || theme.style) === "movie";
+      return {
+        letterbox: theme.letterbox != null ? !!theme.letterbox : !!(movie && look.letterbox),
+        grain: theme.grain != null ? !!theme.grain : !!(movie && look.grain),
+        vignette: theme.vignette != null ? !!theme.vignette : !!(movie && look.vignette),
+      };
     }
 
     function applyTheme(t) {
@@ -239,6 +396,11 @@
       const bg = theme.background || "transparent";
       document.body.style.background = bg;
       document.body.classList.toggle("solid", bg !== "transparent");
+      const look = movieLook();
+      document.body.classList.toggle("letterbox", look.letterbox);
+      document.body.classList.toggle("grain", look.grain);
+      document.body.classList.toggle("vignette", look.vignette);
+      r.setProperty("--letterbox", look.letterbox ? "7.5vh" : "0px");
       if (theme.custom_font_url) {
         let link = document.getElementById("custom-font");
         if (!link) {
@@ -253,18 +415,28 @@
 
     function esc(s) {
       return String(s || "")
-        .replace(/&/g, "&").replace(/</g, "<").replace(/>/g, ">");
+        .replace(/&/g, "&" + "amp;")
+        .replace(/</g, "&" + "lt;")
+        .replace(/>/g, "&" + "gt;");
+    }
+
+    function prettyName(c) {
+      return String((c && (c.display_name || c.username)) || "").replace(/^@+/, "");
     }
 
     function nameCell(c) {
       const showPlat = theme.show_platform !== false;
       const showCount = !!theme.show_message_count;
-      const hl = theme.highlight_mods !== false && c.is_mod;
+      const hl = (theme.highlight_mods !== false && c.is_mod)
+        || (theme.highlight_vips && c.is_vip);
       const dot = showPlat
         ? `<span class="dot ${esc(c.platform)}"></span>`
         : "";
       const count = showCount ? `<span class="count">${c.messages || 1}</span>` : "";
-      return `<div class="name${hl ? " mod" : ""}">${dot}${esc(c.display_name || c.username)}${count}</div>`;
+      const note = (c.alert_note || c.credit_note)
+        ? `<span class="note">${esc(c.alert_note || c.credit_note)}</span>`
+        : "";
+      return `<div class="name${hl ? " mod" : ""}">${dot}${esc(prettyName(c))}${count}${note}</div>`;
     }
 
     function grid(list, cols) {
@@ -273,14 +445,17 @@
 
     function rosterKey(r) {
       const jobs = (r.chatters || []).map((c) => c.job || "").join(",");
-      return (r.style || "") + "~" + jobs + "~" + (r.chatters || []).map((c) => c.platform + ":" + c.username).join("|");
+      const cards = ((r.cast && r.cast.cards) || []).map((c) => c.line).join(",");
+      return (r.style || "") + "~" + jobs + "~" + cards + "~" + (r.chatters || []).map((c) => c.platform + ":" + c.username).join("|");
     }
 
     function themeKey(t) {
       return [
         t.title, t.subtitle, t.footer, t.section_label, t.columns, t.sort,
         t.group_by_platform, t.show_platform, t.show_message_count, t.highlight_mods,
+        t.highlight_vips,
         t.name_size_px, t.title_size_px, t.font_family, t.style_id, t.style,
+        t.letterbox, t.grain, t.vignette, t.duration_sec,
       ].join("~");
     }
 
@@ -289,24 +464,43 @@
       return `<div class="job-row">
         <div class="job">${esc(row.job || "")}</div>
         <div class="dots"></div>
-        <div class="who${hl ? " mod" : ""}">${esc(row.display_name || row.username)}</div>
+        <div class="who${hl ? " mod" : ""}">${esc(prettyName(row))}</div>
       </div>`;
+    }
+
+    function crewBlock(rows) {
+      if (rows.length >= 4) {
+        return `<div class="crew-cols">${rows.map(jobRow).join("")}</div>`;
+      }
+      return rows.map(jobRow).join("");
     }
 
     function renderMovie(cast, cols) {
       if (!cast) return "";
       let html = "";
+      const starring = (cast.starring || []).slice(1);
+      if (starring.length) {
+        html += starring.map((c) =>
+          `<div class="billing"><div class="bill-role">${esc(c.billing || "")}</div><div class="bill-name">${esc(prettyName(c))}</div></div>`
+        ).join("");
+      }
+      for (const d of cast.departments || []) {
+        if (!(d.rows || []).length) continue;
+        html += `<div class="section">${esc(d.title)}</div>${crewBlock(d.rows)}`;
+      }
       for (const g of cast.groups || []) {
         if (!(g.chatters || []).length) continue;
         html += `<div class="section">${esc(g.title || g.id)}</div>${grid(g.chatters, cols)}`;
       }
-      for (const d of cast.departments || []) {
-        if (!(d.rows || []).length) continue;
-        html += `<div class="section">${esc(d.title)}</div>${d.rows.map(jobRow).join("")}`;
-      }
       const extra = (cast.overflow && cast.overflow.chatters) || [];
       if (extra.length) {
         html += `<div class="section">${esc((cast.overflow && cast.overflow.title) || "Additional Voices")}</div>${grid(extra, cols)}`;
+      }
+      if ((cast.thanks || []).length) {
+        html += `<div class="section">Special Thanks</div>${crewBlock(cast.thanks)}`;
+      }
+      if ((cast.legal || []).length) {
+        html += `<div class="legal">${cast.legal.map((ln) => `<div>${esc(ln)}</div>`).join("")}</div>`;
       }
       return html;
     }
@@ -346,25 +540,81 @@
         body = `<div class="section">${esc(label)}</div>${grid(chatters, cols)}`;
       }
 
+      const showTitle = !movie;
       reel.innerHTML = `
-        <div class="title">${esc(title)}</div>
-        ${subtitle ? `<div class="subtitle">${esc(subtitle)}</div>` : ""}
-        <div class="rule"></div>
+        ${showTitle ? `<div class="title">${esc(title)}</div>` : ""}
+        ${showTitle && subtitle ? `<div class="subtitle">${esc(subtitle)}</div>` : ""}
+        ${showTitle ? `<div class="rule"></div>` : ""}
         ${body}
         ${footer ? `<div class="footer">${esc(footer)}</div>` : ""}
       `;
+    }
+
+    function cards() {
+      return (roster.cast && roster.cast.cards) || [];
+    }
+
+    function parkReel(on) {
+      document.getElementById("reel").classList.toggle("parked", !!on);
+    }
+
+    function beginCrawl() {
+      hideCards();
+      document.getElementById("stinger").classList.add("hidden");
+      parkReel(false);
+      crawl.phase = "crawl";
+      resetToStart();
+    }
+
+    function showCard(card) {
+      parkReel(true);
+      const wrap = document.getElementById("cards");
+      const kicker = document.getElementById("card-kicker");
+      const line = document.getElementById("card-line");
+      wrap.classList.remove("hidden");
+      document.getElementById("stinger").classList.add("hidden");
+      if (!card) {
+        wrap.classList.add("hidden");
+        return;
+      }
+      kicker.textContent = card.kicker || "";
+      kicker.style.display = card.kicker ? "" : "none";
+      if (card.type === "mpaa") {
+        line.className = "mpaa-box";
+        line.textContent = card.line || "";
+      } else {
+        const small = card.type === "association" || card.type === "location" || card.type === "studio" || card.type === "runtime";
+        line.className = "card-line" + (small ? " small" : "");
+        line.textContent = card.line || "";
+      }
+    }
+
+    function hideCards() {
+      document.getElementById("cards").classList.add("hidden");
+    }
+
+    function showStinger() {
+      const st = roster.cast && roster.cast.stinger;
+      if (!st) return false;
+      parkReel(true);
+      document.getElementById("stinger-kicker").textContent = st.kicker || "";
+      document.getElementById("stinger-line").textContent = st.line || "";
+      document.getElementById("stinger").classList.remove("hidden");
+      hideCards();
+      return true;
     }
 
     function metrics() {
       const stage = document.getElementById("stage");
       const reel = document.getElementById("reel");
       const stageH = stage.clientHeight || window.innerHeight || 720;
+      const lb = movieLook().letterbox ? stageH * 0.075 : 0;
       const height = reel.scrollHeight || 0;
       return {
         stageH,
         height,
-        startY: stageH,
-        endY: -height,
+        startY: stageH - lb,
+        endY: -height + lb,
       };
     }
 
@@ -404,12 +654,78 @@
       applyY(crawl.y);
     }
 
+    function cardHoldTotal() {
+      return cards().reduce((n, c) => n + num(c.hold_sec, 2.8), 0);
+    }
+
+    function startCards(ts) {
+      const list = cards();
+      crawl.phase = "cards";
+      crawl.cardIndex = 0;
+      crawl.lastTs = 0;
+      if (!list.length) {
+        beginCrawl();
+        return;
+      }
+      parkReel(true);
+      resetToStart();
+      showCard(list[0]);
+      crawl.cardUntil = ts + num(list[0].hold_sec, 2.8) * 1000;
+    }
+
     function tick(ts) {
       if (!crawl.running) return;
       crawl.raf = requestAnimationFrame(tick);
 
       const mode = play.mode || theme.mode || "loop";
       if (play.playing === false || mode === "hold") {
+        return;
+      }
+
+      if (crawl.phase === "cards") {
+        const list = cards();
+        if (!list.length) {
+          beginCrawl();
+        } else if (ts >= crawl.cardUntil) {
+          crawl.cardIndex += 1;
+          if (crawl.cardIndex >= list.length) {
+            beginCrawl();
+          } else {
+            const card = list[crawl.cardIndex];
+            showCard(card);
+            crawl.cardUntil = ts + num(card.hold_sec, 2.8) * 1000;
+          }
+        }
+        return;
+      }
+
+      if (crawl.phase === "end") {
+        if (ts >= crawl.endUntil) {
+          if (showStinger()) {
+            crawl.phase = "stinger";
+            const hold = num((roster.cast && roster.cast.stinger && roster.cast.stinger.hold_sec), 4);
+            crawl.endUntil = ts + hold * 1000;
+          } else if (mode === "once") {
+            play.mode = "hold";
+            stopRaf();
+          } else {
+            document.getElementById("stinger").classList.add("hidden");
+            startCards(ts);
+          }
+        }
+        return;
+      }
+
+      if (crawl.phase === "stinger") {
+        if (ts >= crawl.endUntil) {
+          if (mode === "once") {
+            play.mode = "hold";
+            stopRaf();
+          } else {
+            document.getElementById("stinger").classList.add("hidden");
+            startCards(ts);
+          }
+        }
         return;
       }
 
@@ -422,22 +738,37 @@
       const dt = Math.min(0.05, (ts - crawl.lastTs) / 1000);
       crawl.lastTs = ts;
 
-      const speed = Math.max(8, num(theme.speed_px_per_sec, 42));
-      crawl.y -= speed * dt;
       syncMetrics();
+      const travel = Math.max(1, crawl.startY - crawl.endY);
+      const target = num(theme.duration_sec, 0);
+      const extra = cardHoldTotal() + num(roster.cast && roster.cast.end_hold_sec, 0);
+      const crawlBudget = target > 0 ? Math.max(6, target - extra) : 0;
+      const speed = crawlBudget > 0
+        ? Math.max(8, travel / crawlBudget)
+        : Math.max(8, num(theme.speed_px_per_sec, 42));
+      crawl.y -= speed * dt;
 
       if (crawl.y <= crawl.endY) {
-        if (mode === "once") {
+        const endHold = num(roster.cast && roster.cast.end_hold_sec, 0);
+        if (mode === "once" || endHold > 0) {
           crawl.y = holdY();
           applyY(crawl.y);
-          play.mode = "hold";
-          stopRaf();
+          crawl.phase = "end";
+          crawl.endUntil = ts + Math.max(0.4, endHold) * 1000;
+          if (mode === "once" && endHold <= 0) {
+            play.mode = "hold";
+            stopRaf();
+          }
           return;
         }
         const gap = Math.max(0, num(theme.gap_after_loop_sec, 2.5));
         crawl.y = crawl.startY;
         crawl.lastTs = 0;
         if (gap > 0) crawl.gapUntil = ts + gap * 1000;
+        if (cards().length) {
+          startCards(ts);
+          return;
+        }
       }
 
       applyY(crawl.y);
@@ -449,16 +780,27 @@
 
       if (play.playing === false || mode === "hold") {
         stopRaf();
+        hideCards();
+        document.getElementById("stinger").classList.add("hidden");
+        parkReel(false);
         crawl.y = holdY();
         applyY(crawl.y);
         crawl.started = true;
+        crawl.phase = "crawl";
         return;
       }
 
       if (opts && opts.reset || !crawl.started) {
-        resetToStart();
         crawl.started = true;
+        if (cards().length) {
+          startCards(performance.now());
+        } else {
+          beginCrawl();
+        }
+      } else if (crawl.phase === "cards" || crawl.phase === "end" || crawl.phase === "stinger") {
+        // Opening cards / end hold — don't yank the reel.
       } else {
+        parkReel(false);
         if (crawl.y > crawl.startY) crawl.y = crawl.startY;
         if (crawl.y < crawl.endY) crawl.y = crawl.startY;
         applyY(crawl.y);
@@ -472,6 +814,7 @@
     }
 
     function paint(opts) {
+      applyTheme(theme);
       const rk = rosterKey(roster);
       const tk = themeKey(theme);
       const namesChanged = rk !== lastRosterKey || tk !== lastThemeKey;

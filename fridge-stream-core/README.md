@@ -88,7 +88,7 @@ http://127.0.0.1:3850/admin/
 - Download full chat history as CSV (all or per user) when logging is on
 - **Integrations tab** — test chat commands (dry-run or live) and per-game features without going live in chat; Minecraft sub-panel for health, metrics push, overlay preview; modular for future games
 - **Alert test tab** — fire follow / sub / raid / Super Chat without a live event; paste Streamlabs / StreamElements CSS; pick Classic / Card / Custom CSS only
-- **Credits tab** — enable the built-in unique-chatter roll, restyle it, freeze/roll at stream end (hot-applied, uses Core chat adapters)
+- **Credits tab** — enable the built-in Studio roll (same overlay as standalone Chat Credits). Raids / follows / gifts / hosts / cheers join the list even if they never typed. Chat: `!credit "name" "job"` and `!credits roll`. Hot-applied, uses Core chat adapters.
 - **Config tab** — simple GUI for `config.yaml` + `commands.json`
   - Everyday settings on the main form; advanced metrics / YouTube / chatroom id behind an accordion
   - **Command groups** — enable/disable whole sets; optional bind to Minecraft / points; hot-applied

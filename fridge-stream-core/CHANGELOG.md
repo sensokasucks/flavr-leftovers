@@ -7,6 +7,33 @@ Dates are when the work landed in this tree.
 
 ---
 
+## [0.18.0] — 2026-09-02
+
+### Added
+
+- Core credits now match the standalone Studio roll by default (`style_id: movie`, letterbox / grain / vignette).
+- Alerts join the credits: raids, follows, gifts, hosts, cheers, resubs appear even if they never typed. Raid viewer counts / bits / gift qty show under the name.
+- Chat commands: `!credits` (count) · `!credits me` · `!credits who "name"` · `!credits roll` / `once` / `live` / `pause` (mod-gated, same permission as `!credit`).
+- Legal placeholders `{duration}` `{count}` plus an optional runtime opening card.
+- Admin Credits tab: VIP highlight, font / title size, custom font URL, roster CSV, extra Core groups (hosts / cheers / VIPs).
+
+### Changed
+
+- Default movie style label is **Studio**. Subscribe alerts are no longer dumped into Gifted Subs.
+
+---
+
+## [0.17.0] — 2026-09-01
+
+### Added
+
+- Movie credits sequence: opening hold cards → crawl → legal → end hold → stinger.
+- Style JSON fields: `studio`, `mpaa`, `opening`, `legal`, `stinger`, `letterbox`, `grain`, `vignette`.
+- Overlay letterbox / film grain / vignette (CSS only) + target duration still times the crawl.
+- Raid / follow / gifted group blocks remain Core-only.
+
+---
+
 ## [0.16.0] — 2026-08-28
 
 Workshop snapshot: Fridge Market wired into Minecraft + Factorio, plus **Granvir** as a new game slot.

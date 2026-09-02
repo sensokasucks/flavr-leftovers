@@ -213,6 +213,36 @@ class StreamCore:
             "count": len(self.credits.chatters),
         }
 
+    def _credits_perm(self, event, *, need: str | None = None) -> bool:
+        from core.models import PermissionLevel
+        gate = (need or self.credits.command_permission or "mod").lower()
+        if gate == "public":
+            return True
+        if gate == "mod":
+            return self.perms.has_permission(event.user, PermissionLevel.MOD) or event.user.is_mod
+        return self.perms.has_permission(event.user, PermissionLevel.ADMIN)
+
+    async def _credits_chat_command(self, event) -> str:
+        if not self.credits.enabled:
+            return "Credits are off."
+        reply, play, needs_mod = self.credits.handle_credits_chat(
+            event.message,
+            username=event.user.username,
+            platform=event.platform.value,
+        )
+        if needs_mod and not self._credits_perm(event):
+            return "Only mods / admins can control the credits roll."
+        if play:
+            self.credits.set_play(play)
+            if self.state.ws_manager:
+                await self.state.ws_manager.broadcast(
+                    {"type": "credits_play", "data": self.credits.public_play()}
+                )
+                await self.state.ws_manager.broadcast(
+                    {"type": "credits_roster", "data": self.credits.snapshot()}
+                )
+        return reply
+
     async def _credits_persist_loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -360,29 +390,20 @@ class StreamCore:
         elif special == "credit_set":
             if not self.credits.enabled:
                 text = "Credits are off."
+            elif not self._credits_perm(event):
+                text = "Only mods / admins can set credits."
             else:
-                from core.models import PermissionLevel
-                need = (self.credits.command_permission or "mod").lower()
-                if need == "public":
-                    ok = True
-                elif need == "mod":
-                    ok = self.perms.has_permission(event.user, PermissionLevel.MOD) or event.user.is_mod
-                else:
-                    ok = self.perms.has_permission(event.user, PermissionLevel.ADMIN)
-                if not ok:
-                    text = "Only mods / admins can set credits."
-                else:
-                    text = self.credits.apply_credit_command(
-                        event.message,
-                        event.platform.value,
-                        event.user.username,
+                text = self.credits.apply_credit_command(
+                    event.message,
+                    event.platform.value,
+                    event.user.username,
+                )
+                if self.state.ws_manager:
+                    await self.state.ws_manager.broadcast(
+                        {"type": "credits_roster", "data": self.credits.snapshot()}
                     )
-                    if self.state.ws_manager:
-                        await self.state.ws_manager.broadcast(
-                            {"type": "credits_roster", "data": self.credits.snapshot()}
-                        )
-        elif special == "credits_count":
-            text = f"Credits roster: {len(self.credits.chatters)} unique chatters"
+        elif special in ("credits_count", "credits_roll"):
+            text = await self._credits_chat_command(event)
         elif special == "help":
             names = sorted({
                 c.name for c in self.router.commands.values()
@@ -630,11 +651,17 @@ class StreamCore:
         tag = "TEST" if payload.get("is_test") else payload.get("kind")
         log.info("[alert/%s] %s", tag, payload.get("headline"))
         try:
-            self.credits.note_alert(
+            added = self.credits.ingest_alert(
                 payload.get("kind") or "",
                 payload.get("platform") or "",
                 payload.get("username") or "",
+                display_name=payload.get("display_name") or payload.get("username") or "",
+                extra=payload,
             )
+            if added and self.state.ws_manager:
+                await self.state.ws_manager.broadcast(
+                    {"type": "credits_roster", "data": self.credits.snapshot()}
+                )
         except Exception:
             log.exception("credits alert tag failed")
 

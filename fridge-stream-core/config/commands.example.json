@@ -22,14 +22,15 @@
     "examples": ["!credit \"bob\" \"Gaffer\"", "!credit \"kick:bob\" clear"]
   },
   "credits": {
-    "aliases": ["roster"],
+    "aliases": ["roster", "rollcredits"],
     "permission": "public",
-    "description": "How many unique chatters are on the credits roll",
+    "description": "Credits roster, your job, or roll the overlay. Usage: !credits  ·  !credits me  ·  !credits who \"name\"  ·  !credits roll",
     "args": [],
     "group": "credits",
     "handler": "core",
     "special": "credits_count",
-    "cost": 0
+    "cost": 0,
+    "examples": ["!credits", "!credits me", "!credits who \"bob\"", "!credits roll"]
   },
   "help": {
     "aliases": ["commands"],

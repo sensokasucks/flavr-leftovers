@@ -250,15 +250,22 @@ class CreditsEngineTests(unittest.TestCase):
         html = (ROOT / "overlay" / "credits.html").read_text(encoding="utf-8")
         self.assertIn("requestAnimationFrame", html)
         self.assertIn("/api/credits/theme", html)
+        self.assertIn("card-kicker", html)
+        self.assertIn("letterbox", html)
 
 
 class CastBoardTests(unittest.TestCase):
     def test_job_cap_and_quotes(self):
         from core.cast import clamp_job, parse_quoted_args
+        from core.models import ChatUser, Platform, strip_handle
         self.assertEqual(len(clamp_job("x" * 80)), 50)
         parts = parse_quoted_args('!credit "bob" clear')
         self.assertIn("bob", parts)
         self.assertIn("clear", parts)
+        self.assertEqual(strip_handle("@Lo-FiLynx"), "Lo-FiLynx")
+        user = ChatUser(platform=Platform.YOUTUBE, id="1", username="@FooBar", display_name="@FooBar")
+        self.assertEqual(user.username, "foobar")
+        self.assertEqual(user.display_name, "FooBar")
 
     def test_pin_survives_decorate(self):
         from core.cast import CastBoard
@@ -274,6 +281,60 @@ class CastBoardTests(unittest.TestCase):
             }, started_at=1)
             self.assertEqual(snap["style"], "movie")
             self.assertEqual(snap["chatters"][0].get("job"), "Gaffer")
+            self.assertTrue(snap["cast"]["cards"])
+            self.assertTrue(snap["cast"]["legal"])
+
+    def test_core_only_raid_group(self):
+        from core.cast import CastBoard
+        with tempfile.TemporaryDirectory() as tmp:
+            board = CastBoard(Path(tmp), allow_alert_groups=False)
+            board.set_style("movie")
+            board.tag_alert("raid", "kick", "raid")
+            snap = board.decorate({
+                "by_platform": {"kick": 1},
+                "chatters": [{
+                    "platform": "kick", "username": "raid", "display_name": "Raid",
+                    "messages": 1, "is_mod": False, "is_subscriber": False, "is_vip": False,
+                }],
+            }, started_at=1)
+            sources = [g["source"] for g in (snap["cast"] or {}).get("groups") or []]
+            self.assertNotIn("raiders", sources)
+
+    def test_raid_auto_joins_and_legal_placeholders(self):
+        from core.credits import CreditsEngine
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "config" / "cast").mkdir(parents=True)
+            eng = CreditsEngine({"credits": {"enabled": True, "style_id": "movie"}}, root)
+            added = eng.ingest_alert("raid", "kick", "raiderbob", extra={"viewers": 42})
+            self.assertIsNotNone(added)
+            self.assertEqual(added.alert_note, "with 42")
+            snap = eng.snapshot()
+            sources = [g["source"] for g in (snap["cast"] or {}).get("groups") or []]
+            self.assertIn("raiders", sources)
+            legal = " ".join((snap["cast"] or {}).get("legal") or [])
+            self.assertIn("speaking roles", legal)
+
+    def test_credits_chat_roll_is_gated(self):
+        from core.credits import CreditsEngine
+        with tempfile.TemporaryDirectory() as tmp:
+            eng = CreditsEngine({"credits": {"enabled": True}}, Path(tmp))
+            reply, play, need_mod = eng.handle_credits_chat(
+                "!credits", username="bob", platform="kick"
+            )
+            self.assertIn("roster", reply.lower())
+            self.assertFalse(need_mod)
+            reply, play, need_mod = eng.handle_credits_chat(
+                "!credits roll", username="bob", platform="kick"
+            )
+            self.assertTrue(need_mod)
+            self.assertTrue(play and play.get("restart"))
+            reply, play, need_mod = eng.handle_credits_chat(
+                "!rollcredits", username="bob", platform="kick"
+            )
+            self.assertTrue(need_mod)
+            me, _, _ = eng.handle_credits_chat("!credits me", username="nobody", platform="kick")
+            self.assertIn("not on the credits", me.lower())
 
 
 if __name__ == "__main__":

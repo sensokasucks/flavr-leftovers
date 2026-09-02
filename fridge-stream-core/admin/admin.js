@@ -1536,16 +1536,26 @@
     if ($("crd-title")) $("crd-title").value = t.title || "";
     if ($("crd-subtitle")) $("crd-subtitle").value = t.subtitle || "";
     if ($("crd-footer")) $("crd-footer").value = t.footer || "";
+    if ($("crd-section")) $("crd-section").value = t.section_label || "";
     if ($("crd-columns")) $("crd-columns").value = String(t.columns || 2);
     if ($("crd-sort")) $("crd-sort").value = t.sort || "first_seen";
     if ($("crd-speed")) $("crd-speed").value = t.speed_px_per_sec ?? 42;
+    if ($("crd-duration")) $("crd-duration").value = t.duration_sec ?? 0;
     if ($("crd-namesize")) $("crd-namesize").value = t.name_size_px ?? 22;
+    if ($("crd-titlesize")) $("crd-titlesize").value = t.title_size_px ?? 54;
+    if ($("crd-font")) $("crd-font").value = t.font_family || "";
+    if ($("crd-fonturl")) $("crd-fonturl").value = t.custom_font_url || "";
     if ($("crd-titlecolor")) $("crd-titlecolor").value = t.title_color || "#f3e2b0";
     if ($("crd-namecolor")) $("crd-namecolor").value = t.name_color || "#f4f0e6";
     if ($("crd-group")) $("crd-group").checked = !!t.group_by_platform;
     if ($("crd-dots")) $("crd-dots").checked = t.show_platform !== false;
     if ($("crd-counts")) $("crd-counts").checked = !!t.show_message_count;
     if ($("crd-mods")) $("crd-mods").checked = t.highlight_mods !== false;
+    if ($("crd-vips")) $("crd-vips").checked = t.highlight_vips !== false;
+    if ($("crd-letterbox")) $("crd-letterbox").checked = !!t.letterbox;
+    if ($("crd-grain")) $("crd-grain").checked = !!t.grain;
+    if ($("crd-vignette")) $("crd-vignette").checked = !!t.vignette;
+    if ($("crd-announce")) $("crd-announce").checked = t.announce_roll !== false;
   }
 
   function collectCreditsTheme() {
@@ -1553,17 +1563,169 @@
       title: $("crd-title").value,
       subtitle: $("crd-subtitle").value,
       footer: $("crd-footer").value,
+      section_label: $("crd-section") ? $("crd-section").value : "",
       columns: Number($("crd-columns").value) || 2,
       sort: $("crd-sort").value,
       speed_px_per_sec: Number($("crd-speed").value) || 42,
+      duration_sec: Number($("crd-duration") && $("crd-duration").value) || 0,
       name_size_px: Number($("crd-namesize").value) || 22,
+      title_size_px: $("crd-titlesize") ? Number($("crd-titlesize").value) || 54 : 54,
+      font_family: $("crd-font") ? $("crd-font").value : undefined,
+      custom_font_url: $("crd-fonturl") ? $("crd-fonturl").value : "",
       title_color: $("crd-titlecolor").value,
       name_color: $("crd-namecolor").value,
       group_by_platform: $("crd-group").checked,
       show_platform: $("crd-dots").checked,
       show_message_count: $("crd-counts").checked,
       highlight_mods: $("crd-mods").checked,
+      highlight_vips: $("crd-vips") ? $("crd-vips").checked : true,
+      letterbox: $("crd-letterbox") ? $("crd-letterbox").checked : false,
+      grain: $("crd-grain") ? $("crd-grain").checked : false,
+      vignette: $("crd-vignette") ? $("crd-vignette").checked : false,
+      announce_roll: $("crd-announce") ? $("crd-announce").checked : true,
       persist: true,
+    };
+  }
+
+  const GROUP_DEFS = [
+    { id: "mods", source: "mods", title: "Moderation Unit" },
+    { id: "vips", source: "vips", title: "VIP Lounge" },
+    { id: "subs", source: "subs", title: "Season Regulars" },
+    { id: "top", source: "top", title: "Starring" },
+    { id: "raiders", source: "raiders", title: "The Raiding Party" },
+    { id: "followers", source: "followers", title: "New in Town" },
+    { id: "gifted", source: "gifted", title: "Gifted Subs" },
+    { id: "hosts", source: "hosts", title: "Hosted By" },
+    { id: "cheers", source: "cheers", title: "Paid Extra" },
+    { id: "resubs", source: "resubs", title: "Returning Cast" },
+    { id: "new_subs", source: "new_subs", title: "First Season" },
+  ];
+
+  function lines(s) {
+    return String(s || "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  }
+
+  function deptEl(d) {
+    d = d || {};
+    const box = document.createElement("div");
+    box.className = "dept";
+    box.innerHTML = `<div class="dept-head">
+      <input type="text" class="dept-title" maxlength="50" placeholder="Department title" />
+      <button type="button" class="dept-del">Remove</button>
+    </div>
+    <label>Jobs (one per line)<textarea class="dept-jobs" rows="4"></textarea></label>`;
+    box.querySelector(".dept-title").value = d.title || "";
+    box.querySelector(".dept-jobs").value = (d.jobs || []).join("\n");
+    box.querySelector(".dept-del").onclick = () => box.remove();
+    return box;
+  }
+
+  function fillMovieStyle(style) {
+    style = style || {};
+    const movie = (style.style || style.id || $("crd-style") && $("crd-style").value) === "movie";
+    if ($("movie-editor")) $("movie-editor").style.display = movie ? "" : "none";
+    if (!movie || !$("mv-studio")) return;
+    $("mv-studio").value = style.studio || "Fridge Pictures";
+    $("mv-mpaa").value = style.mpaa || "";
+    $("mv-location").value = style.location || "";
+    $("mv-overflow").value = style.overflow || "Additional Voices";
+    $("mv-top").value = style.top_talkers ?? 5;
+    $("mv-card-hold").value = style.card_hold_sec ?? 2.8;
+    $("mv-end-hold").value = style.end_hold_sec ?? 4;
+    $("mv-assoc").checked = style.in_association !== false;
+    const opening = style.opening || [];
+    const has = (t) => opening.some((s) => s.type === t);
+    $("mv-open-mpaa").checked = has("mpaa") || !opening.length;
+    $("mv-open-studio").checked = has("studio") || !opening.length;
+    $("mv-open-title").checked = has("title") || !opening.length;
+    $("mv-open-assoc").checked = has("association") || !opening.length;
+    $("mv-open-star").checked = has("starring") || !opening.length;
+    $("mv-open-runtime").checked = has("runtime");
+    const jobs = opening.filter((s) => s.type === "job");
+    const dir = jobs[0] || { match: "Director", label: "Directed by" };
+    const wr = jobs[1] || { match: "Showrunner", label: "Written by" };
+    $("mv-open-dir").checked = !!jobs[0] || !opening.length;
+    $("mv-open-write").checked = !!jobs[1] || !opening.length;
+    $("mv-dir-match").value = dir.match || "Director";
+    $("mv-dir-label").value = dir.label || "Directed by";
+    $("mv-write-match").value = wr.match || "Showrunner";
+    $("mv-write-label").value = wr.label || "Written by";
+    $("mv-legal").value = (style.legal || []).join("\n");
+    const st = style.stinger || {};
+    $("mv-stinger-on").checked = st.enabled !== false;
+    $("mv-stinger-kicker").value = st.kicker || "And also…";
+    $("mv-stinger-line").value = st.line || "the lurkers";
+    $("mv-stinger-hold").value = st.hold_sec ?? 4;
+    const wrap = $("mv-depts");
+    if (wrap) {
+      wrap.innerHTML = "";
+      (style.departments && style.departments.length ? style.departments : [{ title: "", jobs: [] }]).forEach((d) => wrap.appendChild(deptEl(d)));
+    }
+    const gwrap = $("mv-groups");
+    if (gwrap) {
+      const have = {};
+      (style.groups || []).forEach((g) => { have[g.source] = g; });
+      gwrap.innerHTML = GROUP_DEFS.map((def) => {
+        const g = have[def.source];
+        const title = (g && g.title) || def.title;
+        return `<label class="check"><input type="checkbox" class="grp-on" data-source="${escapeHtml(def.source)}" data-id="${escapeHtml(def.id)}" ${g ? "checked" : ""} />
+          <input type="text" class="grp-title" data-source="${escapeHtml(def.source)}" maxlength="50" value="${escapeHtml(title)}" /></label>`;
+      }).join("");
+    }
+  }
+
+  function collectMovieStyle() {
+    const opening = [];
+    if ($("mv-open-mpaa").checked) opening.push({ type: "mpaa" });
+    if ($("mv-open-studio").checked) opening.push({ type: "studio" });
+    if ($("mv-open-title").checked) opening.push({ type: "title" });
+    if ($("mv-open-assoc").checked) opening.push({ type: "association" });
+    if ($("mv-open-dir").checked) opening.push({ type: "job", match: $("mv-dir-match").value, label: $("mv-dir-label").value });
+    if ($("mv-open-write").checked) opening.push({ type: "job", match: $("mv-write-match").value, label: $("mv-write-label").value });
+    if ($("mv-open-star").checked) opening.push({ type: "starring" });
+    if ($("mv-open-runtime") && $("mv-open-runtime").checked) opening.push({ type: "runtime" });
+    const departments = [...document.querySelectorAll("#mv-depts .dept")].map((box) => ({
+      id: (box.querySelector(".dept-title").value || "crew").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+      title: box.querySelector(".dept-title").value,
+      jobs: lines(box.querySelector(".dept-jobs").value),
+    })).filter((d) => d.title || d.jobs.length);
+    const groups = [];
+    document.querySelectorAll("#mv-groups .grp-on").forEach((cb) => {
+      if (!cb.checked) return;
+      const src = cb.getAttribute("data-source");
+      const titleEl = document.querySelector(`#mv-groups .grp-title[data-source="${src}"]`);
+      groups.push({
+        id: cb.getAttribute("data-id") || src,
+        source: src,
+        title: (titleEl && titleEl.value) || src,
+      });
+    });
+    const sid = $("crd-style") && $("crd-style").value !== "names" ? $("crd-style").value : "movie";
+    return {
+      id: sid,
+      label: "Studio",
+      style: "movie",
+      studio: $("mv-studio").value,
+      mpaa: $("mv-mpaa").value,
+      location: $("mv-location").value,
+      overflow: $("mv-overflow").value,
+      top_talkers: Number($("mv-top").value) || 5,
+      card_hold_sec: Number($("mv-card-hold").value) || 2.8,
+      end_hold_sec: Number($("mv-end-hold").value) || 4,
+      in_association: $("mv-assoc").checked,
+      letterbox: $("crd-letterbox") ? $("crd-letterbox").checked : true,
+      grain: $("crd-grain") ? $("crd-grain").checked : true,
+      vignette: $("crd-vignette") ? $("crd-vignette").checked : true,
+      legal: lines($("mv-legal").value),
+      opening,
+      stinger: {
+        enabled: $("mv-stinger-on").checked,
+        kicker: $("mv-stinger-kicker").value,
+        line: $("mv-stinger-line").value,
+        hold_sec: Number($("mv-stinger-hold").value) || 4,
+      },
+      departments,
+      groups,
     };
   }
 
@@ -1607,6 +1769,7 @@
         ).join("");
       }
       if ($("crd-cmd-perm")) $("crd-cmd-perm").value = cast.command_permission || "mod";
+      fillMovieStyle(cast.style || {}, true);
       const pins = $("crd-pins");
       if (pins) {
         pins.innerHTML = (cast.overrides || []).map((p) =>
@@ -1685,6 +1848,24 @@
       initCreditsTab(true);
     };
   }
+  if ($("crd-csv")) {
+    $("crd-csv").onclick = async (ev) => {
+      ev.preventDefault();
+      try {
+        const res = await fetch("/api/admin/credits/roster.csv", { headers: { "X-Admin-Token": token() } });
+        if (!res.ok) throw new Error(await res.text());
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "credits-roster.csv";
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        setStatus(String(e.message || e), false);
+      }
+    };
+  }
   if ($("crd-style-save")) {
     $("crd-style-save").onclick = async () => {
       try {
@@ -1700,6 +1881,28 @@
         initCreditsTab(true);
       } catch (e) {
         $("crd-style-status").textContent = String(e.message || e);
+      }
+    };
+  }
+  if ($("crd-style")) {
+    $("crd-style").onchange = () => {
+      if ($("movie-editor")) $("movie-editor").style.display = $("crd-style").value === "names" ? "none" : "";
+    };
+  }
+  if ($("mv-add-dept")) {
+    $("mv-add-dept").onclick = () => $("mv-depts") && $("mv-depts").appendChild(deptEl({ title: "", jobs: [] }));
+  }
+  if ($("btn-movie-save")) {
+    $("btn-movie-save").onclick = async () => {
+      try {
+        await api("/api/admin/credits/cast/file", {
+          method: "PUT",
+          body: JSON.stringify(collectMovieStyle()),
+        });
+        $("mv-save-status").textContent = "Saved";
+        initCreditsTab(true);
+      } catch (e) {
+        $("mv-save-status").textContent = String(e.message || e);
       }
     };
   }
