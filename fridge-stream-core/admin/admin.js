@@ -1531,6 +1531,21 @@
 
   let creditsPlay = { playing: true, mode: "loop" };
 
+  const val = (id, fallback) => {
+    const el = $(id);
+    return el ? el.value : fallback;
+  };
+  const num = (id, fallback) => {
+    const el = $(id);
+    if (!el || el.value === "" || el.value == null) return fallback;
+    const n = Number(el.value);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  const chk = (id, fallback) => {
+    const el = $(id);
+    return el ? !!el.checked : fallback;
+  };
+
   function fillCreditsTheme(t) {
     t = t || {};
     if ($("crd-title")) $("crd-title").value = t.title || "";
@@ -1560,20 +1575,6 @@
   }
 
   function collectCreditsTheme() {
-    const val = (id, fallback) => {
-      const el = $(id);
-      return el ? el.value : fallback;
-    };
-    const num = (id, fallback) => {
-      const el = $(id);
-      if (!el || el.value === "" || el.value == null) return fallback;
-      const n = Number(el.value);
-      return Number.isFinite(n) ? n : fallback;
-    };
-    const chk = (id, fallback) => {
-      const el = $(id);
-      return el ? !!el.checked : fallback;
-    };
     return {
       title: val("crd-title", ""),
       subtitle: val("crd-subtitle", ""),
@@ -1692,19 +1693,24 @@
 
   function collectMovieStyle() {
     const opening = [];
-    if ($("mv-open-mpaa").checked) opening.push({ type: "mpaa" });
-    if ($("mv-open-studio").checked) opening.push({ type: "studio" });
-    if ($("mv-open-title").checked) opening.push({ type: "title" });
-    if ($("mv-open-assoc").checked) opening.push({ type: "association" });
-    if ($("mv-open-dir").checked) opening.push({ type: "job", match: $("mv-dir-match").value, label: $("mv-dir-label").value });
-    if ($("mv-open-write").checked) opening.push({ type: "job", match: $("mv-write-match").value, label: $("mv-write-label").value });
-    if ($("mv-open-star").checked) opening.push({ type: "starring" });
-    if ($("mv-open-runtime") && $("mv-open-runtime").checked) opening.push({ type: "runtime" });
-    const departments = [...document.querySelectorAll("#mv-depts .dept")].map((box) => ({
-      id: (box.querySelector(".dept-title").value || "crew").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-      title: box.querySelector(".dept-title").value,
-      jobs: lines(box.querySelector(".dept-jobs").value),
-    })).filter((d) => d.title || d.jobs.length);
+    if (chk("mv-open-mpaa", false)) opening.push({ type: "mpaa" });
+    if (chk("mv-open-studio", false)) opening.push({ type: "studio" });
+    if (chk("mv-open-title", false)) opening.push({ type: "title" });
+    if (chk("mv-open-assoc", false)) opening.push({ type: "association" });
+    if (chk("mv-open-dir", false)) opening.push({ type: "job", match: val("mv-dir-match", ""), label: val("mv-dir-label", "") });
+    if (chk("mv-open-write", false)) opening.push({ type: "job", match: val("mv-write-match", ""), label: val("mv-write-label", "") });
+    if (chk("mv-open-star", false)) opening.push({ type: "starring" });
+    if (chk("mv-open-runtime", false)) opening.push({ type: "runtime" });
+    const departments = [...document.querySelectorAll("#mv-depts .dept")].map((box) => {
+      const titleEl = box.querySelector(".dept-title");
+      const jobsEl = box.querySelector(".dept-jobs");
+      const title = titleEl ? titleEl.value : "";
+      return {
+        id: (title || "crew").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+        title,
+        jobs: jobsEl ? lines(jobsEl.value) : [],
+      };
+    }).filter((d) => d.title || d.jobs.length);
     const groups = [];
     document.querySelectorAll("#mv-groups .grp-on").forEach((cb) => {
       if (!cb.checked) return;
@@ -1716,29 +1722,29 @@
         title: (titleEl && titleEl.value) || src,
       });
     });
-    const sid = $("crd-style") && $("crd-style").value !== "names" ? $("crd-style").value : "movie";
+    const sid = val("crd-style", "movie") !== "names" ? val("crd-style", "movie") : "movie";
     return {
       id: sid,
       label: "Studio",
       style: "movie",
-      studio: $("mv-studio").value,
-      mpaa: $("mv-mpaa").value,
-      location: $("mv-location").value,
-      overflow: $("mv-overflow").value,
-      top_talkers: Number($("mv-top").value) || 5,
-      card_hold_sec: Number($("mv-card-hold").value) || 2.8,
-      end_hold_sec: Number($("mv-end-hold").value) || 4,
-      in_association: $("mv-assoc").checked,
-      letterbox: $("crd-letterbox") ? $("crd-letterbox").checked : true,
-      grain: $("crd-grain") ? $("crd-grain").checked : true,
-      vignette: $("crd-vignette") ? $("crd-vignette").checked : true,
-      legal: lines($("mv-legal").value),
+      studio: val("mv-studio", ""),
+      mpaa: val("mv-mpaa", ""),
+      location: val("mv-location", ""),
+      overflow: val("mv-overflow", ""),
+      top_talkers: num("mv-top", 5),
+      card_hold_sec: num("mv-card-hold", 2.8),
+      end_hold_sec: num("mv-end-hold", 4),
+      in_association: chk("mv-assoc", false),
+      letterbox: chk("crd-letterbox", true),
+      grain: chk("crd-grain", true),
+      vignette: chk("crd-vignette", true),
+      legal: lines(val("mv-legal", "")),
       opening,
       stinger: {
-        enabled: $("mv-stinger-on").checked,
-        kicker: $("mv-stinger-kicker").value,
-        line: $("mv-stinger-line").value,
-        hold_sec: Number($("mv-stinger-hold").value) || 4,
+        enabled: chk("mv-stinger-on", false),
+        kicker: val("mv-stinger-kicker", ""),
+        line: val("mv-stinger-line", ""),
+        hold_sec: num("mv-stinger-hold", 4),
       },
       departments,
       groups,

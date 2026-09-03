@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Stream Core Admin</title>
-  <link rel="stylesheet" href="/admin/admin.css" />
+  <link rel="stylesheet" href="/admin/admin.css?v=0.18.1" />
 </head>
 <body>
   <header>
@@ -119,6 +119,7 @@
       No extra process. Add
       <code>/overlay/credits.html</code>
       as a <strong>transparent Webpage source</strong>. Enable here (hot-applied, no restart).
+      <span class="muted">Credits UI 0.18.1 — you should see “Play once, then empty” and a checkbox to leave the screen blank.</span>
     </p>
     <div class="credits-layout">
       <div>
@@ -209,7 +210,7 @@
               <option value="public">Anyone in chat</option>
             </select>
           </label>
-          <p class="hint">Chat commands (when credits are enabled): <code>!credit "name" "job"</code> · <code>!credits me</code> · <code>!credits who "name"</code> · <code>!credits roll</code> / <code>once</code> / <code>live</code> / <code>pause</code></p>
+          <p class="hint">Chat commands (when credits are enabled): <code>!credit "name" "job"</code> · <code>!credits me</code> · <code>!credits who "name"</code> · <code>!credits roll</code> / <code>once</code> / <code>clear</code> / <code>live</code> / <code>pause</code></p>
           <div class="form-row" style="margin-top:8px; gap:8px">
             <button class="primary" id="crd-style-save" type="button">Use this style</button>
             <span id="crd-style-status" class="muted"></span>
@@ -722,6 +723,6 @@
     </div>
   </section>
 
-  <script src="/admin/admin.js"></script>
+  <script src="/admin/admin.js?v=0.18.1"></script>
 </body>
 </html>

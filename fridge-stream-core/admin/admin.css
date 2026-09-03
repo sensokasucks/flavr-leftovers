@@ -597,8 +597,14 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   gap: 16px;
   padding: 0 16px 32px;
 }
+.credits-layout .row2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
 @media (max-width: 900px) {
   .credits-layout { grid-template-columns: 1fr; }
+  .credits-layout .row2 { grid-template-columns: 1fr; }
 }
 .credits-preview {
   background: #000;
@@ -614,8 +620,17 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   background: #000;
 }
 .credits-list {
-  max-height: 220px;
+  max-height: 180px;
   overflow: auto;
-  margin-top: 10px;
   font-size: 0.85rem;
+  margin-top: 10px;
 }
+.dept {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+  margin: 8px 0;
+}
+.dept-head { display: flex; gap: 8px; align-items: center; }
+.dept-head input { flex: 1; }
+

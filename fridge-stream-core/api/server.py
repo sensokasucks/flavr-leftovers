@@ -74,6 +74,15 @@ def create_app(core_state: "CoreState") -> FastAPI:
         allow_headers=["*"],
     )
 
+    @app.middleware("http")
+    async def no_cache_admin_and_credits(request, call_next):
+        response = await call_next(request)
+        path = request.url.path or ""
+        if path.startswith("/admin/") or path.endswith("/credits.html") or path.endswith("/control.html"):
+            response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+        return response
+
     manager = ConnectionManager()
     core_state.ws_manager = manager
 
