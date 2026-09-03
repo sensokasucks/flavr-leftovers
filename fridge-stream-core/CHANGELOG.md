@@ -7,6 +7,18 @@ Dates are when the work landed in this tree.
 
 ---
 
+## [0.18.1] — 2026-09-03
+
+### Fixed
+
+- Admin **Save look** no longer crashes (`Cannot read properties of null`) when a look field is missing — target time included.
+
+### Added
+
+- **Play once, then empty** — overlay goes fully transparent after the stinger. Checkbox: “Leave the screen empty when the roll finishes.” Chat: `!credits clear`.
+
+---
+
 ## [0.18.0] — 2026-09-02
 
 ### Added

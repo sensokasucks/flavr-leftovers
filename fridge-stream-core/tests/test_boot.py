@@ -330,6 +330,13 @@ class CastBoardTests(unittest.TestCase):
             self.assertTrue(need_mod)
             self.assertTrue(play and play.get("restart"))
             reply, play, need_mod = eng.handle_credits_chat(
+                "!credits clear", username="bob", platform="kick"
+            )
+            self.assertTrue(need_mod)
+            self.assertEqual(play.get("mode"), "clear")
+            eng.set_play(play)
+            self.assertEqual(eng.play["mode"], "clear")
+            reply, play, need_mod = eng.handle_credits_chat(
                 "!rollcredits", username="bob", platform="kick"
             )
             self.assertTrue(need_mod)

@@ -52,6 +52,7 @@ LOOK_DEFAULTS: dict[str, Any] = {
     "highlight_mods": True,
     "highlight_vips": True,
     "announce_roll": True,
+    "clear_when_done": False,
     "font_family": '"Palatino Linotype", Palatino, "Times New Roman", Georgia, serif',
     "title_size_px": 54,
     "name_size_px": 22,
@@ -156,7 +157,7 @@ class CreditsEngine:
         self.cast.set_style(sid)
         self.theme["style_id"] = self.cast.style_id
         self.theme["style"] = self.cast.get_style().get("style") or "names"
-        if self.theme.get("mode") in ("loop", "once", "hold"):
+        if self.theme.get("mode") in ("loop", "once", "hold", "clear"):
             self.play["mode"] = self.theme["mode"]
         log.info("Credits %s — %s unique", "on" if self.enabled else "off", len(self.chatters))
 
@@ -281,7 +282,7 @@ class CreditsEngine:
     def set_play(self, body: dict[str, Any]) -> dict:
         if "playing" in body:
             self.play["playing"] = bool(body["playing"])
-        if body.get("mode") in ("loop", "once", "hold"):
+        if body.get("mode") in ("loop", "once", "hold", "clear"):
             self.play["mode"] = body["mode"]
             self.theme["mode"] = body["mode"]
         if "freeze" in body:
@@ -418,6 +419,10 @@ class CreditsEngine:
         if sub == "once":
             return f"Credits playing once — {n} unique chatters.", {
                 "playing": True, "mode": "once", "freeze": True, "restart": True,
+            }, True
+        if sub == "clear":
+            return f"Credits will clear when finished — {n} unique chatters.", {
+                "playing": True, "mode": "clear", "freeze": True, "restart": True,
             }, True
         if sub == "live":
             return "Credits list is live again.", {"freeze": False, "playing": True}, True

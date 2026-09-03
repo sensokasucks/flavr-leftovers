@@ -1556,33 +1556,49 @@
     if ($("crd-grain")) $("crd-grain").checked = !!t.grain;
     if ($("crd-vignette")) $("crd-vignette").checked = !!t.vignette;
     if ($("crd-announce")) $("crd-announce").checked = t.announce_roll !== false;
+    if ($("crd-clear-done")) $("crd-clear-done").checked = !!t.clear_when_done;
   }
 
   function collectCreditsTheme() {
+    const val = (id, fallback) => {
+      const el = $(id);
+      return el ? el.value : fallback;
+    };
+    const num = (id, fallback) => {
+      const el = $(id);
+      if (!el || el.value === "" || el.value == null) return fallback;
+      const n = Number(el.value);
+      return Number.isFinite(n) ? n : fallback;
+    };
+    const chk = (id, fallback) => {
+      const el = $(id);
+      return el ? !!el.checked : fallback;
+    };
     return {
-      title: $("crd-title").value,
-      subtitle: $("crd-subtitle").value,
-      footer: $("crd-footer").value,
-      section_label: $("crd-section") ? $("crd-section").value : "",
-      columns: Number($("crd-columns").value) || 2,
-      sort: $("crd-sort").value,
-      speed_px_per_sec: Number($("crd-speed").value) || 42,
-      duration_sec: Number($("crd-duration") && $("crd-duration").value) || 0,
-      name_size_px: Number($("crd-namesize").value) || 22,
-      title_size_px: $("crd-titlesize") ? Number($("crd-titlesize").value) || 54 : 54,
-      font_family: $("crd-font") ? $("crd-font").value : undefined,
-      custom_font_url: $("crd-fonturl") ? $("crd-fonturl").value : "",
-      title_color: $("crd-titlecolor").value,
-      name_color: $("crd-namecolor").value,
-      group_by_platform: $("crd-group").checked,
-      show_platform: $("crd-dots").checked,
-      show_message_count: $("crd-counts").checked,
-      highlight_mods: $("crd-mods").checked,
-      highlight_vips: $("crd-vips") ? $("crd-vips").checked : true,
-      letterbox: $("crd-letterbox") ? $("crd-letterbox").checked : false,
-      grain: $("crd-grain") ? $("crd-grain").checked : false,
-      vignette: $("crd-vignette") ? $("crd-vignette").checked : false,
-      announce_roll: $("crd-announce") ? $("crd-announce").checked : true,
+      title: val("crd-title", ""),
+      subtitle: val("crd-subtitle", ""),
+      footer: val("crd-footer", ""),
+      section_label: val("crd-section", ""),
+      columns: num("crd-columns", 2),
+      sort: val("crd-sort", "first_seen"),
+      speed_px_per_sec: num("crd-speed", 42),
+      duration_sec: num("crd-duration", 0),
+      name_size_px: num("crd-namesize", 22),
+      title_size_px: num("crd-titlesize", 54),
+      font_family: val("crd-font", ""),
+      custom_font_url: val("crd-fonturl", ""),
+      title_color: val("crd-titlecolor", "#f3e2b0"),
+      name_color: val("crd-namecolor", "#f4f0e6"),
+      group_by_platform: chk("crd-group", false),
+      show_platform: chk("crd-dots", true),
+      show_message_count: chk("crd-counts", false),
+      highlight_mods: chk("crd-mods", true),
+      highlight_vips: chk("crd-vips", true),
+      letterbox: chk("crd-letterbox", false),
+      grain: chk("crd-grain", false),
+      vignette: chk("crd-vignette", false),
+      announce_roll: chk("crd-announce", true),
+      clear_when_done: chk("crd-clear-done", false),
       persist: true,
     };
   }
@@ -1640,7 +1656,7 @@
     $("mv-open-title").checked = has("title") || !opening.length;
     $("mv-open-assoc").checked = has("association") || !opening.length;
     $("mv-open-star").checked = has("starring") || !opening.length;
-    $("mv-open-runtime").checked = has("runtime");
+    if ($("mv-open-runtime")) $("mv-open-runtime").checked = has("runtime");
     const jobs = opening.filter((s) => s.type === "job");
     const dir = jobs[0] || { match: "Director", label: "Directed by" };
     const wr = jobs[1] || { match: "Showrunner", label: "Written by" };
@@ -1814,6 +1830,7 @@
   if ($("crd-live")) $("crd-live").onclick = () => crdPlay({ freeze: false, playing: true });
   if ($("crd-loop")) $("crd-loop").onclick = () => crdPlay({ mode: "loop", playing: true, restart: true });
   if ($("crd-once")) $("crd-once").onclick = () => crdPlay({ mode: "once", playing: true, freeze: true, restart: true });
+  if ($("crd-clear")) $("crd-clear").onclick = () => crdPlay({ mode: "clear", playing: true, freeze: true, restart: true });
   if ($("crd-hold")) $("crd-hold").onclick = () => crdPlay({ mode: "hold", playing: true });
   if ($("crd-pause")) $("crd-pause").onclick = () => crdPlay({ playing: creditsPlay.playing === false });
   if ($("crd-reset")) {

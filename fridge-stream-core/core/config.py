@@ -125,6 +125,7 @@ DEFAULTS: Dict[str, Any] = {
         "highlight_mods": True,
         "highlight_vips": True,
         "announce_roll": True,
+        "clear_when_done": False,
         "style_id": "movie",
         "command_permission": "mod",
         "font_family": '"Palatino Linotype", Palatino, "Times New Roman", Georgia, serif',

@@ -455,7 +455,7 @@
         t.group_by_platform, t.show_platform, t.show_message_count, t.highlight_mods,
         t.highlight_vips,
         t.name_size_px, t.title_size_px, t.font_family, t.style_id, t.style,
-        t.letterbox, t.grain, t.vignette, t.duration_sec,
+        t.letterbox, t.grain, t.vignette, t.duration_sec, t.clear_when_done,
       ].join("~");
     }
 
@@ -593,6 +593,20 @@
       document.getElementById("cards").classList.add("hidden");
     }
 
+    function wantsClear(mode) {
+      return mode === "clear" || (mode === "once" && !!theme.clear_when_done);
+    }
+
+    function clearStage() {
+      hideCards();
+      document.getElementById("stinger").classList.add("hidden");
+      parkReel(true);
+      document.body.classList.remove("letterbox", "grain", "vignette");
+      crawl.phase = "empty";
+      crawl.lastTs = 0;
+      stopRaf();
+    }
+
     function showStinger() {
       const st = roster.cast && roster.cast.stinger;
       if (!st) return false;
@@ -705,6 +719,8 @@
             crawl.phase = "stinger";
             const hold = num((roster.cast && roster.cast.stinger && roster.cast.stinger.hold_sec), 4);
             crawl.endUntil = ts + hold * 1000;
+          } else if (wantsClear(mode)) {
+            clearStage();
           } else if (mode === "once") {
             play.mode = "hold";
             stopRaf();
@@ -718,7 +734,9 @@
 
       if (crawl.phase === "stinger") {
         if (ts >= crawl.endUntil) {
-          if (mode === "once") {
+          if (wantsClear(mode)) {
+            clearStage();
+          } else if (mode === "once") {
             play.mode = "hold";
             stopRaf();
           } else {
@@ -750,14 +768,18 @@
 
       if (crawl.y <= crawl.endY) {
         const endHold = num(roster.cast && roster.cast.end_hold_sec, 0);
-        if (mode === "once" || endHold > 0) {
+        if (mode === "once" || mode === "clear" || endHold > 0) {
           crawl.y = holdY();
           applyY(crawl.y);
+          parkReel(false);
           crawl.phase = "end";
           crawl.endUntil = ts + Math.max(0.4, endHold) * 1000;
-          if (mode === "once" && endHold <= 0) {
-            play.mode = "hold";
-            stopRaf();
+          if ((mode === "once" || mode === "clear") && endHold <= 0) {
+            if (wantsClear(mode)) clearStage();
+            else {
+              play.mode = "hold";
+              stopRaf();
+            }
           }
           return;
         }
@@ -790,6 +812,11 @@
         return;
       }
 
+      if (mode === "clear" && crawl.phase === "empty" && !(opts && opts.reset)) {
+        clearStage();
+        return;
+      }
+
       if (opts && opts.reset || !crawl.started) {
         crawl.started = true;
         if (cards().length) {
@@ -797,8 +824,8 @@
         } else {
           beginCrawl();
         }
-      } else if (crawl.phase === "cards" || crawl.phase === "end" || crawl.phase === "stinger") {
-        // Opening cards / end hold — don't yank the reel.
+      } else if (crawl.phase === "cards" || crawl.phase === "end" || crawl.phase === "stinger" || crawl.phase === "empty") {
+        // Opening cards / end hold / empty — don't yank the reel.
       } else {
         parkReel(false);
         if (crawl.y > crawl.startY) crawl.y = crawl.startY;
