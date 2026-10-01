@@ -11,7 +11,7 @@ import asyncio
 import logging
 import random
 import re
-from typing import Optional
+from typing import Any, Optional
 
 from adapters.base import BaseAdapter
 from adapters.twitch_emotes import ThirdPartyEmotes, parse_twitch_emotes, strip_action
@@ -28,6 +28,9 @@ PRIVMSG_RE = re.compile(
     r"^(?:@(?P<tags>[^ ]+) )?:(?P<nick>[^!]+)![^ ]+ PRIVMSG #(?P<chan>[^ ]+) :(?P<msg>.*)$"
 )
 ROOMSTATE_RE = re.compile(r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv ROOMSTATE #")
+USERNOTICE_RE = re.compile(
+    r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv USERNOTICE #(?P<chan>[^ ]+)(?: :(?P<msg>.*))?$"
+)
 
 
 def _parse_tags(raw: str) -> dict[str, str]:
@@ -41,6 +44,38 @@ def _parse_tags(raw: str) -> dict[str, str]:
         else:
             out[part] = ""
     return out
+
+
+def _int(raw: Any, default: int = 1) -> int:
+    try:
+        return max(1, int(raw))
+    except (TypeError, ValueError):
+        return default
+
+
+def usernotice_alert(tags: dict[str, str], msg: str = "") -> Optional[dict[str, Any]]:
+    """USERNOTICE tags → `_emit_alert` kwargs, or None for notices that aren't subs.
+
+    A gift bomb arrives as one `submysterygift` (the count) followed by one `subgift`
+    per recipient carrying `msg-param-community-gift-id`; only the bomb alerts.
+    """
+    kind = tags.get("msg-id") or ""
+    who = {
+        "username": tags.get("login") or "",
+        "display_name": tags.get("display-name") or tags.get("login") or "",
+    }
+    if kind in ("sub", "primepaidupgrade", "giftpaidupgrade", "anongiftpaidupgrade"):
+        return {"kind": "subscribe", **who, "message": msg}
+    if kind == "resub":
+        months = _int(tags.get("msg-param-cumulative-months") or tags.get("msg-param-months"))
+        return {"kind": "resub", **who, "months": months, "message": msg}
+    if kind in ("subgift", "anonsubgift"):
+        if tags.get("msg-param-community-gift-id"):
+            return None
+        return {"kind": "gift", **who, "qty": 1}
+    if kind in ("submysterygift", "anonsubmysterygift"):
+        return {"kind": "gift", **who, "qty": _int(tags.get("msg-param-mass-gift-count"))}
+    return None
 
 
 class TwitchAdapter(BaseAdapter):
@@ -132,6 +167,12 @@ class TwitchAdapter(BaseAdapter):
         rs = ROOMSTATE_RE.match(line)
         if rs:
             self.emotes3p.set_room(_parse_tags(rs.group("tags")).get("room-id", ""))
+            return
+        un = USERNOTICE_RE.match(line)
+        if un:
+            alert = usernotice_alert(_parse_tags(un.group("tags")), strip_action(un.group("msg") or ""))
+            if alert:
+                await self._emit_alert(**alert)
             return
         m = PRIVMSG_RE.match(line)
         if not m:

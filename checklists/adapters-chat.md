@@ -15,6 +15,7 @@ Home: `fridge-stream-core/adapters/` (`kick.py`, `twitch.py`, `youtube.py`). Ove
 - [ ] Twitch `type:chat` payloads carry `emotes` ranges (native IRC `emotes` tag + BetterTTV / FrankerFaceZ / 7TV via `adapters/twitch_emotes.py`, toggle `twitch.third_party_emotes`, default on). `start`/`end` are inclusive code points; the chat overlay renders them with `Array.from`. External readers (Stream Rooms audience) rely on this field.
 - [ ] YouTube (InnerTube): standard emoji runs become the emoji character (so emoji reactions fire); YouTube / member custom emoji keep their `:shortcut:` text plus an `emotes` range with the image (`provider:"youtube"`, same shape as Twitch). `adapters/youtube.py` `runs_to_text_and_emotes`, tests in `tests/test_youtube_chat.py`.
 - [ ] Core broadcasts `type:chat` and `chat_history` on the overlay WebSocket.
+- [ ] Sub events become overlay alerts through `BaseAdapter._emit_alert` (kinds `subscribe` / `resub` / `gift`, `source:"platform"`): Twitch `USERNOTICE`, YouTube membership items (InnerTube) and membership event types (official API), Kick `SubscriptionEvent` / `GiftedSubscriptionsEvent`. One alert per gift bomb (Twitch per-recipient `subgift` with `msg-param-community-gift-id`, YouTube gift redemptions skipped); Kick drops the duplicate from its second chatroom channel. Tests: `tests/test_sub_alerts.py`.
 - [ ] Platform settings (Kick / Twitch / YouTube) hot-apply: admin Config save and hand edits to `config.yaml` (`core.watch_config`) reconnect only the changed platforms via `StreamCore.apply_platforms`. Status tab has a per-platform Reconnect. Game toggles and the port still need a restart. Tests: `tests/test_platform_reload.py`.
 
 ## Drop risks
@@ -23,6 +24,7 @@ Home: `fridge-stream-core/adapters/` (`kick.py`, `twitch.py`, `youtube.py`). Ove
 - Flipping a platform default to `true` in DEFAULTS or example config.
 - Chat overlay losing multi-platform filters when the WS payload shape changes.
 - Kick avatar lookups without the cache / 403 back-off (one request per message would get the IP blocked by Cloudflare).
+- Alerting once per gift-bomb recipient (Twitch `subgift` with a community gift id, YouTube redemptions) instead of once per bomb.
 - Dropping `emotes` from the chat payload or `ChatEvent` (overlay and Stream Rooms fall back to plain text silently).
 
 ## After-change verify

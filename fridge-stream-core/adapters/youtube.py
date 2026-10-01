@@ -45,6 +45,49 @@ BROWSER_HEADERS = {
 }
 
 
+_NUM_RE = re.compile(r"\d[\d,.]*")
+
+
+def _first_int(text: str) -> Optional[int]:
+    m = _NUM_RE.search(text or "")
+    if not m:
+        return None
+    try:
+        return int(re.sub(r"\D", "", m.group(0)))
+    except ValueError:
+        return None
+
+
+def _member_months(header: str) -> int:
+    """'Member for 6 months' / 'Member for 1 year' → months (at least 1)."""
+    n = _first_int(header) or 1
+    return n * 12 if "year" in (header or "").lower() else n
+
+
+def official_member_alert(snippet: dict, author: dict) -> tuple[bool, Optional[dict]]:
+    """Data API membership events → (is a membership event, `_emit_alert` kwargs or None).
+
+    Gift *recipients* (`giftMembershipReceivedEvent`) are membership events with no
+    alert: the gifter's `membershipGiftingEvent` already covers them.
+    """
+    kind = snippet.get("type") or ""
+    name = author.get("displayName") or ""
+    # Same name as the chatter's ChatUser.username so Credits can tag them.
+    who = {"username": name, "display_name": name}
+    if kind == "newSponsorEvent":
+        return True, {"kind": "subscribe", **who}
+    if kind == "memberMilestoneChatEvent":
+        d = snippet.get("memberMilestoneChatDetails") or {}
+        return True, {"kind": "resub", **who, "months": max(1, int(d.get("memberMonth") or 1)),
+                      "message": d.get("userComment") or ""}
+    if kind == "membershipGiftingEvent":
+        d = snippet.get("membershipGiftingDetails") or {}
+        return True, {"kind": "gift", **who, "qty": max(1, int(d.get("giftMembershipsCount") or 1))}
+    if kind == "giftMembershipReceivedEvent":
+        return True, None
+    return False, None
+
+
 class YouTubeAdapter(BaseAdapter):
     platform = Platform.YOUTUBE
 
@@ -190,6 +233,16 @@ class YouTubeAdapter(BaseAdapter):
             return
         snippet = item.get("snippet") or {}
         author = item.get("authorDetails") or {}
+        is_member_event, alert = official_member_alert(snippet, author)
+        if is_member_event:
+            if mid:
+                self._remember(mid)
+            if alert:
+                await self._emit_alert(**alert)
+            # A milestone comment is something the viewer typed: keep it in chat too.
+            if snippet.get("type") != "memberMilestoneChatEvent" or not (alert or {}).get("message"):
+                return
+            snippet = dict(snippet, textMessageDetails={"messageText": alert["message"]})
         ttd = snippet.get("textMessageDetails") or {}
         text = ttd.get("messageText") or snippet.get("displayMessage") or ""
         name = author.get("displayName") or ""
@@ -426,6 +479,11 @@ class YouTubeAdapter(BaseAdapter):
         if not isinstance(item, dict):
             return
 
+        gift = item.get("liveChatSponsorshipsGiftPurchaseAnnouncementRenderer")
+        if isinstance(gift, dict):
+            await self._on_innertube_gift(gift)
+            return
+
         renderer = (
             item.get("liveChatTextMessageRenderer")
             or item.get("liveChatPaidMessageRenderer")
@@ -448,8 +506,15 @@ class YouTubeAdapter(BaseAdapter):
         author_id = str(renderer.get("authorExternalChannelId") or name)
 
         text, emotes = runs_to_text_and_emotes(renderer.get("message") or {})
-        if not text:
-            text, emotes = runs_to_text_and_emotes(renderer.get("headerSubtext") or {})
+        if "liveChatMembershipItemRenderer" in item and name:
+            # New member: only headerSubtext ("Welcome to …!"). Milestone: headerPrimaryText
+            # ("Member for 6 months") plus the viewer's own optional message.
+            primary = self._runs_to_text(renderer.get("headerPrimaryText") or {})
+            if primary:
+                await self._emit_alert("resub", username=name, display_name=name,
+                                       months=_member_months(primary), message=text)
+            else:
+                await self._emit_alert("subscribe", username=name, display_name=name)
         if not name or not text:
             return
 
@@ -510,6 +575,21 @@ class YouTubeAdapter(BaseAdapter):
                 emotes=emotes,
             )
         )
+
+    async def _on_innertube_gift(self, gift: dict) -> None:
+        """'Gifted 5 memberships' banner. Recipients' redemption items are ignored."""
+        mid = str(gift.get("id") or "")
+        if mid and mid in self._seen_ids:
+            return
+        if mid:
+            self._remember(mid)
+        header = (gift.get("header") or {}).get("liveChatSponsorshipsHeaderRenderer") or {}
+        author = header.get("authorName") or {}
+        name = author.get("simpleText") or self._runs_to_text(author)
+        if not name:
+            return
+        qty = _first_int(self._runs_to_text(header.get("primaryText") or {})) or 1
+        await self._emit_alert("gift", username=name, display_name=name, qty=qty)
 
     @staticmethod
     def _runs_to_text(node: Any) -> str:

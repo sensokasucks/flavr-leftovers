@@ -1,7 +1,7 @@
 # Stream alerts overlay
 
 Webpage source: `/overlay/alerts.html`  
-Admin test tab fires the same overlay. Preview: `/overlay/alerts.html?preview=1`
+Admin test tab fires the same overlay. Live alerts: Super Chat / bits from paid chat; subscribe / resub / gifted sub from Twitch, YouTube memberships and Kick subs. Preview: `/overlay/alerts.html?preview=1`
 
 The HTML uses **Streamlabs Alert Box** ids and **StreamElements AlertBox** classes so CSS you already wrote (or bought as a pack) can move here with little or no rewriting.
 

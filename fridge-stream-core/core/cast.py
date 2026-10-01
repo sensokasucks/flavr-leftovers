@@ -369,6 +369,7 @@ class CastBoard:
             "follow": "followers",
             "gift": "gifted",
             "subscribe": "gifted",
+            "resub": "gifted",
             "paid": "donors",
             "cheer": "donors",
             "donation": "donors",

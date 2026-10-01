@@ -10,7 +10,8 @@ Home: `core/alerts.py`, `overlay/alerts.html` + `alerts.js` + `alerts.css`. Note
 - [ ] Custom CSS editor on Admin → Alert test writes `overlay/alerts-custom.css` and is picked up live (no restart).
 - [ ] CSS variables (`--alert-accent`, `--alert-font`, `--alert-name-size`, …) still exist.
 - [ ] Optional per-kind media path: `overlay/assets/alerts/{kind}.gif|.webm|…`
-- [ ] Duration comes from `overlay.alert_duration_ms`.
+- [ ] Duration comes from `overlay.alert_duration_ms` (paid chat in `_alert_from_paid_chat`; adapter sub alerts with `source:"platform"` in `StreamCore._on_alert`).
+- [ ] Live sub / resub / gift alerts come from the adapters (see `adapters-chat.md`); Super Chat / bits from paid chat.
 - [ ] Follow / sub / raid / bits / Super Chat / donation kinds still testable from the Alert test tab.
 
 ## Drop risks

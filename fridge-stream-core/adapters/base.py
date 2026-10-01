@@ -14,6 +14,7 @@ import abc
 import logging
 from typing import Optional
 
+from core.alerts import build_alert
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, Platform
@@ -52,3 +53,30 @@ class BaseAdapter(abc.ABC):
     async def _emit(self, event: ChatEvent) -> None:
         self.metrics.record_message()
         await self.bus.publish_chat(event)
+
+    async def _emit_alert(
+        self,
+        kind: str,
+        *,
+        username: str,
+        display_name: str = "",
+        months: Optional[int] = None,
+        qty: Optional[int] = None,
+        message: str = "",
+    ) -> None:
+        """Sub / resub / gift seen on the platform → overlay alert on the bus.
+
+        Core fills in `duration_ms` from `overlay.alert_duration_ms` (source=platform).
+        """
+        payload = build_alert(
+            kind=kind,
+            username=username,
+            display_name=display_name,
+            platform=self.platform.value,
+            months=months,
+            qty=qty,
+            message=message,
+        )
+        payload["source"] = "platform"
+        log.info("[%s] alert %s: %s", self.platform.value, kind, payload["headline"])
+        await self.bus.publish_alert(payload)

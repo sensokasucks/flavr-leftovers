@@ -1083,6 +1083,10 @@ class StreamCore:
                 log.exception("user_update WS broadcast failed")
 
     async def _on_alert(self, payload: dict) -> None:
+        if payload.get("source") == "platform":
+            # Sub / resub / gift from an adapter: adapters don't see overlay settings.
+            ov = self.config.get("overlay") or {}
+            payload["duration_ms"] = max(1500, min(30000, int(ov.get("alert_duration_ms") or 6000)))
         self.recent_alerts.append(payload)
         if len(self.recent_alerts) > self.recent_alerts_max:
             del self.recent_alerts[: -self.recent_alerts_max]

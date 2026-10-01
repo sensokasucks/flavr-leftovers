@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections import deque
 import logging
 from typing import Any, Optional
 
@@ -47,6 +48,34 @@ BROWSER_HEADERS = {
 }
 
 
+KICK_SUB_EVENTS = ("App\\Events\\SubscriptionEvent", "App\\Events\\GiftedSubscriptionsEvent")
+
+
+def kick_sub_alert(event_name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Pusher sub events on the chatroom channel → `_emit_alert` kwargs.
+
+    Both the `.v2` and the old chatroom channel may deliver the same event, so the
+    adapter drops repeats (`KickAdapter._seen_subs`).
+    """
+    if event_name.endswith("GiftedSubscriptionsEvent"):
+        gifter = str(data.get("gifter_username") or "")
+        names = data.get("gifted_usernames") or []
+        qty = len(names) if isinstance(names, list) and names else 1
+        if not gifter:
+            return None
+        return {"kind": "gift", "username": gifter, "display_name": gifter, "qty": qty}
+    user = str(data.get("username") or "")
+    if not user:
+        return None
+    try:
+        months = int(data.get("months") or 1)
+    except (TypeError, ValueError):
+        months = 1
+    if months > 1:
+        return {"kind": "resub", "username": user, "display_name": user, "months": months}
+    return {"kind": "subscribe", "username": user, "display_name": user}
+
+
 class KickAdapter(BaseAdapter):
     platform = Platform.KICK
 
@@ -63,6 +92,8 @@ class KickAdapter(BaseAdapter):
         self._stop_event = asyncio.Event()
         # Chatter profile pictures (looked up once per chatter, cached in data/)
         self.avatars = KickAvatars(bool(kick_cfg.get("avatars", True)))
+        # Recent sub events; both chatroom channels can deliver the same one
+        self._seen_subs: deque[str] = deque(maxlen=64)
 
     async def start(self) -> None:
         if not self.slug or self.slug.startswith("YOUR_"):
@@ -341,6 +372,24 @@ class KickAdapter(BaseAdapter):
                     return
             if isinstance(data, dict):
                 await self._on_chat_message(data)
+            return
+
+        if event_name in KICK_SUB_EVENTS:
+            data = msg.get("data")
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    return
+            if not isinstance(data, dict):
+                return
+            key = event_name + json.dumps(data, sort_keys=True, default=str)
+            if key in self._seen_subs:
+                return
+            self._seen_subs.append(key)
+            alert = kick_sub_alert(event_name, data)
+            if alert:
+                await self._emit_alert(**alert)
 
     async def _on_chat_message(self, data: dict[str, Any]) -> None:
         sender = data.get("sender") or {}
