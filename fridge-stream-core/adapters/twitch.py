@@ -63,6 +63,7 @@ def usernotice_alert(tags: dict[str, str], msg: str = "") -> Optional[dict[str, 
     who = {
         "username": tags.get("login") or "",
         "display_name": tags.get("display-name") or tags.get("login") or "",
+        "user_id": tags.get("user-id") or "",
     }
     if kind in ("sub", "primepaidupgrade", "giftpaidupgrade", "anongiftpaidupgrade"):
         return {"kind": "subscribe", **who, "message": msg}

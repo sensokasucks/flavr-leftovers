@@ -60,6 +60,7 @@ class BaseAdapter(abc.ABC):
         *,
         username: str,
         display_name: str = "",
+        user_id: str = "",
         months: Optional[int] = None,
         qty: Optional[int] = None,
         message: str = "",
@@ -78,5 +79,8 @@ class BaseAdapter(abc.ABC):
             message=message,
         )
         payload["source"] = "platform"
+        # Platform user id when the event carries one, so Core can credit points
+        # to the same identity the viewer chats with (else it matches by name).
+        payload["user_id"] = str(user_id or "")
         log.info("[%s] alert %s: %s", self.platform.value, kind, payload["headline"])
         await self.bus.publish_alert(payload)

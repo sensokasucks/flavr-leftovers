@@ -101,6 +101,10 @@ CREATE INDEX IF NOT EXISTS idx_attendance_user ON stream_attendance(user_id, str
 """
 
 
+# platform_user_id for identities created from an alert that only had a name
+NAME_ID_PREFIX = "name:"
+
+
 class Store:
     def __init__(
         self,
@@ -173,6 +177,19 @@ class Store:
                 "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
                 (platform, platform_user_id),
             ).fetchone()
+            if not row and not platform_user_id.startswith(NAME_ID_PREFIX):
+                # Claim an identity an alert created by name (e.g. a Kick sub before
+                # their first chat line) so the points land on this viewer.
+                placeholder = NAME_ID_PREFIX + (username or "").lower()
+                row = conn.execute(
+                    "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
+                    (platform, placeholder),
+                ).fetchone()
+                if row:
+                    conn.execute(
+                        "UPDATE identities SET platform_user_id=? WHERE platform=? AND platform_user_id=?",
+                        (platform_user_id, platform, placeholder),
+                    )
             if row:
                 uid = int(row["user_id"])
                 conn.execute(
@@ -208,6 +225,53 @@ class Store:
         return await self._run(
             self._get_or_create_user_sync, platform, platform_user_id, username, display_name
         )
+
+    def _user_for_alert_sync(
+        self, platform: str, platform_user_id: str, username: str, display_name: str
+    ) -> int:
+        """Platform id when the alert has one; else an identity with that name on the
+        platform; else a new `name:` placeholder identity the viewer claims on first chat."""
+        if platform_user_id:
+            return self._get_or_create_user_sync(platform, platform_user_id, username, display_name)
+        name = (username or "").lower().strip()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT user_id FROM identities WHERE platform=? AND lower(username)=? "
+                "ORDER BY last_seen DESC LIMIT 1",
+                (platform, name),
+            ).fetchone()
+        if row:
+            return int(row["user_id"])
+        return self._get_or_create_user_sync(platform, NAME_ID_PREFIX + name, name, display_name)
+
+    def _has_ledger_source_sync(self, user_id: int, source: str) -> bool:
+        with self._connect() as conn:
+            return conn.execute(
+                "SELECT 1 FROM points_ledger WHERE user_id=? AND source=? LIMIT 1", (user_id, source)
+            ).fetchone() is not None
+
+    async def award_for_alert(
+        self,
+        platform: str,
+        platform_user_id: str,
+        username: str,
+        display_name: str,
+        delta: int,
+        reason: str,
+        source: str,
+        once: bool = False,
+    ) -> Optional[dict]:
+        """Sub / follow / gift points. `once` skips viewers already paid for `source`
+        (follows: unfollow + refollow must not farm points). None when nothing was paid."""
+        if delta <= 0 or not (username or platform_user_id):
+            return None
+        uid = await self._run(
+            self._user_for_alert_sync, platform, platform_user_id, username, display_name
+        )
+        if once and await self._run(self._has_ledger_source_sync, uid, source):
+            return None
+        balance = await self._run(self._award_points_sync, uid, delta, reason, source)
+        return {"user_id": uid, "delta": delta, "balance": balance}
 
     # ------------------------------------------------------------------
     # Chat logging + points

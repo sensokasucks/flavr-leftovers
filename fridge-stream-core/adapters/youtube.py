@@ -73,7 +73,7 @@ def official_member_alert(snippet: dict, author: dict) -> tuple[bool, Optional[d
     kind = snippet.get("type") or ""
     name = author.get("displayName") or ""
     # Same name as the chatter's ChatUser.username so Credits can tag them.
-    who = {"username": name, "display_name": name}
+    who = {"username": name, "display_name": name, "user_id": str(author.get("channelId") or "")}
     if kind == "newSponsorEvent":
         return True, {"kind": "subscribe", **who}
     if kind == "memberMilestoneChatEvent":
@@ -511,10 +511,10 @@ class YouTubeAdapter(BaseAdapter):
             # ("Member for 6 months") plus the viewer's own optional message.
             primary = self._runs_to_text(renderer.get("headerPrimaryText") or {})
             if primary:
-                await self._emit_alert("resub", username=name, display_name=name,
+                await self._emit_alert("resub", username=name, display_name=name, user_id=author_id,
                                        months=_member_months(primary), message=text)
             else:
-                await self._emit_alert("subscribe", username=name, display_name=name)
+                await self._emit_alert("subscribe", username=name, display_name=name, user_id=author_id)
         if not name or not text:
             return
 
@@ -589,7 +589,8 @@ class YouTubeAdapter(BaseAdapter):
         if not name:
             return
         qty = _first_int(self._runs_to_text(header.get("primaryText") or {})) or 1
-        await self._emit_alert("gift", username=name, display_name=name, qty=qty)
+        author_id = str(gift.get("authorExternalChannelId") or "")
+        await self._emit_alert("gift", username=name, display_name=name, user_id=author_id, qty=qty)
 
     @staticmethod
     def _runs_to_text(node: Any) -> str:

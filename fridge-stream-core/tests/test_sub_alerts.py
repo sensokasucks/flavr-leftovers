@@ -1,4 +1,5 @@
-"""Sub / resub / gift detection in the chat adapters → overlay alerts. Run from
+"""Sub / resub / gift detection in the chat adapters → overlay alerts, and the points
+Core pays for them. Run from
 fridge-stream-core:
 
     python -m unittest tests.test_sub_alerts -v
@@ -9,7 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -19,8 +22,13 @@ if str(ROOT) not in sys.path:
 from adapters.kick import KickAdapter, kick_sub_alert  # noqa: E402
 from adapters.twitch import TwitchAdapter, usernotice_alert  # noqa: E402
 from adapters.youtube import YouTubeAdapter, official_member_alert  # noqa: E402
+from core.alerts import build_alert  # noqa: E402
+from core.config import DEFAULTS  # noqa: E402
 from core.event_bus import EventBus  # noqa: E402
 from core.metrics import MetricsAggregator  # noqa: E402
+from core.models import ChatEvent, ChatUser, Platform  # noqa: E402
+from core.store import Store  # noqa: E402
+from main import StreamCore  # noqa: E402
 
 
 def run(coro):
@@ -153,6 +161,60 @@ class KickTests(unittest.TestCase):
         run(rig.adapter._handle_raw(frame))
         run(rig.adapter._handle_raw(frame.replace("chatrooms.1.v2", "chatrooms.1")))
         self.assertEqual([(a["kind"], a["qty"], a["platform"]) for a in rig.alerts], [("gift", 2, "kick")])
+
+
+
+class PointsTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.db", {"enabled": True})
+        pts = dict(DEFAULTS["points"], enabled=True)
+        self.core = SimpleNamespace(config={"points": pts}, store=self.store,
+                                    _sync_live_config=lambda: None)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def alert(self, kind, platform="twitch", username="bob", user_id="", is_test=False, **kw):
+        p = build_alert(kind=kind, username=username, platform=platform, is_test=is_test, **kw)
+        p["source"], p["user_id"] = "platform", user_id
+        run(StreamCore._award_alert_points(self.core, p))
+        return p
+
+    def chat(self, platform, pid, name):
+        ev = ChatEvent(platform=Platform(platform), user=ChatUser(platform=Platform(platform), id=pid, username=name),
+                       message="hi")
+        return run(self.store.process_chat(ev))
+
+    def test_sub_resub_gift_amounts(self):
+        self.assertEqual(self.alert("subscribe", user_id="1")["points_awarded"], 500)
+        self.assertEqual(self.alert("resub", user_id="1", months=2)["points_awarded"], 500)
+        self.assertEqual(self.alert("gift", username="amy", user_id="2", qty=3)["points_awarded"], 3000)
+
+    def test_follow_pays_once(self):
+        self.assertEqual(self.alert("follow", user_id="1")["points_awarded"], 250)
+        self.assertNotIn("points_awarded", self.alert("follow", user_id="1"))
+
+    def test_test_alerts_and_disabled_points_pay_nothing(self):
+        self.assertNotIn("points_awarded", self.alert("subscribe", user_id="1", is_test=True))
+        self.core.config["points"]["enabled"] = False
+        self.assertNotIn("points_awarded", self.alert("subscribe", user_id="1"))
+
+    def test_name_only_sub_lands_on_existing_chatter(self):
+        uid = self.chat("kick", "777", "Zed")["user_id"]
+        self.alert("subscribe", platform="kick", username="zed")
+        async def go():
+            return await self.store.get_user(uid)
+        self.assertEqual(run(go())["points"], 500 + 1)
+
+    def test_name_only_sub_claimed_on_first_chat(self):
+        self.alert("subscribe", platform="kick", username="newbie")
+        self.chat("kick", "888", "newbie")
+        async def go():
+            return await self.store.list_users("newbie")
+        users = run(go())
+        self.assertEqual(len(users), 1)
+        self.assertEqual(users[0]["points"], 501)
 
 
 if __name__ == "__main__":

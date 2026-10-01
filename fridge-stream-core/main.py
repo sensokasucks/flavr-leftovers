@@ -36,6 +36,7 @@ try:
     import uvicorn
 
     from core.config import (
+        DEFAULTS,
         ConfigError,
         ensure_seed_files,
         load_config,
@@ -1087,6 +1088,7 @@ class StreamCore:
             # Sub / resub / gift from an adapter: adapters don't see overlay settings.
             ov = self.config.get("overlay") or {}
             payload["duration_ms"] = max(1500, min(30000, int(ov.get("alert_duration_ms") or 6000)))
+            await self._award_alert_points(payload)
         self.recent_alerts.append(payload)
         if len(self.recent_alerts) > self.recent_alerts_max:
             del self.recent_alerts[: -self.recent_alerts_max]
@@ -1106,6 +1108,52 @@ class StreamCore:
             )
         except Exception:
             log.exception("credits alert tag failed")
+
+    async def _award_alert_points(self, payload: dict) -> None:
+        """Points for a real sub / resub / follow / gift (never Alert-test ones).
+
+        `points.sub_points` per sub or resub, `points.follow_points` once per viewer,
+        `points.gift_points` to the gifter for each sub gifted. Sets `points_awarded`.
+        """
+        self._sync_live_config()
+        pts = self.config.get("points") or {}
+        if not pts.get("enabled") or payload.get("is_test"):
+            return
+        kind = payload.get("kind") or ""
+
+        def amount(key: str) -> int:
+            try:
+                return max(0, int(pts.get(key, DEFAULTS["points"][key])))
+            except (TypeError, ValueError):
+                return 0
+
+        once = False
+        if kind in ("subscribe", "resub"):
+            delta, reason = amount("sub_points"), "subscribed"
+        elif kind == "follow":
+            delta, reason, once = amount("follow_points"), "followed", True
+        elif kind == "gift":
+            qty = max(1, int(payload.get("qty") or 1))
+            delta, reason = amount("gift_points") * qty, f"gifted {qty} sub(s)"
+        else:
+            return
+        try:
+            res = await self.store.award_for_alert(
+                payload.get("platform") or "",
+                payload.get("user_id") or "",
+                payload.get("username") or "",
+                payload.get("display_name") or "",
+                delta,
+                reason,
+                kind,
+                once=once,
+            )
+        except Exception:
+            log.exception("alert points failed")
+            return
+        if res:
+            payload["points_awarded"] = res["delta"]
+            log.info("points +%s → %s (%s, bal %s)", res["delta"], payload.get("display_name"), reason, res["balance"])
 
     async def _alert_from_paid_chat(self, event: ChatEvent) -> None:
         """Turn Super Chat / bits into an overlay alert (same pipeline as tests)."""

@@ -137,6 +137,9 @@ points:
   enabled: false
   per_message: 1          # points awarded per message
   cooldown_sec: 30        # anti-spam: min seconds between awards per user
+  sub_points: 500         # new sub or resub (Twitch / YouTube member / Kick)
+  follow_points: 250      # first follow only (unfollow + refollow pays nothing)
+  gift_points: 1000       # to the gifter, for each sub they gift
   # Header X-Admin-Token for /admin. "change-me" is NOT accepted: leave it and
   # Core generates a random token in data/admin_token.txt (printed at startup).
   admin_token: "change-me"

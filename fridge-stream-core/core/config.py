@@ -174,6 +174,9 @@ DEFAULTS: Dict[str, Any] = {
         "enabled": False,
         "per_message": 1,
         "cooldown_sec": 30,
+        "sub_points": 500,       # per sub / resub (live platform events only)
+        "follow_points": 250,    # once per viewer
+        "gift_points": 1000,     # to the gifter, per sub gifted
         "admin_token": "change-me",
     },
     "market": {

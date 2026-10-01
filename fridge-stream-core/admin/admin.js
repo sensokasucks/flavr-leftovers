@@ -1412,6 +1412,9 @@
     $("cfg-pts-enabled").checked = !!pts.enabled;
     $("cfg-pts-per").value = pts.per_message ?? 1;
     $("cfg-pts-cd").value = pts.cooldown_sec ?? 30;
+    $("cfg-pts-sub").value = pts.sub_points ?? 500;
+    $("cfg-pts-follow").value = pts.follow_points ?? 250;
+    $("cfg-pts-gift").value = pts.gift_points ?? 1000;
     $("cfg-pts-token").value = pts.admin_token ?? "";
 
     const clog = cfg.chat_log || {};
@@ -1548,6 +1551,9 @@
         enabled: $("cfg-pts-enabled").checked,
         per_message: num($("cfg-pts-per").value, 1),
         cooldown_sec: num($("cfg-pts-cd").value, 30),
+        sub_points: num($("cfg-pts-sub").value, 500),
+        follow_points: num($("cfg-pts-follow").value, 250),
+        gift_points: num($("cfg-pts-gift").value, 1000),
         admin_token: $("cfg-pts-token").value.trim() || "change-me",
       },
       chat_log: {
