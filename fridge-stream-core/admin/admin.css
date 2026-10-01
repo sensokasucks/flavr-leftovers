@@ -236,17 +236,22 @@ button.danger { color: var(--danger); }
 #tab-config .subtabs { display: none; }
 #tab-config:not(.yaml-sub) .config-actions,
 #tab-config:not(.yaml-sub) #config-banner { display: none; }
-#tab-config .config-actions {
+/* Save bar: sticks under the top bar while the Config sub-pages scroll. */
+#tab-config .config-actions.config-savebar {
   position: sticky;
-  bottom: 0;
-  z-index: 6;
+  top: 56px;
+  z-index: 20;
   margin: 0 0 14px;
   padding: 10px 12px;
-  background: var(--panel);
+  background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  box-shadow: 0 -8px 20px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
+.config-savebar #cfg-save { font-size: 1rem; padding: 8px 18px; }
+.config-savebar.dirty #cfg-save { box-shadow: 0 0 0 2px var(--warn); }
+.cfg-dirty { color: var(--warn); font-weight: 600; }
+.cfg-dirty[hidden] { display: none; }
 #tab-config.yaml-sub .acc-stack { margin-bottom: 8px; }
 
 .acc-stack { display: flex; flex-direction: column; gap: 12px; }

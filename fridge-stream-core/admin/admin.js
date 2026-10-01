@@ -1583,6 +1583,7 @@
           "Files: " + (data.config_path || "") + " · " + (data.commands_path || "");
       }
       setCfgStatus("Loaded");
+      setCfgDirty(false);
     } catch (e) {
       setCfgStatus(String(e.message || e), false);
     }
@@ -1596,7 +1597,8 @@
     }
     if (!confirm("Fill the form with built-in defaults? (not saved yet)")) return;
     fillConfigForm(lastDefaults, lastDefaults);
-    setCfgStatus("Form reset to defaults — click Save to write disk");
+    setCfgDirty(true);
+    setCfgStatus("Form reset to defaults — click Save & apply to write disk");
   };
 
   $("cfg-save").onclick = async () => {
@@ -1607,11 +1609,33 @@
         body: JSON.stringify({ config }),
       });
       setCfgStatus(res.message || "Saved", true);
-      setStatus("Config saved — chat platforms applied", true);
+      setStatus(res.message || "Config saved — chat platforms applied", true);
+      setCfgDirty(false);
     } catch (e) {
       setCfgStatus(String(e.message || e), false);
     }
   };
+
+  // Save bar: flag unsaved edits, Ctrl/Cmd+S saves while Config is open.
+  function setCfgDirty(dirty) {
+    const bar = $("cfg-savebar");
+    if (bar) bar.classList.toggle("dirty", !!dirty);
+    const flag = $("cfg-dirty");
+    if (flag) flag.hidden = !dirty;
+  }
+  ["input", "change"].forEach((type) => {
+    $("tab-config").addEventListener(type, (ev) => {
+      const id = (ev.target && ev.target.id) || "";
+      if (id.startsWith("cfg-")) setCfgDirty(true);
+    });
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (!(ev.ctrlKey || ev.metaKey) || ev.altKey || String(ev.key).toLowerCase() !== "s") return;
+    const panel = $("tab-config");
+    if (!panel || !panel.classList.contains("active") || !panel.classList.contains("yaml-sub")) return;
+    ev.preventDefault();
+    $("cfg-save").click();
+  });
 
   // ------------------------------------------------------------------
   // Command groups

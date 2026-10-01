@@ -992,8 +992,9 @@
       <span class="muted" id="config-paths"></span>
     </div>
 
-    <div class="config-actions">
-      <button class="primary" id="cfg-save">Save config.yaml</button>
+    <div class="config-actions config-savebar" id="cfg-savebar">
+      <button class="primary" id="cfg-save" title="Write config.yaml and apply it now (Ctrl+S)">Save &amp; apply</button>
+      <span id="cfg-dirty" class="cfg-dirty" hidden>Unsaved changes</span>
       <button id="cfg-reload">Reload from disk</button>
       <button id="cfg-reset-defaults" class="danger" title="Fill form with built-in defaults (does not save yet)">Reset form to defaults</button>
       <span id="cfg-status" class="muted"></span>
