@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Core replies</title>
+  <link rel="stylesheet" href="chat.css" />
+  <style>
+    body { background: transparent; margin: 0; }
+    .sys { color: #53fc18; }
+    .off { opacity: .5; padding: 12px; font-family: sans-serif; }
+    /* Chat games boards: polls, predictions, hype, heists, trivia ... */
+    #boards { display: flex; flex-direction: column; gap: 10px; padding: 10px; max-width: 560px;
+      font-family: "Segoe UI", system-ui, sans-serif; color: #eef1f7; }
+    .bd { background: rgba(10, 13, 20, .86); border: 1px solid #2a3140; border-radius: 12px; padding: 10px 14px 12px; }
+    .bd.closed { border-color: #53fc18; }
+    .bd h4 { margin: 0 0 8px; font-size: 18px; display: flex; gap: 10px; align-items: baseline; }
+    .bd h4 .t { margin-left: auto; font-size: 14px; color: #8b95a8; font-variant-numeric: tabular-nums; }
+    .bd .ln { display: grid; grid-template-columns: minmax(90px, 40%) 1fr auto; gap: 8px; align-items: center; margin: 5px 0; font-size: 15px; }
+    .bd .ln .l { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .bd .ln .bar { height: 12px; border-radius: 7px; background: #1b2130; overflow: hidden; }
+    .bd .ln .bar i { display: block; height: 100%; background: linear-gradient(90deg, #28c8ff, #a55bff); transition: width .35s; }
+    .bd .ln.win .l { color: #53fc18; font-weight: 700; }
+    .bd .ln.win .bar i { background: #53fc18; }
+    .bd .ln .n { color: #aab3c5; font-variant-numeric: tabular-nums; font-size: 14px; }
+    .bd.question .ln { grid-template-columns: 1fr auto; }
+    .bd.question .ln .bar { display: none; }
+    .bd.question .ln .l { white-space: normal; }
+    .bd .ft { margin-top: 6px; font-size: 13px; color: #8b95a8; }
+    .bd.meter { padding: 6px 12px 8px; }
+    .bd.meter h4 { font-size: 15px; margin-bottom: 4px; }
+    .bd.tug .ln:nth-of-type(1) .bar i { background: linear-gradient(90deg, #53fc18, #b4ff7a); }
+    .bd.tug .ln:nth-of-type(2) .bar i { background: linear-gradient(90deg, #ff4e45, #ff9a7a); }
+  </style>
+</head>
+<body>
+  <div id="off" class="off" hidden>Reply overlay is disabled (enable overlay.replies_enabled).</div>
+  <div id="boards"></div>
+  <ul id="log" class="chat-log"></ul>
+  <script>
+    const log = document.getElementById("log");
+    const off = document.getElementById("off");
+    const qs = new URLSearchParams(location.search);
+    const force = qs.get("force") === "1";
+    let enabled = force;
+    const rows = [];
+    // Reply text echoes chat input (names, symbols) — always escape it.
+    function esc(s) {
+      return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+    function draw() {
+      log.innerHTML = rows.slice(-12).map((r) =>
+        `<li><span class="sys">${esc(r.who ? "@" + r.who : "Core")}</span> ${esc(r.text)}</li>`
+      ).join("");
+    }
+    // ?boards=0 hides the chat games boards, ?replies=0 hides the reply lines
+    const showBoards = qs.get("boards") !== "0";
+    if (qs.get("replies") === "0") log.hidden = true;
+    const boards = new Map();
+    const boardsEl = document.getElementById("boards");
+    function drawBoards() {
+      if (!showBoards) return;
+      const now = Date.now() / 1000;
+      boardsEl.innerHTML = [...boards.values()].map((b) => {
+        const left = b.ends_at && b.state === "open" ? Math.max(0, Math.ceil(b.ends_at - now)) : null;
+        const lines = (b.lines || []).map((l) =>
+          `<div class="ln${l.win ? " win" : ""}"><span class="l">${esc(l.label)}</span>` +
+          `<span class="bar"><i style="width:${Math.round(Math.max(0, Math.min(1, Number(l.pct) || 0)) * 100)}%"></i></span>` +
+          `<span class="n">${esc(l.note == null ? l.value : l.note)}</span></div>`).join("");
+        return `<div class="bd ${esc(b.kind)} ${esc(b.state)}"><h4>${esc(b.title)}` +
+          (left !== null ? `<span class="t">${left}s</span>` : "") + `</h4>${lines}` +
+          (b.footer ? `<div class="ft">${esc(b.footer)}</div>` : "") + `</div>`;
+      }).join("");
+    }
+    setInterval(() => { if (boards.size) drawBoards(); }, 1000);
+    function add(d) {
+      const text = d && d.message ? d.message : String(d || "");
+      if (!text) return;
+      let who = String((d && d.reply_to_user) || "").replace(/^@/, "");
+      if (who && text.toLowerCase().startsWith("@" + who.toLowerCase())) who = "";
+      rows.push({ text, who });
+    }
+    async function boot() {
+      try {
+        const cfg = await fetch("/api/overlay/replies").then((x) => x.json());
+        enabled = force || !!cfg.enabled;
+      } catch (e) {
+        enabled = force;
+      }
+      off.hidden = enabled;
+      if (!enabled) return;
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        // Core sends each reply twice (a "reply" frame and a system "chat" line); use "reply".
+        if (msg.type === "reply") {
+          add(msg.data);
+          draw();
+        }
+        if (msg.type === "board" && msg.data && msg.data.id) {
+          boards.set(msg.data.id, msg.data);
+          drawBoards();
+        }
+        if (msg.type === "board_clear" && msg.data) {
+          boards.delete(msg.data.id);
+          drawBoards();
+        }
+        if (msg.type === "board_history" && Array.isArray(msg.data)) {
+          boards.clear();
+          msg.data.forEach((b) => b && b.id && boards.set(b.id, b));
+          drawBoards();
+        }
+        if (msg.type === "reply_history" && Array.isArray(msg.data)) {
+          rows.length = 0;
+          msg.data.forEach(add);
+          draw();
+        }
+      };
+      ws.onclose = () => setTimeout(boot, 2000);
+    }
+    boot();
+  </script>
+</body>
+</html>

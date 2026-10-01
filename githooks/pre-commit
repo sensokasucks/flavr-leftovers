@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# FlaVR Leftovers — pre-commit
+# Blocks secrets / runtime data. Skip with: SKIP_HOOKS=1 git commit ...
+set -euo pipefail
+
+if [[ "${SKIP_HOOKS:-}" == "1" ]]; then
+  exit 0
+fi
+
+# Staged files (added/modified/copied)
+mapfile -t STAGED < <(git diff --cached --name-only --diff-filter=ACM 2>/dev/null || true)
+if [[ ${#STAGED[@]} -eq 0 ]]; then
+  exit 0
+fi
+
+BLOCKED_PATTERNS=(
+  '(^|/)config/config\.yaml$'
+  '(^|/)config/config\.json$'
+  '(^|/)\.env$'
+  '(^|/)\.env\.'
+  '(^|/)data/'
+  '\.db$'
+  '\.db-wal$'
+  '\.db-shm$'
+  '(^|/)\.venv/'
+  '(^|/)node_modules/'
+  '(^|/)\.grok/'
+)
+
+FAIL=0
+for f in "${STAGED[@]}"; do
+  for pat in "${BLOCKED_PATTERNS[@]}"; do
+    if echo "$f" | grep -Eq "$pat"; then
+      echo "[pre-commit] BLOCKED secret/runtime path: $f"
+      FAIL=1
+    fi
+  done
+  # Large binaries (jars already gitignored; catch accidental force-add)
+  if [[ "$f" == *.jar || "$f" == *.exe || "$f" == *.dll ]]; then
+    echo "[pre-commit] BLOCKED binary: $f  (build artifacts stay local)"
+    FAIL=1
+  fi
+done
+
+if [[ $FAIL -ne 0 ]]; then
+  echo
+  echo "Commit aborted. Remove those paths from the index:"
+  echo "  git reset HEAD -- <path>"
+  echo "Or skip (not recommended): SKIP_HOOKS=1 git commit ..."
+  exit 1
+fi
+
+# Soft warning: very large staged files (>1.5 MiB)
+while IFS= read -r line; do
+  size=$(echo "$line" | awk '{print $1}')
+  path=$(echo "$line" | awk '{print $2}')
+  if [[ -n "$size" && "$size" -gt 1572864 ]]; then
+    echo "[pre-commit] WARNING large file (${size} bytes): $path"
+  fi
+done < <(git diff --cached --numstat 2>/dev/null | awk '{print $1" "$3}' | grep -E '^[0-9]' || true)
+
+exit 0

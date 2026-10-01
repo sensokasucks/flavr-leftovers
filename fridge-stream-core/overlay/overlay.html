@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Fridge Minecraft Stats</title>
+  <link rel="stylesheet" href="overlay.css" />
+</head>
+<body>
+  <div id="root">
+    <!-- Health -->
+    <div class="row health-row" data-widget="health">
+      <div class="label">HP</div>
+      <div id="hearts" class="hearts"></div>
+      <div id="hp-text" class="value">20 / 20</div>
+    </div>
+
+    <!-- Food + XP + Deaths -->
+    <div class="row secondary" data-row="vitals">
+      <div class="stat" data-widget="food">
+        <span class="icon food"></span>
+        <span id="food">20</span>
+      </div>
+      <div class="stat" data-widget="xp">
+        <span class="icon xp"></span>
+        <span id="level">0</span>
+        <span class="small" id="xp-progress"></span>
+      </div>
+      <div class="stat" data-widget="deaths">
+        <span class="icon death"></span>
+        <span id="deaths">0</span>
+      </div>
+      <div class="stat" data-widget="armor">
+        <span class="icon armor"></span>
+        <span id="armor">0</span>
+      </div>
+    </div>
+
+    <!-- Metrics (viewers / chat energy) -->
+    <div class="row metrics" data-row="metrics">
+      <div class="metric" data-widget="viewers">
+        <span class="m-label">Viewers</span>
+        <span id="viewers">0</span>
+      </div>
+      <div class="metric" data-widget="cpm">
+        <span class="m-label">CPM</span>
+        <span id="cpm">0</span>
+      </div>
+      <div class="metric" data-widget="power">
+        <span class="m-label">Power</span>
+        <span id="power">0</span>/15
+      </div>
+    </div>
+
+    <!-- Active effects -->
+    <div id="effects" class="effects" data-widget="effects"></div>
+
+    <!-- Inventory panel (toggled by !inv) -->
+    <div id="inventory-panel" class="inventory hidden" data-widget="inventory">
+      <div class="inv-title">Inventory</div>
+      <div id="inv-grid" class="inv-grid"></div>
+    </div>
+  </div>
+
+  <script src="overlay.js"></script>
+</body>
+</html>

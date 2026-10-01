@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# FlaVR Leftovers — commit-msg
+set -euo pipefail
+
+if [[ "${SKIP_HOOKS:-}" == "1" ]]; then
+  exit 0
+fi
+
+MSG_FILE="$1"
+MSG=$(grep -v '^#' "$MSG_FILE" | sed '/^$/d' | head -1 || true)
+
+if [[ -z "${MSG// }" ]]; then
+  echo "[commit-msg] Empty commit message."
+  exit 1
+fi
+
+if [[ ${#MSG} -lt 3 ]]; then
+  echo "[commit-msg] Message too short."
+  exit 1
+fi
+
+exit 0

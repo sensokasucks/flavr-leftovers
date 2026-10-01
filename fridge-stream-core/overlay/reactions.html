@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat reactions (fallback)</title>
+  <!--
+    Fallback for chat reactions when Stream Rooms isn't connected.
+    Webpage / Browser source, full canvas size (e.g. 1920x1080), transparent.
+    Core decides everything (permissions, cooldowns, points); this page only draws.
+    Query: ?any=1 also draws reactions routed to the game (preview)
+           ?debug=1 shows a small log   ?scale=1.5 bigger objects
+  -->
+  <link rel="stylesheet" href="reactions.css" />
+</head>
+<body>
+  <div id="stage" class="rx-stage"></div>
+  <ul id="debug" class="rx-debug" hidden></ul>
+  <script src="reactions.js"></script>
+</body>
+</html>

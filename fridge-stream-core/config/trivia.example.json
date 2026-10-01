@@ -1,0 +1,295 @@
+{
+ "about": "Trivia for Stream Core chat games. Copy to trivia.json and edit: q = question, a = accepted answers (the first one is shown). Case, spaces, accents and a leading 'the' / 'a' don't matter.",
+ "questions": [
+  {
+   "q": "What is the largest planet in our solar system?",
+   "a": [
+    "Jupiter"
+   ]
+  },
+  {
+   "q": "How many legs does a spider have?",
+   "a": [
+    "8",
+    "eight"
+   ]
+  },
+  {
+   "q": "What gas do plants take in from the air to make food?",
+   "a": [
+    "carbon dioxide",
+    "CO2"
+   ]
+  },
+  {
+   "q": "What is the capital of Japan?",
+   "a": [
+    "Tokyo"
+   ]
+  },
+  {
+   "q": "How many continents are there?",
+   "a": [
+    "7",
+    "seven"
+   ]
+  },
+  {
+   "q": "What is the freezing point of water in Celsius?",
+   "a": [
+    "0",
+    "zero"
+   ]
+  },
+  {
+   "q": "Which planet is known as the Red Planet?",
+   "a": [
+    "Mars"
+   ]
+  },
+  {
+   "q": "What is the tallest mountain above sea level?",
+   "a": [
+    "Everest",
+    "Mount Everest"
+   ]
+  },
+  {
+   "q": "How many sides does a hexagon have?",
+   "a": [
+    "6",
+    "six"
+   ]
+  },
+  {
+   "q": "What is the chemical symbol for gold?",
+   "a": [
+    "Au"
+   ]
+  },
+  {
+   "q": "Which ocean is the largest?",
+   "a": [
+    "Pacific",
+    "Pacific Ocean"
+   ]
+  },
+  {
+   "q": "How many minutes are in a day?",
+   "a": [
+    "1440"
+   ]
+  },
+  {
+   "q": "What is the hardest natural substance?",
+   "a": [
+    "diamond"
+   ]
+  },
+  {
+   "q": "Which animal is the largest mammal?",
+   "a": [
+    "blue whale"
+   ]
+  },
+  {
+   "q": "What colour do you get by mixing blue and yellow?",
+   "a": [
+    "green"
+   ]
+  },
+  {
+   "q": "What is the capital of Canada?",
+   "a": [
+    "Ottawa"
+   ]
+  },
+  {
+   "q": "How many strings does a standard guitar have?",
+   "a": [
+    "6",
+    "six"
+   ]
+  },
+  {
+   "q": "Which element has the chemical symbol O?",
+   "a": [
+    "oxygen"
+   ]
+  },
+  {
+   "q": "What is the longest river in South America?",
+   "a": [
+    "Amazon",
+    "Amazon River"
+   ]
+  },
+  {
+   "q": "How many players are on a soccer team on the field?",
+   "a": [
+    "11",
+    "eleven"
+   ]
+  },
+  {
+   "q": "What is the smallest prime number?",
+   "a": [
+    "2",
+    "two"
+   ]
+  },
+  {
+   "q": "Which planet has the most famous rings?",
+   "a": [
+    "Saturn"
+   ]
+  },
+  {
+   "q": "What do bees collect from flowers to make honey?",
+   "a": [
+    "nectar"
+   ]
+  },
+  {
+   "q": "What is the capital of Australia?",
+   "a": [
+    "Canberra"
+   ]
+  },
+  {
+   "q": "How many hours are in a week?",
+   "a": [
+    "168"
+   ]
+  },
+  {
+   "q": "What is H2O better known as?",
+   "a": [
+    "water"
+   ]
+  },
+  {
+   "q": "Which instrument has 88 keys?",
+   "a": [
+    "piano"
+   ]
+  },
+  {
+   "q": "What is the largest desert in the world, counting cold deserts?",
+   "a": [
+    "Antarctica",
+    "Antarctic"
+   ]
+  },
+  {
+   "q": "What is the square root of 144?",
+   "a": [
+    "12",
+    "twelve"
+   ]
+  },
+  {
+   "q": "Which bird is often used as a symbol of peace?",
+   "a": [
+    "dove"
+   ]
+  },
+  {
+   "q": "How many degrees are in a right angle?",
+   "a": [
+    "90",
+    "ninety"
+   ]
+  },
+  {
+   "q": "What is the closest star to Earth?",
+   "a": [
+    "the Sun",
+    "Sun"
+   ]
+  },
+  {
+   "q": "Which country is home to the kangaroo?",
+   "a": [
+    "Australia"
+   ]
+  },
+  {
+   "q": "How many teeth does an adult human usually have?",
+   "a": [
+    "32",
+    "thirty two",
+    "thirty-two"
+   ]
+  },
+  {
+   "q": "What is the main language spoken in Brazil?",
+   "a": [
+    "Portuguese"
+   ]
+  },
+  {
+   "q": "Which metal is liquid at room temperature?",
+   "a": [
+    "mercury"
+   ]
+  },
+  {
+   "q": "How many days are in a leap year?",
+   "a": [
+    "366"
+   ]
+  },
+  {
+   "q": "What is the largest organ of the human body?",
+   "a": [
+    "skin"
+   ]
+  },
+  {
+   "q": "Which planet is closest to the Sun?",
+   "a": [
+    "Mercury"
+   ]
+  },
+  {
+   "q": "What is frozen water called?",
+   "a": [
+    "ice"
+   ]
+  },
+  {
+   "q": "How many zeros are in one million?",
+   "a": [
+    "6",
+    "six"
+   ]
+  },
+  {
+   "q": "Which shape has three sides?",
+   "a": [
+    "triangle"
+   ]
+  },
+  {
+   "q": "What is the capital of Italy?",
+   "a": [
+    "Rome"
+   ]
+  },
+  {
+   "q": "Which vitamin does the skin make in sunlight?",
+   "a": [
+    "vitamin D",
+    "D"
+   ]
+  },
+  {
+   "q": "What is the boiling point of water in Celsius at sea level?",
+   "a": [
+    "100",
+    "one hundred"
+   ]
+  }
+ ]
+}

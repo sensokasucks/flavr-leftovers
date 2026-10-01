@@ -1,0 +1,334 @@
+{
+  "id": "studio",
+  "label": "Studio Lot",
+  "style": "movie",
+  "overflow": "Day Players & Atmosphere",
+  "top_talkers": 8,
+  "departments": [
+    {
+      "id": "executive",
+      "title": "Executive Suite",
+      "pool": "paid",
+      "jobs": [
+        "Executive Producer",
+        "Studio Angel",
+        "Title Sponsor",
+        "Naming-Rights Holder",
+        "Gold Patron",
+        "Platinum Underwriter",
+        "Red-Envelope Benefactor",
+        "Super Chat Magnate",
+        "Bit Tycoon",
+        "Tip Jar Sovereign",
+        "Craft Services Endowment",
+        "Wrap-Party Host"
+      ]
+    },
+    {
+      "id": "patrons",
+      "title": "Patron Circle",
+      "pool": "paid",
+      "jobs": [
+        "Associate Producer",
+        "Co-Financier",
+        "Catering Angel",
+        "Location Benefactor",
+        "Lens Fund Trustee",
+        "Foley Endowment",
+        "Night-Shoot Patron",
+        "Coffee Budget Savior",
+        "Generator Sponsor",
+        "Vanity Card Owner"
+      ]
+    },
+    {
+      "id": "season",
+      "title": "Season Ticket Holders",
+      "pool": "subs",
+      "jobs": [
+        "Series Regular",
+        "Contract Player",
+        "Recurring Guest",
+        "Loyalty Coordinator",
+        "Badge Archivist",
+        "Emote Librarian",
+        "Sub-Only Lounge Host",
+        "Anniversary Cake Captain",
+        "Streak Keeper",
+        "Resub Confetti Tech",
+        "Channel-Point Economist",
+        "Membership Concierge",
+        "Sponsor Liaison",
+        "Tier-Three Diplomat",
+        "Gift-Sub Diplomat"
+      ]
+    },
+    {
+      "id": "guild",
+      "title": "Guild Hall",
+      "pool": "mods",
+      "jobs": [
+        "Showrunner's Second",
+        "Floor Manager",
+        "Timeout Magistrate",
+        "Link-Permit Clerk",
+        "Clip Quality Control",
+        "Rulebook Binder",
+        "Night Watch Captain",
+        "Chat Bailiff",
+        "Raid Traffic Cop",
+        "Spoiler Warden",
+        "VOD Sheriff"
+      ]
+    },
+    {
+      "id": "production",
+      "title": "Production",
+      "pool": "any",
+      "jobs": [
+        "Line Producer",
+        "Unit Production Manager",
+        "1st Assistant Director",
+        "2nd Assistant Director",
+        "2nd 2nd AD",
+        "Production Coordinator",
+        "Office PA",
+        "Set PA",
+        "Script Supervisor",
+        "Location Manager",
+        "Assistant Location Manager",
+        "Production Secretary",
+        "Travel Coordinator",
+        "Casting Associate",
+        "Extras Casting",
+        "Background Wrangler"
+      ]
+    },
+    {
+      "id": "camera",
+      "title": "Camera",
+      "pool": "any",
+      "jobs": [
+        "Director of Photography",
+        "A-Camera Operator",
+        "B-Camera Operator",
+        "1st AC",
+        "2nd AC",
+        "Loader",
+        "Steadicam Operator",
+        "Drone Pilot",
+        "DIT",
+        "Video Village Attendant",
+        "Playback Operator",
+        "Camera PA"
+      ]
+    },
+    {
+      "id": "grip",
+      "title": "Grip & Electric",
+      "pool": "any",
+      "jobs": [
+        "Gaffer",
+        "Best Boy Electric",
+        "Key Grip",
+        "Best Boy Grip",
+        "Dolly Grip",
+        "Rigging Grip",
+        "Set Lighting Technician",
+        "Generator Operator",
+        "Dimmer Board Op",
+        "Balloon Light Tech"
+      ]
+    },
+    {
+      "id": "sound",
+      "title": "Sound",
+      "pool": "any",
+      "jobs": [
+        "Production Sound Mixer",
+        "Boom Operator",
+        "Utility Sound",
+        "Wireless Mic Tech",
+        "Playback Mix",
+        "Foley Walker",
+        "Foley Mixer",
+        "Dialogue Editor",
+        "ADR Recordist",
+        "Chat Whisperer"
+      ]
+    },
+    {
+      "id": "art",
+      "title": "Art Department",
+      "pool": "any",
+      "jobs": [
+        "Production Designer",
+        "Art Director",
+        "Set Decorator",
+        "Leadman",
+        "On-Set Dresser",
+        "Prop Master",
+        "Assistant Props",
+        "Weapons Wrangler",
+        "Graphic Designer",
+        "Sign Writer",
+        "Greensman",
+        "Model Maker"
+      ]
+    },
+    {
+      "id": "wardrobe",
+      "title": "Wardrobe & Hair",
+      "pool": "any",
+      "jobs": [
+        "Costume Designer",
+        "Wardrobe Supervisor",
+        "Set Costumer",
+        "Ager/Dyer",
+        "Key Makeup",
+        "SFX Makeup",
+        "Key Hair",
+        "Barber to the Talent",
+        "Wig Wrangler",
+        "Laundry PA"
+      ]
+    },
+    {
+      "id": "post",
+      "title": "Post Production",
+      "pool": "any",
+      "jobs": [
+        "Editor",
+        "Assistant Editor",
+        "Colorist",
+        "VFX Supervisor",
+        "Compositor",
+        "Rotoscope Artist",
+        "Title Designer",
+        "Trailer Cutter",
+        "QC Operator",
+        "Archive Miner",
+        "Subtitle Wrangler",
+        "Loudness Ranger"
+      ]
+    },
+    {
+      "id": "music",
+      "title": "Music",
+      "pool": "any",
+      "jobs": [
+        "Composer",
+        "Music Supervisor",
+        "Music Editor",
+        "Session Contractor",
+        "Choir Wrangler",
+        "Needle-Drop Scout",
+        "Theme-Song Hummer",
+        "Jingle Survivor"
+      ]
+    },
+    {
+      "id": "chaos",
+      "title": "Department of Chaos",
+      "pool": "any",
+      "jobs": [
+        "Emotional Support Chat",
+        "Official First-er",
+        "Lurker Liaison",
+        "Raid Hype Captain",
+        "Bit Accountant",
+        "Craft Services",
+        "Snack Sommelier",
+        "Hydration Officer",
+        "Nap Scheduler",
+        "Keyboard ASMR Lead",
+        "Clip Farmer",
+        "Donut Runner",
+        "Unsolicited Lore Consultant",
+        "Backseat Director",
+        "Chat Translator",
+        "Copypasta Archivist",
+        "Emote Archaeologist",
+        "Hype Train Conductor",
+        "Lurk Timestamp Notary",
+        "\"One More Game\" Enabler"
+      ]
+    },
+    {
+      "id": "transport",
+      "title": "Transportation",
+      "pool": "any",
+      "jobs": [
+        "Transportation Captain",
+        "Picture Car Coordinator",
+        "Van Driver",
+        "Honeywagon Operator",
+        "Parking Wrangler",
+        "Map Folder"
+      ]
+    },
+    {
+      "id": "animals",
+      "title": "Animals & Atmosphere",
+      "pool": "any",
+      "jobs": [
+        "Animal Wrangler",
+        "Dog Double",
+        "Cat Consultant",
+        "Crow Wrangler",
+        "Atmosphere Player",
+        "Crowd Murmur Lead",
+        "Laugh-Track Historian"
+      ]
+    },
+    {
+      "id": "legal",
+      "title": "Legal & Clearance",
+      "pool": "any",
+      "jobs": [
+        "Clearance Coordinator",
+        "Fair-Use Mystic",
+        "Music Cue Lawyer",
+        "Disclaimer Fine-Print Tech",
+        "Release-Form Chaser"
+      ]
+    }
+  ],
+  "groups": [
+    {
+      "id": "paid",
+      "title": "Above-the-Line Patrons",
+      "source": "paid"
+    },
+    {
+      "id": "mods",
+      "title": "Guild Hall",
+      "source": "mods"
+    },
+    {
+      "id": "subs",
+      "title": "Season Regulars",
+      "source": "subs"
+    },
+    {
+      "id": "gifted",
+      "title": "Gifted Memberships",
+      "source": "gifted"
+    },
+    {
+      "id": "followers",
+      "title": "First-Time Follows",
+      "source": "followers"
+    },
+    {
+      "id": "raiders",
+      "title": "Incoming Company",
+      "source": "raiders"
+    },
+    {
+      "id": "top",
+      "title": "Starring",
+      "source": "top"
+    }
+  ]
+}

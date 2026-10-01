@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+config/config.yaml
+config/config.json
+*.log
+.DS_Store
+data/
+*.db
+*.db-wal
+*.db-shm

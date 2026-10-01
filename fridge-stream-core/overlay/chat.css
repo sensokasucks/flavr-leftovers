@@ -1,0 +1,142 @@
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #f2f4f8;
+  user-select: none;
+}
+
+#chat-root {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: 8px 10px;
+  /* subtle dark fade so text stays readable on busy game footage */
+  background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0.25) 35%,
+    rgba(0, 0, 0, 0.05) 70%,
+    transparent 100%
+  );
+  pointer-events: none;
+}
+
+#messages {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 100%;
+  overflow: hidden;
+}
+
+.msg {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.35;
+  font-size: 16px;
+  text-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.95),
+    0 0 8px rgba(0, 0, 0, 0.6);
+  animation: fade-in 0.18s ease-out;
+  word-break: break-word;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.badges {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1;
+  color: #0b0d10;
+}
+
+.badge.broadcaster { background: #53fc18; }
+.badge.mod         { background: #00e5a8; }
+.badge.vip         { background: #e4b5ff; }
+.badge.sub         { background: #53a8ff; }
+.badge.og          { background: #ffb347; }
+.badge.founder     { background: #ff7a59; }
+.badge.other       { background: #9aa3b2; color: #111; }
+
+.plat {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  color: #0b0d10;
+  flex-shrink: 0;
+}
+.plat-kick    { background: #53fc18; }
+.plat-twitch  { background: #bf94ff; }
+.plat-youtube { background: #ff4e45; color: #fff; }
+
+.user {
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.user::after {
+  content: ":";
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 600;
+  margin-left: 1px;
+}
+
+.text {
+  color: #f5f7fa;
+  font-weight: 500;
+}
+
+.emote {
+  height: 28px;
+  width: auto;
+  vertical-align: middle;
+  margin: 0 1px;
+  display: inline-block;
+}
+
+/* denser layout when many messages */
+.msg.compact {
+  font-size: 14px;
+}
+.msg.compact .emote {
+  height: 22px;
+}

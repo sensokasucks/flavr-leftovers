@@ -1,0 +1,719 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 14ef53e..ab1611b 100755
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -23,6 +23,7 @@ Binding to `127.0.0.1` kept other PCs out, but any web page open in the streamer
+ 
+ ### Added
+ 
++- **Chat platform settings apply without a restart.** Saving Config in the admin page reconnects only the platforms (Kick, Twitch, YouTube) whose settings changed; turning one on or off, switching channel or YouTube video takes effect at once. Hand edits to `config.yaml` are picked up within a couple of seconds (`core.watch_config`, default on; a file that fails to parse is ignored and the running settings kept). Status tab has a **Reconnect** button per enabled platform (`POST /api/admin/platforms/{kick|twitch|youtube}/reconnect`). Switching Kick channel drops the old channel's cached `chatroom_id` so the new one is looked up. A platform that is enabled but could not start (channel not set, chatroom lookup failed) now shows as stopped instead of running. Game toggles and the port still need a restart. Tests: `tests/test_platform_reload.py`.
+ - **Several at once from a reaction command**: `!tomato x5`, `!tomato 5`, `!tomato @bob 5`, `!tomato screen x5` fire five (capped by the entry's **Max per message**, each one costs, same as `🍅🍅🍅`). A bare number only counts on its own or after an `@mention`, so `!tomato presenter 2` still aims at presenter 2. New per-entry **Per command** (`command_count`, default 1): how many a command fires when no number is typed, for things like a `!barrage` of 10. Tests in `tests/test_reactions.py`.
+ - **Chat reactions** (`core/reactions.py`, off by default: `reactions.enabled`). An emoji (🍅), emote name or `!command` in chat plays an effect — throw, pile up, float up, drift down, rain, confetti, wiggle, stand and cheer, big shout, stadium wave, spotlight, room lights, camera shake, applause meter — in Stream Rooms, or on the new fallback overlay **`/overlay/reactions.html`** when no game is connected. Core owns the rules: permission (public / mod / admin) plus optional sub/VIP requirement, per-user / global / per-target cooldowns, point costs from the Core ledger (`source=reaction`, refunded if the game drops it), `!nothrow` / `!throwok` opt-out/in (`data/reactions_optout.json`), `!targets`, and chat replies (emoji triggers stay silent). `🍅 @bob` / `!tomato @bob` / `!tomato screen` aim at an audience member, a stage spot or a guest. Edit everything in **Admin → Config → Reactions** (hot-applied, with a free Test button and a recent-reactions log). New command group `reactions`. Spec + WebSocket protocol: [docs/REACTIONS.md](docs/REACTIONS.md). Tests: `tests/test_reactions.py`.
+ - **Game ↔ Core WebSocket frames**: a game on `/ws` can now send JSON `hello` (with its effect list, which the Reactions editor uses), `room_state` (targets / guests / seated), `reaction_result`, `say` (rate-limited line through Core's reply path) and `overlay` (relayed as `game_overlay`). Only a socket that sent `hello` may use them; other frames are ignored as before.
+diff --git a/README.md b/README.md
+index a1dd42c..42ef3a5 100755
+--- a/README.md
++++ b/README.md
+@@ -23,7 +23,7 @@ Kick / Twitch / YouTube adapters ──┐
+                             Minecraft / Factorio / Granvir / OpenTTD
+ ```
+ 
+-All **chat platforms default to off**. Enable Kick, Twitch, and/or YouTube in `config.yaml` (or the admin Config tab) and restart.
++All **chat platforms default to off**. Enable Kick, Twitch, and/or YouTube in `config.yaml` (or the admin Config tab); Core connects them without a restart.
+ 
+ ## Why this exists
+ 
+@@ -103,7 +103,7 @@ http://127.0.0.1:3850/admin/
+   - Commands list with edit / add / delete (group, priority, handler)
+   - Duplicate name/alias conflicts shown in the UI; higher `priority` wins
+   - Saves the same files tech users edit by hand (hybrid approach)
+-  - After save: **restart Stream Core** for platform/game toggles; groups + commands hot-reload
++  - After save: chat platforms reconnect live (only the ones that changed); groups + commands hot-reload; **restart Stream Core** for game toggles
+ 
+ Set `points.admin_token` in `config.yaml` (or via the Config tab), paste it into the dashboard header, click **Save**.
+ If you leave it as `change-me`, Core refuses that value and generates a random token in `data/admin_token.txt` (also printed in the console at startup).
+diff --git a/admin/admin.js b/admin/admin.js
+index 1aa6f64..7c94c26 100755
+--- a/admin/admin.js
++++ b/admin/admin.js
+@@ -266,12 +266,13 @@
+         const run = p.running;
+         const want = p.configured_enabled;
+         let note = "";
+-        if (want && !run) note = " (enabled in config but not running — restart?)";
++        if (want && !run) note = " (enabled but not connected — check the channel, then Reconnect)";
+         if (!want && !run) note = " (disabled)";
+         html += `<li><strong>${name}</strong> ${run ? pill(true, "running") : pill(false, "stopped")}
+           ${want ? pill(true, "config on") : pill(false, "config off")}
+           ${p.detail ? `<span class="muted">${p.detail}</span>` : ""}
+-          <span class="muted">${note}</span></li>`;
++          <span class="muted">${note}</span>
++          ${want ? `<button class="platform-reconnect" data-platform="${name}">Reconnect</button>` : ""}</li>`;
+       }
+       html += `</ul></div>`;
+ 
+@@ -293,6 +294,18 @@
+       </div>`;
+ 
+       body.innerHTML = html;
++      body.querySelectorAll(".platform-reconnect").forEach((btn) => {
++        btn.onclick = async () => {
++          btn.disabled = true;
++          try {
++            const res = await api(`/api/admin/platforms/${btn.dataset.platform}/reconnect`, { method: "POST" });
++            setStatus(res.message || "Reconnected", res.ok !== false);
++          } catch (e) {
++            setStatus(String(e.message || e), false);
++          }
++          loadStatus();
++        };
++      });
+       if ($("status-updated")) {
+         $("status-updated").textContent = "Updated " + new Date().toLocaleTimeString();
+       }
+@@ -1161,6 +1174,7 @@
+     const next = {
+       ...(lastLoadedConfig || {}),
+       core: {
++        ...((lastLoadedConfig || {}).core || {}),
+         host: $("cfg-core-host").value.trim() || "127.0.0.1",
+         port: num($("cfg-core-port").value, 3850),
+         command_prefix: $("cfg-core-prefix").value || "!",
+@@ -1290,8 +1304,8 @@
+         method: "PUT",
+         body: JSON.stringify({ config }),
+       });
+-      setCfgStatus(res.message || "Saved — restart Core", true);
+-      setStatus("Config saved — restart Stream Core", true);
++      setCfgStatus(res.message || "Saved", true);
++      setStatus("Config saved — chat platforms applied", true);
+     } catch (e) {
+       setCfgStatus(String(e.message || e), false);
+     }
+diff --git a/admin/index.html b/admin/index.html
+index 1fa2f97..3b65340 100755
+--- a/admin/index.html
++++ b/admin/index.html
+@@ -70,7 +70,7 @@
+ 
+   <!-- Status hub -->
+   <section id="tab-status" class="panel active">
+-    <p class="tab-intro">Live view of what Stream Core is running. Refresh after you start or stop adapters/games (restart Core after config changes).</p>
++    <p class="tab-intro">Live view of what Stream Core is running. Refresh after you start or stop adapters/games. Chat platforms reconnect when you save Config; games still need a Core restart.</p>
+     <div class="toolbar">
+       <button id="status-refresh" class="primary">Refresh status</button>
+       <span id="status-updated" class="muted"></span>
+@@ -756,8 +756,9 @@
+   <section id="tab-config" class="panel">
+     <div class="config-banner" id="config-banner">
+       <strong>Save writes the same files tech users edit by hand.</strong>
+-      After saving, <em>restart Stream Core</em> for platform/game toggles.
++      Saving reconnects only the chat platforms (Kick, Twitch, YouTube) whose settings changed, no restart.
+       Command groups and command definitions hot-reload immediately.
++      Game toggles and the port still need a Stream Core restart.
+       <span class="muted" id="config-paths"></span>
+     </div>
+ 
+diff --git a/api/admin_routes.py b/api/admin_routes.py
+index e157e01..d5a49c4 100755
+--- a/api/admin_routes.py
++++ b/api/admin_routes.py
+@@ -345,7 +345,7 @@ def create_admin_router(core_state) -> APIRouter:
+             ),
+             "metrics": metrics,
+             "sources": sources,
+-            "note": "Restart Stream Core after changing config for platform/game toggles to apply.",
++            "note": "Chat platforms apply live when config is saved. Restart Stream Core for game toggles.",
+         }
+ 
+     @router.get("/users")
+@@ -465,7 +465,8 @@ def create_admin_router(core_state) -> APIRouter:
+             "defaults": DEFAULTS,
+             "config_path": cfg_path,
+             "commands_path": cmd_path,
+-            "note": "Changes are written to disk. Restart Stream Core to apply.",
++            "note": "Changes are written to disk. Chat platforms reconnect on save; "
++            "restart Stream Core for game toggles and the port.",
+         }
+ 
+     @router.put("/config")
+@@ -473,7 +474,7 @@ def create_admin_router(core_state) -> APIRouter:
+         body: ConfigSaveBody,
+         x_admin_token: Optional[str] = Header(None),
+     ):
+-        """Write config.yaml. Does not hot-reload — restart Core to apply."""
++        """Write config.yaml and hot-apply command groups, credits and chat platforms."""
+         _auth(x_admin_token)
+         if not isinstance(body.config, dict) or not body.config:
+             raise HTTPException(400, "config object required")
+@@ -491,8 +492,8 @@ def create_admin_router(core_state) -> APIRouter:
+         except Exception as e:
+             log.exception("save_config failed")
+             raise HTTPException(500, f"Failed to save config: {e}") from e
+-        # Update in-memory view so subsequent GETs match disk until restart
+-        # (runtime behaviour still requires restart for adapters/games)
++        # Update in-memory view so subsequent GETs match disk
++        # (game integrations and the port still need a restart)
+         try:
+             core_state.config = load_config()
+         except Exception:
+@@ -513,14 +514,49 @@ def create_admin_router(core_state) -> APIRouter:
+                 credits_note = f" Credits {'on' if info.get('enabled') else 'off'}."
+             except Exception:
+                 log.exception("apply_credits after config save failed")
++        platforms_note = ""
++        platforms_info = None
++        apply_platforms = getattr(core_state, "apply_platforms", None)
++        if callable(apply_platforms):
++            try:
++                platforms_info = await apply_platforms()
++                changed = platforms_info.get("changed") or []
++                if changed:
++                    platforms_note = f" Reconnected {', '.join(changed)}."
++            except Exception:
++                log.exception("apply_platforms after config save failed")
++                platforms_note = " Chat platforms could not be applied, see the Core log."
+         return {
+             "ok": True,
+             "path": str(path),
+-            "message": "Saved. Restart Stream Core for platform/game toggles."
++            "message": "Saved. Chat platforms apply live; restart Stream Core for game toggles."
++            + platforms_note
+             + groups_note
+             + credits_note,
++            "platforms": platforms_info,
+         }
+ 
++    @router.post("/platforms/{name}/reconnect")
++    async def reconnect_platform(name: str, x_admin_token: Optional[str] = Header(None)):
++        """Stop and start one chat platform with the current config (no Core restart)."""
++        _auth(x_admin_token)
++        name = (name or "").lower().strip()
++        if name not in ("kick", "twitch", "youtube"):
++            raise HTTPException(404, f"Unknown platform '{name}'")
++        apply_platforms = getattr(core_state, "apply_platforms", None)
++        if not callable(apply_platforms):
++            raise HTTPException(503, "Core apply_platforms not wired — restart Stream Core")
++        info = await apply_platforms(force=(name,))
++        running = name in (info.get("running") or [])
++        enabled = bool(((core_state.config or {}).get(name) or {}).get("enabled"))
++        if running:
++            msg = f"{name} reconnected."
++        elif enabled:
++            msg = f"{name} is enabled but did not start. Check the channel settings and the Core log."
++        else:
++            msg = f"{name} is off (enable it in Config)."
++        return {"ok": running or not enabled, "running": running, "message": msg, **info}
++
+     @router.get("/commands")
+     async def get_commands(x_admin_token: Optional[str] = Header(None)):
+         _auth(x_admin_token)
+diff --git a/config/config.example.yaml b/config/config.example.yaml
+index 86a69e1..ce27b27 100755
+--- a/config/config.example.yaml
++++ b/config/config.example.yaml
+@@ -7,6 +7,9 @@ core:
+   port: 3850                  # same port the old Minecraft bridge used
+   command_prefix: "!"
+   log_level: "INFO"
++  # Notice edits to this file while Core runs and reconnect only the chat
++  # platforms whose settings changed. Set false to apply only from the admin page.
++  watch_config: true
+   # Requests from other web sites are refused (CSRF / DNS-rebinding guard).
+   # Only needed if you deliberately serve Core on a LAN name or IP:
+   # allowed_hosts: ["192.168.1.20"]
+diff --git a/core/config.py b/core/config.py
+index 0155c7f..d6aa607 100755
+--- a/core/config.py
++++ b/core/config.py
+@@ -518,7 +518,7 @@ def save_config(data: dict, path: Path | str | None = None) -> Path:
+     header = (
+         "# Fridge Stream Core configuration\n"
+         "# Edited by the admin Config UI or by hand.\n"
+-        "# Restart Stream Core after changing this file.\n\n"
++        "# Chat platform changes apply live; restart Stream Core for games and the port.\n\n"
+     )
+     target.write_text(header + text, encoding="utf-8")
+     log.info("Saved config to %s", target)
+diff --git a/core/metrics.py b/core/metrics.py
+index 284a034..1eb90b0 100755
+--- a/core/metrics.py
++++ b/core/metrics.py
+@@ -43,6 +43,11 @@ class MetricsAggregator:
+         key = platform.value if isinstance(platform, Platform) else platform
+         self._viewers[key] = max(0, int(count))
+ 
++    def clear_viewers(self, platform: Platform | str) -> None:
++        """Drop a platform's count (adapter stopped or switched channel)."""
++        key = platform.value if isinstance(platform, Platform) else platform
++        self._viewers.pop(key, None)
++
+     def _prune(self) -> None:
+         now = time.time()
+         msg_cutoff = now - self.message_window_sec
+diff --git a/main.py b/main.py
+index e29de0b..a0c468a 100755
+--- a/main.py
++++ b/main.py
+@@ -12,6 +12,7 @@ Starts (all chat platforms and Minecraft are opt-in via config):
+ from __future__ import annotations
+ 
+ import asyncio
++import copy
+ import logging
+ import os
+ import signal
+@@ -34,7 +35,13 @@ if str(ROOT) not in sys.path:
+ try:
+     import uvicorn
+ 
+-    from core.config import ConfigError, ensure_seed_files, load_config, resolve_commands_path
++    from core.config import (
++        ConfigError,
++        ensure_seed_files,
++        load_config,
++        resolve_commands_path,
++        resolve_config_path,
++    )
+     from core.command_groups import catalog_status, resolve_active_groups
+     from core.event_bus import EventBus
+     from core.metrics import MetricsAggregator
+@@ -65,6 +72,13 @@ except ImportError as exc:
+ 
+ log = logging.getLogger("main")
+ 
++# Chat platforms Core can start, stop and reconnect while running
++PLATFORM_ADAPTERS = {
++    "kick": KickAdapter,
++    "twitch": TwitchAdapter,
++    "youtube": YouTubeAdapter,
++}
++
+ 
+ class StreamCore:
+     def __init__(self, config: dict):
+@@ -87,6 +101,11 @@ class StreamCore:
+         )
+ 
+         self.adapters = {}
++        # Platform config sections as last applied, so a save only reconnects what changed
++        self._platform_applied: dict[str, dict] = {}
++        self._platform_lock = asyncio.Lock()
++        # Kick chatroom ids left over from a channel we switched away from
++        self._kick_stale_rooms: set[str] = set()
+         self.games = {}
+         self.state = CoreState()
+         self.state.config = config
+@@ -177,29 +196,8 @@ class StreamCore:
+             log.info("OpenTTD integration disabled (openttd.enabled=false)")
+ 
+         # Start chat adapters (all opt-in — default enabled=false)
+-        kick_cfg = self.config.get("kick", {})
+-        if kick_cfg.get("enabled", False):
+-            kick = KickAdapter(self.config, self.bus, self.metrics)
+-            await kick.start()
+-            self.adapters["kick"] = kick
+-        else:
+-            log.info("Kick adapter disabled (kick.enabled=false)")
+-
+-        twitch_cfg = self.config.get("twitch", {})
+-        if twitch_cfg.get("enabled", False):
+-            tw = TwitchAdapter(self.config, self.bus, self.metrics)
+-            await tw.start()
+-            self.adapters["twitch"] = tw
+-        else:
+-            log.info("Twitch adapter disabled (twitch.enabled=false)")
+-
+-        yt_cfg = self.config.get("youtube", {})
+-        if yt_cfg.get("enabled", False):
+-            yt = YouTubeAdapter(self.config, self.bus, self.metrics)
+-            await yt.start()
+-            self.adapters["youtube"] = yt
+-        else:
+-            log.info("YouTube adapter disabled (youtube.enabled=false)")
++        for name in PLATFORM_ADAPTERS:
++            await self._start_platform(name)
+ 
+         self.refresh_command_groups()
+         self.state.reload_commands = self.reload_commands_live
+@@ -221,14 +219,138 @@ class StreamCore:
+         self.state.test_metrics = self.test_metrics
+         self.state.core = self
+         self.state.apply_credits = self.apply_credits_config
++        self.state.apply_platforms = self.apply_platforms
+ 
+         # Periodic metrics publish
+         self._metrics_task = asyncio.create_task(self._metrics_loop(), name="metrics-loop")
+         self._credits_task = asyncio.create_task(self._credits_persist_loop(), name="credits-persist")
+         self._market_task = asyncio.create_task(self._market_loop(), name="market-tape")
++        if (self.config.get("core") or {}).get("watch_config", True):
++            self._config_watch_task = asyncio.create_task(
++                self._config_watch_loop(), name="config-watch"
++            )
+ 
+         log.info("Stream Core started")
+ 
++    # ------------------------------------------------------------------
++    # Chat platforms (hot-applied, no restart)
++    # ------------------------------------------------------------------
++
++    async def _start_platform(self, name: str) -> None:
++        section = self.config.get(name) or {}
++        if not section.get("enabled", False):
++            log.info("%s adapter disabled (%s.enabled=false)", name.title(), name)
++            self._platform_applied[name] = copy.deepcopy(section)
++            return
++        adapter = PLATFORM_ADAPTERS[name](self.config, self.bus, self.metrics)
++        try:
++            await adapter.start()
++        finally:
++            # Kick may write a resolved chatroom_id back into config while starting
++            self._platform_applied[name] = copy.deepcopy(self.config.get(name) or {})
++        if getattr(adapter, "_running", False):
++            self.adapters[name] = adapter
++        else:
++            # start() already logged why (channel not set, chatroom lookup failed, ...)
++            await adapter.stop()
++
++    async def _stop_platform(self, name: str) -> None:
++        adapter = self.adapters.pop(name, None)
++        if adapter:
++            try:
++                await adapter.stop()
++            except Exception:
++                log.exception("%s adapter stop failed", name)
++        self.metrics.clear_viewers(name)
++
++    @staticmethod
++    def _platform_changed(new: dict, old: dict | None) -> bool:
++        if old is None:
++            return True
++        # chatroom_id is a cached lookup: gaining one is a change, losing one is not
++        strip = lambda d: {k: v for k, v in d.items() if k != "chatroom_id"}
++        if strip(new) != strip(old):
++            return True
++        return new.get("chatroom_id") not in (None, "", old.get("chatroom_id"))
++
++    def _forget_kick_room(self, section: dict, old: dict | None) -> dict:
++        """Drop a chatroom_id that belongs to the previous Kick channel."""
++        room = section.get("chatroom_id")
++        if old is not None and section.get("channel_slug") != old.get("channel_slug"):
++            if room not in (None, "") and room == old.get("chatroom_id"):
++                self._kick_stale_rooms.add(str(room))
++        if room in (None, "") or str(room) not in self._kick_stale_rooms:
++            return section
++        section = {k: v for k, v in section.items() if k != "chatroom_id"}
++        self.config["kick"] = section
++        try:
++            from core.config import save_config
++
++            disk = load_config()
++            kick = dict(disk.get("kick") or {})
++            if str(kick.get("chatroom_id")) == str(room):
++                kick.pop("chatroom_id", None)
++                disk["kick"] = kick
++                save_config(disk)
++        except Exception:
++            log.exception("Could not clear old kick.chatroom_id from config.yaml")
++        return section
++
++    async def apply_platforms(self, force: tuple | list = ()) -> dict:
++        """Reconnect only the chat platforms whose config changed (or in ``force``)."""
++        async with self._platform_lock:
++            self._sync_live_config()
++            changed = []
++            for name in PLATFORM_ADAPTERS:
++                section = self.config.get(name) or {}
++                old = self._platform_applied.get(name)
++                if name == "kick":
++                    section = self._forget_kick_room(section, old)
++                if name not in force and not self._platform_changed(section, old):
++                    continue
++                log.info("Applying %s settings (reconnecting)", name)
++                await self._stop_platform(name)
++                try:
++                    await self._start_platform(name)
++                except Exception:
++                    log.exception("%s adapter failed to start", name)
++                changed.append(name)
++            return {"changed": changed, "running": sorted(self.adapters)}
++
++    def apply_live_config(self) -> None:
++        """Hot-apply the parts of config that do not need a restart."""
++        self.refresh_command_groups()
++        self.apply_credits_config()
++
++    async def _config_watch_loop(self) -> None:
++        """Pick up hand edits to config.yaml (Notepad, wizard.py) without a restart."""
++        path = resolve_config_path()
++        last = path.stat().st_mtime if path and path.exists() else None
++        while not self._stop.is_set():
++            try:
++                await asyncio.wait_for(self._stop.wait(), timeout=2.0)
++                break
++            except asyncio.TimeoutError:
++                pass
++            try:
++                path = resolve_config_path()
++                mtime = path.stat().st_mtime if path and path.exists() else None
++                if mtime is None or mtime == last:
++                    continue
++                last = mtime
++                try:
++                    fresh = load_config()
++                except ConfigError as exc:
++                    log.warning("config.yaml changed but could not be read; keeping current settings. %s", exc)
++                    continue
++                self.state.config = fresh
++                self.apply_live_config()
++                info = await self.apply_platforms()
++                if info["changed"]:
++                    log.info("config.yaml changed: reconnected %s", ", ".join(info["changed"]))
++            except Exception:
++                log.exception("config watch failed")
++
+     def _sync_live_config(self) -> None:
+         """Admin saves replace state.config with a fresh dict; follow it."""
+         live = getattr(self.state, "config", None)
+@@ -316,6 +438,12 @@ class StreamCore:
+                 await self._market_task
+             except asyncio.CancelledError:
+                 pass
++        if getattr(self, "_config_watch_task", None):
++            self._config_watch_task.cancel()
++            try:
++                await self._config_watch_task
++            except asyncio.CancelledError:
++                pass
+         if getattr(self, "_credits_task", None):
+             self._credits_task.cancel()
+             try:
+@@ -327,8 +455,8 @@ class StreamCore:
+             except Exception:
+                 log.exception("credits save on stop failed")
+ 
+-        for adapter in self.adapters.values():
+-            await adapter.stop()
++        for name in list(self.adapters):
++            await self._stop_platform(name)
+         for game in self.games.values():
+             await game.stop()
+         log.info("Stream Core stopped")
+diff --git a/tests/test_platform_reload.py b/tests/test_platform_reload.py
+new file mode 100644
+index 0000000..5ab5cde
+--- /dev/null
++++ b/tests/test_platform_reload.py
+@@ -0,0 +1,212 @@
++"""Chat platform settings apply without restarting Core.
++
++    python -m unittest tests.test_platform_reload -v
++"""
++
++from __future__ import annotations
++
++import asyncio
++import copy
++import sys
++import unittest
++from pathlib import Path
++from unittest import mock
++
++ROOT = Path(__file__).resolve().parent.parent
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++import main
++from api.server import CoreState
++from core.config import DEFAULTS, _deep_merge
++from core.event_bus import EventBus
++from core.metrics import MetricsAggregator
++
++
++class FakeAdapter:
++    """Stands in for Kick/Twitch/YouTube; records what it was started with."""
++
++    started: list = []
++    stopped: list = []
++    name = "fake"
++
++    def __init__(self, config, bus, metrics):
++        self.config = config
++        self.section = copy.deepcopy(config.get(self.name) or {})
++        self._running = False
++
++    async def start(self):
++        if (self.section.get("channel") or self.section.get("channel_slug") or "") == "":
++            return  # real adapters log and return when the channel is unset
++        if self.name == "kick" and not self.section.get("chatroom_id"):
++            # like KickAdapter._persist_chatroom_id
++            kick = dict(self.config.get("kick") or {})
++            kick["chatroom_id"] = 1000 + len(kick.get("channel_slug", ""))
++            self.config["kick"] = kick
++            self.section = copy.deepcopy(kick)
++        self._running = True
++        FakeAdapter.started.append((self.name, self.section))
++
++    async def stop(self):
++        if self._running:
++            FakeAdapter.stopped.append(self.name)
++        self._running = False
++
++
++def _fake(name):
++    return type(f"Fake{name.title()}", (FakeAdapter,), {"name": name})
++
++
++def make_core(overrides: dict) -> "main.StreamCore":
++    config = _deep_merge(DEFAULTS, overrides)
++    core = main.StreamCore.__new__(main.StreamCore)
++    core.config = config
++    core.bus = EventBus()
++    core.metrics = MetricsAggregator(config)
++    core.adapters = {}
++    core._platform_applied = {}
++    core._platform_lock = asyncio.Lock()
++    core._kick_stale_rooms = set()
++    core.state = CoreState()
++    core.state.config = config
++    core.state.adapters = core.adapters
++    return core
++
++
++class PlatformReloadTests(unittest.IsolatedAsyncioTestCase):
++    def setUp(self):
++        FakeAdapter.started = []
++        FakeAdapter.stopped = []
++        patcher = mock.patch.dict(
++            main.PLATFORM_ADAPTERS,
++            {n: _fake(n) for n in ("kick", "twitch", "youtube")},
++        )
++        patcher.start()
++        self.addCleanup(patcher.stop)
++        # Never touch the real config.yaml
++        for target in ("main.load_config", "core.config.save_config"):
++            p = mock.patch(target, side_effect=lambda *a, **k: copy.deepcopy(self.core.config))
++            p.start()
++            self.addCleanup(p.stop)
++
++    async def _boot(self, overrides):
++        self.core = make_core(overrides)
++        for name in main.PLATFORM_ADAPTERS:
++            await self.core._start_platform(name)
++        FakeAdapter.started = []
++        FakeAdapter.stopped = []
++
++    def _save(self, **sections):
++        """What PUT /config does: a fresh dict replaces state.config."""
++        fresh = copy.deepcopy(self.core.state.config)
++        for key, val in sections.items():
++            fresh[key] = {**(fresh.get(key) or {}), **val}
++        self.core.state.config = fresh
++
++    async def test_enable_platform_live(self):
++        await self._boot({})
++        self.assertEqual(self.core.adapters, {})
++        self._save(twitch={"enabled": True, "channel": "fridge"})
++        info = await self.core.apply_platforms()
++        self.assertEqual(info["changed"], ["twitch"])
++        self.assertEqual(info["running"], ["twitch"])
++        self.assertEqual(FakeAdapter.started[0][1]["channel"], "fridge")
++
++    async def test_only_changed_platform_reconnects(self):
++        await self._boot({
++            "twitch": {"enabled": True, "channel": "fridge"},
++            "youtube": {"enabled": True, "channel": "x", "video_id": "old"},
++        })
++        yt_before = self.core.adapters["youtube"]
++        self._save(twitch={"channel": "otherchan"})
++        info = await self.core.apply_platforms()
++        self.assertEqual(info["changed"], ["twitch"])
++        self.assertIs(self.core.adapters["youtube"], yt_before)
++        self.assertEqual(FakeAdapter.stopped, ["twitch"])
++
++    async def test_unchanged_save_is_noop(self):
++        await self._boot({"twitch": {"enabled": True, "channel": "fridge"}})
++        self._save()
++        info = await self.core.apply_platforms()
++        self.assertEqual(info["changed"], [])
++        self.assertEqual(FakeAdapter.stopped, [])
++
++    async def test_disable_platform_stops_and_clears_viewers(self):
++        await self._boot({"twitch": {"enabled": True, "channel": "fridge"}})
++        self.core.metrics.set_viewers("twitch", 50)
++        self._save(twitch={"enabled": False})
++        await self.core.apply_platforms()
++        self.assertNotIn("twitch", self.core.adapters)
++        self.assertEqual(self.core.metrics.total_viewers, 0)
++
++    async def test_force_reconnect(self):
++        await self._boot({"twitch": {"enabled": True, "channel": "fridge"}})
++        old = self.core.adapters["twitch"]
++        info = await self.core.apply_platforms(force=("twitch",))
++        self.assertEqual(info["changed"], ["twitch"])
++        self.assertIsNot(self.core.adapters["twitch"], old)
++
++    async def test_misconfigured_platform_not_listed_running(self):
++        await self._boot({})
++        self._save(twitch={"enabled": True, "channel": ""})
++        info = await self.core.apply_platforms()
++        self.assertEqual(info["running"], [])
++
++    async def test_kick_channel_switch_drops_old_chatroom(self):
++        await self._boot({"kick": {"enabled": True, "channel_slug": "abc", "chatroom_id": 55}})
++        # The admin form sends back the old chatroom_id with the new slug
++        self._save(kick={"channel_slug": "newchannel", "chatroom_id": 55})
++        await self.core.apply_platforms()
++        section = FakeAdapter.started[-1][1]
++        self.assertEqual(section["channel_slug"], "newchannel")
++        self.assertNotEqual(section.get("chatroom_id"), 55)
++        # A later reload of the stale file must not bring the old room back
++        FakeAdapter.started = []
++        self._save(kick={"channel_slug": "newchannel", "chatroom_id": 55})
++        info = await self.core.apply_platforms()
++        self.assertEqual(info["changed"], [])
++
++    async def test_kick_losing_cached_chatroom_is_not_a_change(self):
++        await self._boot({"kick": {"enabled": True, "channel_slug": "abc"}})
++        fresh = copy.deepcopy(self.core.state.config)
++        fresh["kick"].pop("chatroom_id", None)
++        self.core.state.config = fresh
++        info = await self.core.apply_platforms()
++        self.assertEqual(info["changed"], [])
++
++
++class AdminRouteTests(unittest.TestCase):
++    def test_put_config_applies_platforms_and_reconnect_route(self):
++        from fastapi import FastAPI
++        from fastapi.testclient import TestClient
++
++        from api import admin_routes
++
++        state = CoreState()
++        state.config = _deep_merge(DEFAULTS, {"points": {"admin_token": "tok-123456789"}})
++        calls = []
++
++        async def apply_platforms(force=()):
++            calls.append(tuple(force))
++            return {"changed": ["twitch"], "running": ["twitch"]}
++
++        state.apply_platforms = apply_platforms
++        app = FastAPI()
++        app.include_router(admin_routes.create_admin_router(state))
++        client = TestClient(app)
++        headers = {"X-Admin-Token": "tok-123456789"}
++        with mock.patch.object(admin_routes, "save_config", return_value=Path("config.yaml")), \
++                mock.patch.object(admin_routes, "load_config", return_value=state.config):
++            res = client.put("/api/admin/config", json={"config": state.config}, headers=headers)
++        self.assertEqual(res.status_code, 200, res.text)
++        self.assertIn("Reconnected twitch", res.json()["message"])
++        self.assertEqual(calls, [()])
++
++        res = client.post("/api/admin/platforms/twitch/reconnect", headers=headers)
++        self.assertEqual(res.status_code, 200, res.text)
++        self.assertEqual(calls[-1], ("twitch",))
++        self.assertEqual(client.post("/api/admin/platforms/nope/reconnect", headers=headers).status_code, 404)
++
++
++if __name__ == "__main__":
++    unittest.main()

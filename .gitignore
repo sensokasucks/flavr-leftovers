@@ -1,0 +1,50 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Local config & secrets (keep *.example.*)
+**/config/config.yaml
+**/config/config.json
+.env
+.env.*
+!.env.example
+
+# Runtime state
+**/data/
+*.db
+*.db-wal
+*.db-shm
+*.log
+session.json
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Java / Minecraft / Gradle
+.gradle/
+**/build/libs/
+*.jar
+!gradle-wrapper.jar
+!**/gradle/wrapper/gradle-wrapper.jar
+*.class
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Grok / local only
+.grok/
+*.pyc
+
+# Reactive Image build output
+fridge-reactive-image/dist/

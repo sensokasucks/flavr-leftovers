@@ -1,0 +1,253 @@
+{
+  "points": {
+    "aliases": ["balance", "pts"],
+    "permission": "public",
+    "description": "Show your Fridge chat points balance",
+    "args": [],
+    "group": "points",
+    "handler": "core",
+    "special": "points_balance",
+    "cost": 0,
+    "examples": ["!points", "!balance"]
+  },
+  "credit": {
+    "aliases": ["job", "cast"],
+    "permission": "public",
+    "description": "Pin a chatter's movie-credits job. Usage: !credit \"name\" \"job title\"",
+    "args": ["name", "job"],
+    "group": "credits",
+    "handler": "core",
+    "special": "credit_set",
+    "cost": 0,
+    "examples": ["!credit \"bob\" \"Gaffer\"", "!credit \"kick:bob\" clear"]
+  },
+  "credits": {
+    "aliases": ["roster"],
+    "permission": "public",
+    "description": "How many unique chatters are on the credits roll",
+    "args": [],
+    "group": "credits",
+    "handler": "core",
+    "special": "credits_count",
+    "cost": 0,
+    "examples": ["!credits"]
+  },
+  "buy": {
+    "aliases": ["long"],
+    "permission": "public",
+    "description": "Spend points to buy shares. !buy SYMBOL 50",
+    "args": ["symbol", "points"],
+    "group": "market",
+    "handler": "core",
+    "special": "market_buy",
+    "cost": 0,
+    "examples": ["!buy MINECRAF 50"]
+  },
+  "sell": {
+    "aliases": ["short"],
+    "permission": "public",
+    "description": "Sell shares back for points. !sell SYMBOL 2 or !sell SYMBOL all",
+    "args": ["symbol", "qty"],
+    "group": "market",
+    "handler": "core",
+    "special": "market_sell",
+    "cost": 0,
+    "examples": ["!sell MINECRAF 2", "!sell MINECRAF all"]
+  },
+  "tickers": {
+    "aliases": ["stocks", "market"],
+    "permission": "public",
+    "description": "List live Fridge Market tickers",
+    "args": [],
+    "group": "market",
+    "handler": "core",
+    "special": "market_tickers",
+    "cost": 0,
+    "examples": ["!tickers"]
+  },
+  "portfolio": {
+    "aliases": ["shares", "holdings"],
+    "permission": "public",
+    "description": "Show your Fridge Market holdings",
+    "args": [],
+    "group": "market",
+    "handler": "core",
+    "special": "market_portfolio",
+    "cost": 0,
+    "examples": ["!portfolio"]
+  },
+  "help": {
+    "aliases": ["commands"],
+    "permission": "public",
+    "description": "List commands available right now",
+    "args": [],
+    "group": "core",
+    "handler": "core",
+    "special": "help",
+    "cost": 0,
+    "examples": ["!help"]
+  },
+  "spawn": {
+    "aliases": ["summon"],
+    "permission": "public",
+    "description": "Spawn an entity near the streamer",
+    "args": ["entity", "qty?"],
+    "defaultQty": 1,
+    "maxQty": 8,
+    "template": "execute at {player} run summon {arg1} ~ ~1 ~",
+    "qtyTemplate": "execute at {player} run summon {arg1} ~ ~1 ~",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0,
+    "examples": ["!spawn creeper", "!spawn zombie 3"]
+  },
+  "give": {
+    "aliases": ["item"],
+    "permission": "public",
+    "description": "Give items to the streamer",
+    "args": ["item", "qty?"],
+    "defaultQty": 1,
+    "maxQty": 64,
+    "template": "give {player} {arg1} {qty}",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "heal": {
+    "aliases": ["hp"],
+    "permission": "public",
+    "description": "Fully heal the streamer",
+    "args": [],
+    "template": "effect give {player} minecraft:instant_health 1 10 true",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "effect": {
+    "aliases": ["potion"],
+    "permission": "public",
+    "description": "Apply a potion effect",
+    "args": ["effect", "seconds?"],
+    "defaultSeconds": 30,
+    "maxSeconds": 120,
+    "template": "effect give {player} {arg1} {seconds} 1 true",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0,
+    "examples": ["!effect speed 45", "!effect regeneration"]
+  },
+  "inv": {
+    "aliases": ["inventory"],
+    "permission": "public",
+    "description": "Show streamer inventory on the overlay for a few seconds",
+    "args": [],
+    "special": "show_inventory",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "weather": {
+    "permission": "mod",
+    "description": "Change weather",
+    "args": ["type"],
+    "template": "weather {arg1}",
+    "allowedValues": ["clear", "rain", "thunder"],
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "time": {
+    "permission": "mod",
+    "description": "Set time of day",
+    "args": ["when"],
+    "template": "time set {arg1}",
+    "allowedValues": ["day", "night", "noon", "midnight"],
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "clear": {
+    "permission": "mod",
+    "description": "Clear all effects from streamer",
+    "args": [],
+    "template": "effect clear {player}",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "tp": {
+    "permission": "admin",
+    "description": "Teleport the streamer",
+    "args": ["x", "y", "z"],
+    "template": "tp {player} {arg1} {arg2} {arg3}",
+    "group": "minecraft",
+    "handler": "game",
+    "cost": 0
+  },
+  "companies": {
+    "aliases": ["tickers", "ottd"],
+    "permission": "public",
+    "description": "List OpenTTD companies and chat-funded totals",
+    "args": [],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0,
+    "examples": ["!companies", "!tickers"]
+  },
+  "quote": {
+    "aliases": ["ottdquote"],
+    "permission": "public",
+    "description": "Quote one OpenTTD company",
+    "args": ["company"],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0,
+    "examples": ["!quote 1", "!quote Red"]
+  },
+  "invest": {
+    "aliases": ["fund", "subsidy"],
+    "permission": "public",
+    "description": "Spend points to fund an OpenTTD company (Chat Fund)",
+    "args": ["company", "points"],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0,
+    "examples": ["!invest 1 50", "!fund Red 100"]
+  },
+  "ottdfund": {
+    "aliases": ["chatfund"],
+    "permission": "public",
+    "description": "Show Chat Fund totals per company",
+    "args": [],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0
+  },
+  "ottdsay": {
+    "aliases": ["ttsay"],
+    "permission": "mod",
+    "description": "Broadcast a message into OpenTTD",
+    "args": ["message"],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0
+  },
+  "ottdpause": {
+    "aliases": [],
+    "permission": "mod",
+    "description": "Pause the OpenTTD server",
+    "args": [],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0
+  },
+  "ottdunpause": {
+    "aliases": [],
+    "permission": "mod",
+    "description": "Unpause the OpenTTD server",
+    "args": [],
+    "group": "openttd",
+    "handler": "game",
+    "cost": 0
+  }
+}
