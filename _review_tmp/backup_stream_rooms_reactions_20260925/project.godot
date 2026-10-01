@@ -1,0 +1,42 @@
+; Engine configuration file.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
+
+[application]
+
+config/name="Stream Rooms"
+config/description="Swappable 3D rooms whose screen shows a video file or a shared browser tab, lights the room, and has reaction-stream tools."
+run/main_scene="res://core/main.tscn"
+config/features=PackedStringArray("26.2", "Forward Plus", "Redot")
+
+[audio]
+
+driver/enable_input=true
+
+[autoload]
+
+EventBus="*res://autoload/event_bus.gd"
+AppState="*res://autoload/app_state.gd"
+RoomCatalog="*res://autoload/room_catalog.gd"
+SaveManager="*res://autoload/save_manager.gd"
+AudioManager="*res://autoload/audio_manager.gd"
+SystemMedia="*res://autoload/system_media.gd"
+ChatFeed="*res://autoload/chat_feed.gd"
+AudienceManager="*res://autoload/audience_manager.gd"
+EmoteCache="*res://autoload/emote_cache.gd"
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[rendering]
+
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=3
+anti_aliasing/quality/msaa_3d=2

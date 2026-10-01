@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Core replies</title>
+  <link rel="stylesheet" href="chat.css" />
+  <style>
+    body { background: transparent; margin: 0; }
+    .sys { color: #53fc18; }
+    .off { opacity: .5; padding: 12px; font-family: sans-serif; }
+  </style>
+</head>
+<body>
+  <div id="off" class="off" hidden>Reply overlay is disabled (enable overlay.replies_enabled).</div>
+  <ul id="log" class="chat-log"></ul>
+  <script>
+    const log = document.getElementById("log");
+    const off = document.getElementById("off");
+    const qs = new URLSearchParams(location.search);
+    const force = qs.get("force") === "1";
+    let enabled = force;
+    const rows = [];
+    function draw() {
+      log.innerHTML = rows.slice(-12).map((r) =>
+        `<li><span class="sys">Core</span> ${r}</li>`
+      ).join("");
+    }
+    async function boot() {
+      try {
+        const cfg = await fetch("/api/overlay/replies").then((x) => x.json());
+        enabled = force || !!cfg.enabled;
+      } catch (e) {
+        enabled = force;
+      }
+      off.hidden = enabled;
+      if (!enabled) return;
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const ws = new WebSocket(`${proto}://${location.host}/ws`);
+      ws.onmessage = (ev) => {
+        let msg;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        if (msg.type === "reply") {
+          rows.push(msg.data && msg.data.message ? msg.data.message : String(msg.data || ""));
+          draw();
+        }
+        if (msg.type === "chat" && msg.data && msg.data.is_system) {
+          rows.push(msg.data.message || "");
+          draw();
+        }
+      };
+      ws.onclose = () => setTimeout(boot, 2000);
+    }
+    boot();
+  </script>
+</body>
+</html>

@@ -1,0 +1,211 @@
+# Fridge Stream Core configuration
+# Copy to config.yaml and edit.
+# All chat platforms default OFF — enable only what you use.
+
+core:
+  host: "127.0.0.1"
+  port: 3850                  # same port the old Minecraft bridge used
+  command_prefix: "!"
+  log_level: "INFO"
+
+# --- Chat platforms (all opt-in) -----------------------------------------
+
+kick:
+  enabled: false
+  channel_slug: "YOUR_KICK_CHANNEL"   # kick.com/THIS_PART only
+  # chatroom_id is auto-detected on first successful lookup and saved here.
+  # Only set it by hand if autodetection fails (Cloudflare 403):
+  # 1. Open https://kick.com/api/v2/channels/YOUR_SLUG in a browser
+  # 2. Find "chatroom": { "id": 12345678, ... }
+  # 3. Uncomment and set:
+  # chatroom_id: 12345678
+  poll_viewer_interval_sec: 15
+
+twitch:
+  enabled: false
+  channel: "YOUR_TWITCH_CHANNEL"   # twitch.tv/THIS_PART (no #)
+  # Read-only via anonymous IRC — no OAuth needed to listen.
+
+youtube:
+  enabled: false
+  # mode:
+  #   innertube  – no API key, no quota (uses the same web endpoint as youtube.com)
+  #   official   – Data API v3 (needs api_key + uses daily quota)
+  #   auto       – official if api_key is set, otherwise innertube
+  mode: "innertube"
+  api_key: ""                    # only for mode: official
+  channel_id: ""                 # optional helper
+  video_id: ""                   # current live video id (required for innertube; recommended for official)
+  # live_chat_id: ""             # optional override for official mode
+
+# --- Games ---------------------------------------------------------------
+
+minecraft:
+  enabled: false             # opt-in: set true when the Fabric mods are running
+  player_name: "YourInGameName"
+  client_mod_url: "http://127.0.0.1:3852"
+  server_mod_url: "http://127.0.0.1:3853"
+  market:
+    dynamo_symbols: ["MINECRAF"]
+    dynamo_min_factor: 0.25
+    dynamo_max_factor: 3.0
+    vault_symbol: "MINECRAF"
+    vault_rf_per_point: 200
+    vault_min_rf: 1000
+    chest_symbol: "MINECRAF"
+    chest_points_per_xp: 1.0
+    chest_min_xp: 1.0
+    chest_default_value: 0.05
+    chest_use_smelt_xp: true
+    chest_item_values:
+      minecraft:diamond: 2.0
+      minecraft:raw_iron: 0.7
+      minecraft:cobblestone: 0.05
+      minecraft:dirt: 0.02
+
+factorio:
+  enabled: false             # opt-in: set true when Fridge Factorio Stats is running
+  bridge_url: "http://127.0.0.1:3847"
+  market:
+    dynamo_symbols: ["FACTORIO"]
+    dynamo_min_factor: 0.25
+    dynamo_max_factor: 3.0
+    vault_symbol: "FACTORIO"
+    chest_symbol: "FACTORIO"
+    vault_flush_mj: 25
+    chest_flush_items: 20
+
+openttd:
+  enabled: false             # opt-in: Admin Port on the OpenTTD / JGRPP server
+  host: "127.0.0.1"
+  admin_port: 3977
+  admin_password: ""         # must match network.admin_password
+  name: "FridgeStreamCore"
+  pounds_per_point: 1000
+  min_invest_points: 10
+  max_invest_points: 5000
+  use_gamescript: true       # FridgeChatFund injects cash
+  allow_host_invest: true
+
+permissions:
+  # Usernames are matched case-insensitively across every platform
+  admin:
+    - "YOUR_USERNAME"
+  mod: []
+
+metrics:
+  messageWindowSec: 60
+  commandWindowSec: 120
+  viewerWeight: 0.4
+  cpmWeight: 0.3
+  commandWeight: 0.3
+  maxViewersForFull: 500
+  maxCpmForFull: 30
+  maxCommandsForFull: 10
+
+overlay:
+  show_inventory_seconds: 12
+  alert_duration_ms: 6000   # how long each alert stays on the overlay
+  # Stats overlay widgets. Uncheck in Admin → Config → Overlay, or use
+  # ?show=health,power / ?hide=food,armor on the Webpage source URL.
+  modules:
+    health: true
+    food: true
+    xp: true
+    deaths: true
+    armor: true
+    viewers: true
+    cpm: true
+    power: true
+    effects: true
+    inventory: true
+
+# In-house chat points (SQLite in data/stream_core.db). Off by default.
+points:
+  enabled: false
+  per_message: 1          # points awarded per message
+  cooldown_sec: 30        # anti-spam: min seconds between awards per user
+  admin_token: "change-me"  # required header X-Admin-Token for /admin dashboard
+
+# Persist every chat message for the admin Chat History tab / CSV export.
+# Off by default — the live overlay still works without this.
+chat_log:
+  enabled: false
+
+# Fridge Market tape (overlays work in preview even while enabled is false).
+# Trading commands are not shipped yet — see docs/MARKET.md.
+market:
+  enabled: false
+  tick_sec: 5
+  death_return: -0.08
+  death_cooldown_sec: 20      # 0 = no cooldown (spawn camp can dump the ticker)
+  signal_cooldown_sec: 15     # default for other game.signal names; 0 = off
+  signal_cooldown_scope: symbol   # symbol | book | global
+  hourly_cap_points: 500
+  dividend_price_bump: 0.01
+  steam_poll_sec: 1800          # Steam CCU refresh; 1800 = 30 minutes
+  chatter_points_scale: 10.0    # channel points / scale = listing price
+  chatter_streak_bonus: 0.05    # +5% per consecutive stream they chat in
+  points_per_unit:
+    mj: 0.02
+    rf: 0.005
+    xp: 1.0
+    items: 1.0
+
+# Unique-chatter end credits overlay. Off by default.
+# Uses the same Kick / Twitch / YouTube adapters as live chat — no extra process.
+# Overlay: http://127.0.0.1:3850/overlay/credits.html
+# Admin → Credits tab to enable, restyle, and roll.
+credits:
+  enabled: false
+  ignore_own_channel: true
+  min_message_length: 1
+  title: "Thanks for watching"
+  subtitle: ""
+  footer: "See you next stream"
+  section_label: "Chatters"
+  group_by_platform: false
+  sort: "first_seen"            # first_seen | name | messages | last_seen
+  columns: 2
+  speed_px_per_sec: 42
+  gap_after_loop_sec: 2.5
+  mode: "loop"                  # loop | once | hold
+  motion: "crawl"               # crawl | crawl-down | starwars | cards | fade | slides | ticker | typewriter
+  show_platform: true
+  highlight_mods: true
+  background: "transparent"
+
+# Command groups. Toggle in Admin → Config without restarting Core.
+# bind: minecraft → on only when minecraft.enabled AND the integration is running
+# bind: points    → on only when points.enabled
+# always: true    → cannot be disabled (core)
+command_groups:
+  core:
+    enabled: true
+    always: true
+    description: "Built-in Core commands (!help, !permit)"
+  points:
+    enabled: true
+    bind: points
+    description: "Chat points (!points / !balance)"
+  minecraft:
+    enabled: true
+    bind: minecraft
+    description: "Minecraft integration (!spawn, !give, …)"
+  factorio:
+    enabled: true
+    bind: factorio
+    description: "Factorio stats overlay (Fridge Factorio Stats bridge)"
+  openttd:
+    enabled: true
+    bind: openttd
+    description: "OpenTTD Admin Port + Chat Fund (!invest, !companies)"
+  credits:
+    enabled: true
+    bind: credits
+    description: "End credits (!credit / !credits)"
+  market:
+    enabled: true
+    bind: market
+    description: "Fridge Market (!buy / !sell / !tickers)"
+
