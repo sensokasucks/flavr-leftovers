@@ -281,13 +281,13 @@ Boards (polls, predictions, the hype meter, heist crews, trivia) show on the **r
 
 Alerts fire from real events as they happen: follows, subs, resubs and gifted subs (Twitch, YouTube memberships, Kick subs), raids and hosts, Twitch cheers, Kick Kicks gifts, YouTube Super Chats. Points can be awarded for them (section 7).
 
-**Overlays → Alerts** is the test bench: fire any kind as **TestViewer** without a live event, pick a **skin** (**Classic**, **Card**, or **Custom CSS only**) and paste **Custom CSS**. How long an alert stays is `overlay.alert_duration_ms` in `config.yaml` (six seconds by default). The overlay uses the same ids and classes as Streamlabs and StreamElements alert boxes, so CSS you wrote or bought for those works here with little or no change. **Live controls** has the same test buttons.
+**Overlays → Alerts** is the test bench: fire any kind as **TestViewer** without a live event, pick a **skin** (**Classic**, **Card**, or **Custom CSS only**) and paste **Custom CSS**. How long an alert stays is `overlay.alert_duration_ms` in `config.yaml` (six seconds by default). The overlay uses the same ids and classes as Streamlabs and StreamElements alert boxes, so CSS you wrote or bought for those works here with little or no change: paste it, save, and the overlay picks it up without a restart. If the pack still fights the default look, switch the skin to **Custom CSS only**. **Live controls** has the same test buttons.
 
 ![Alerts](images/sc-alerts.png)
 
 ![The alerts overlay](images/sc-overlay-alerts.png)
 
-Pictures: drop a file named after the kind into `overlay\assets\alerts\` (`follow.gif`, `subscribe.png`, `raid.webm`, `superchat.webp`, …). WebM is picked first, then GIF, WebP, PNG or SVG. With none, a glowing tile shows.
+**Pictures and sounds** (the third part of the Alerts page): one picture (GIF, WebM, PNG, WebP or JPEG) and one sound (MP3, OGG or WAV) per alert kind, with **Upload** and **Remove** buttons and a **Sound volume** slider. The sound plays when the alert appears, inside OBS and XSplit without any click. You can also drop files named after the kind into `overlay\assets\alerts\` by hand (`follow.gif`, `subscribe.png`, `raid.webm`, `raid.mp3`, …). WebM is picked first, then GIF, WebP, PNG or SVG. With no picture, a glowing tile shows.
 
 ## 14. End credits
 
@@ -328,13 +328,29 @@ Viewer trading (`!buy`, `!sell`, `!tickers`) is designed but not switched on yet
 
 ## 16. Overlays in OBS and XSplit
 
+### Making the chat overlay yours
+
+**Overlays → Chat overlay** styles the chat the same way the Alerts page styles alerts, with a live preview on the right:
+
+![Chat overlay: skin, behaviour and custom CSS](images/sc-chat-overlay-look.png)
+
+- **Skin**: **Classic** is Stream Core's look (dark fade, text shadow, coloured badge chips). **Plain** is the bare base most chat CSS packs expect. **Custom CSS only** turns everything off so your CSS is the whole look.
+- **Behaviour**: **Hide messages after** so many seconds (0 keeps them), **Messages kept on screen**, **Newest message on top**, **Show chatter profile pictures** (Kick and YouTube pictures, and Twitch ones once your account is connected, section 5), **Sound volume** and **At most one sound every** so many seconds for busy chats. **Save behaviour** applies within a few seconds.
+- **Custom CSS**: paste the CSS you already have. The overlay's layout is the Streamlabs Chat Box one (`#log`, one `div` per message with `data-from`, `.meta` with `.badges`, `.name` and `.colon`, then `.message` and `.emote`), with StreamElements' names alongside, so Streamlabs, StreamElements and OBS Custom CSS written for those widgets works here with little or no change. The **Selector cheat sheet** under the box lists everything, and `overlay\CHAT.md` has the full notes and CSS variables (font, size, colour, emote size, the background fade).
+- **Pictures and sounds**: a **Background picture**, picture badges (**Mod badge**, **VIP badge**, **Sub badge**, …) that replace the text chips, a **New message sound** and a **Paid message sound** for Super Chats and Kicks. **Upload** takes PNG, JPEG, GIF, WebP or WebM for pictures and MP3, OGG or WAV for sounds; **Remove** takes them away again. The files land in `overlay\assets\chat\`, so dropping them there by hand works too. Sounds play inside OBS and XSplit; a normal browser tab needs one click on the page first (a browser rule, not Core's).
+
+![Chat overlay: pictures and sounds](images/sc-chat-overlay-media.png)
+
+The same rules can go into OBS's own **Custom CSS** box on the browser source instead, if you prefer to keep them there.
+
+
 Each overlay is a web page. Add it as a **Browser source** (OBS) or **Webpage source** (XSplit) with a transparent background, one source per overlay, so you can place and size each on its own. **On stream → Sources & overlays** lists every address with a **Copy** button.
 
 ![Sources & overlays](images/sc-sources.png)
 
 | Overlay | Address | Notes |
 |---|---|---|
-| Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters |
+| Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading) |
 | Alerts | `http://127.0.0.1:3850/overlay/alerts.html` | `?skin=classic` / `card` / `custom`; `?preview=1` shows a sample |
 | End credits | `http://127.0.0.1:3850/overlay/credits.html` | `?motion=matrix&title=THE%20CREW` overrides the saved look |
 | Replies and chat games boards | `http://127.0.0.1:3850/overlay/replies.html` | `?boards=0` hides boards, `?replies=0` shows boards only |
@@ -398,7 +414,8 @@ Game toggles need a Core restart; everything else applies live.
 | `data\admin_token.txt` | The generated admin token, when you didn't set one. |
 | `data\twitch_token.json` | Your Twitch sign-in (see section 5). Delete it, or press **Disconnect**, to forget it. |
 | `data\kick_avatars.json`, `twitch_avatars.json`, `chat_games.json`, `reactions_optout.json` | Caches and small state files. |
-| `overlay\assets\alerts\` | Your alert pictures and videos. |
+| `overlay\assets\alerts\`, `overlay\assets\chat\` | Your alert pictures, videos and sounds; the chat overlay's background, badge pictures and sounds. |
+| `overlay\alerts-custom.css`, `overlay\chat-custom.css` | The custom CSS you pasted for the alerts and the chat overlay. |
 | `.venv\` | Core's private Python. Delete it and run install again if Python ever gets confused. |
 
 ## 22. Safety

@@ -399,6 +399,13 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
         return read_alert_settings()
 
+    @app.get("/api/overlay/chat-settings")
+    async def overlay_chat_settings():
+        """Public: the chat overlay polls this (skin, custom CSS version, options, pictures, sounds)."""
+        from core.chat_style import CHAT_STYLE
+
+        return CHAT_STYLE.read_settings()
+
     def _credits():
         eng = getattr(core_state, "credits", None)
         if not eng:

@@ -11,3 +11,6 @@ data/
 *.db
 *.db-wal
 *.db-shm
+overlay/assets/alerts/
+overlay/assets/chat/
+overlay/chat-settings.json

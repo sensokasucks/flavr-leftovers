@@ -1,3 +1,23 @@
+/* Stream Core chat overlay.
+   Override via :root variables, chat-custom.css (Admin → Chat overlay) or OBS Custom CSS.
+   Skins: body.skin-classic | body.skin-plain | body.skin-custom
+   The markup follows the Streamlabs Chat Box, so its CSS packs drop in (see CHAT.md). */
+
+:root {
+  --chat-font: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --chat-size: 16px;
+  --chat-text: #f5f7fa;
+  --chat-name-weight: 700;
+  --chat-emote-size: 28px;
+  --chat-gap: 4px;
+  --chat-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 8px rgba(0, 0, 0, 0.6);
+  /* subtle dark fade so text stays readable on busy game footage */
+  --chat-bg: linear-gradient(to top, rgba(0, 0, 0, 0.55) 0%, rgba(0, 0, 0, 0.25) 35%, rgba(0, 0, 0, 0.05) 70%, transparent 100%);
+  --chat-bg-image: none;           /* set by an uploaded "background" picture */
+  --chat-badge-size: 16px;
+  --chat-avatar-size: 26px;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -9,8 +29,8 @@ html, body {
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
-  color: #f2f4f8;
+  font-family: var(--chat-font);
+  color: var(--chat-text);
   user-select: none;
 }
 
@@ -21,42 +41,61 @@ html, body {
   flex-direction: column;
   justify-content: flex-end;
   padding: 8px 10px;
-  /* subtle dark fade so text stays readable on busy game footage */
-  background: linear-gradient(
-    to top,
-    rgba(0, 0, 0, 0.55) 0%,
-    rgba(0, 0, 0, 0.25) 35%,
-    rgba(0, 0, 0, 0.05) 70%,
-    transparent 100%
-  );
+  background: var(--chat-bg-image), var(--chat-bg);
+  background-size: cover;
+  background-position: center;
   pointer-events: none;
 }
+body.newest-top #chat-root { justify-content: flex-start; }
 
-#messages {
+#log {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--chat-gap);
   max-height: 100%;
   overflow: hidden;
 }
 
+/* one message: Streamlabs' div[data-from] > .meta + .message */
+#log > div,
 .msg {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
   gap: 6px;
   line-height: 1.35;
-  font-size: 16px;
-  text-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.95),
-    0 0 8px rgba(0, 0, 0, 0.6);
+  font-size: var(--chat-size);
+  text-shadow: var(--chat-shadow);
   animation: fade-in 0.18s ease-out;
   word-break: break-word;
+}
+.msg.hide {
+  animation: fade-out 0.4s ease-in forwards;
 }
 
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+.meta {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.avatar {
+  width: var(--chat-avatar-size);
+  height: var(--chat-avatar-size);
+  border-radius: 50%;
+  object-fit: cover;
+  align-self: center;
+  flex-shrink: 0;
 }
 
 .badges {
@@ -64,13 +103,14 @@ html, body {
   gap: 3px;
   align-items: center;
   flex-shrink: 0;
+  align-self: center;
 }
 
 .badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 16px;
+  height: var(--chat-badge-size);
   padding: 0 5px;
   border-radius: 3px;
   font-size: 10px;
@@ -79,6 +119,12 @@ html, body {
   text-transform: uppercase;
   line-height: 1;
   color: #0b0d10;
+}
+img.badge {
+  width: auto;
+  padding: 0;
+  border-radius: 0;
+  background: none;
 }
 
 .badge.broadcaster { background: #53fc18; }
@@ -103,25 +149,26 @@ html, body {
   line-height: 1;
   color: #0b0d10;
   flex-shrink: 0;
+  align-self: center;
 }
 .plat-kick    { background: #53fc18; }
 .plat-twitch  { background: #bf94ff; }
 .plat-youtube { background: #ff4e45; color: #fff; }
 
-.user {
-  font-weight: 700;
+/* the chatter's name takes its colour from the inline style on .meta, like Streamlabs */
+.name {
+  font-weight: var(--chat-name-weight);
   flex-shrink: 0;
 }
 
-.user::after {
-  content: ":";
+.colon {
   color: rgba(255, 255, 255, 0.55);
   font-weight: 600;
-  margin-left: 1px;
+  margin-left: -5px;
 }
 
-.text {
-  color: #f5f7fa;
+.message {
+  color: var(--chat-text);
   font-weight: 500;
 }
 
@@ -137,12 +184,15 @@ html, body {
 }
 
 .emote {
-  height: 28px;
+  height: var(--chat-emote-size);
   width: auto;
   vertical-align: middle;
   margin: 0 1px;
   display: inline-block;
 }
+
+/* paid messages (Super Chat, Kicks) */
+.msg.paid .message { color: #ffe9a8; }
 
 /* denser layout when many messages */
 .msg.compact {
@@ -150,4 +200,64 @@ html, body {
 }
 .msg.compact .emote {
   height: 22px;
+}
+
+/* ============================================================
+   Skin: plain — the neutral base most chat CSS packs expect:
+   no fade, no shadow, white text, one line per message
+   ============================================================ */
+body.skin-plain #chat-root {
+  background: var(--chat-bg-image);
+  padding: 4px 8px;
+}
+body.skin-plain .msg {
+  text-shadow: none;
+  animation: none;
+}
+body.skin-plain .colon { color: inherit; }
+
+/* ============================================================
+   Skin: custom — reset chrome so pasted CSS wins
+   ============================================================ */
+body.skin-custom #chat-root {
+  background: none;
+  padding: 0;
+  display: block;
+}
+body.skin-custom #log {
+  display: block;
+}
+body.skin-custom #log > div,
+body.skin-custom .msg {
+  display: block;
+  text-shadow: none;
+  animation: none;
+  font-size: inherit;
+  line-height: inherit;
+}
+body.skin-custom .meta,
+body.skin-custom .badges {
+  display: inline;
+}
+body.skin-custom .badge {
+  display: inline;
+  height: auto;
+  padding: 0 3px;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+  text-transform: none;
+}
+body.skin-custom img.badge { height: 1em; vertical-align: middle; }
+body.skin-custom .plat { display: none; }
+body.skin-custom .name { font-weight: inherit; }
+body.skin-custom .colon { margin: 0; color: inherit; font-weight: inherit; }
+body.skin-custom .message { color: inherit; font-weight: inherit; margin-left: 0.3em; }
+body.skin-custom .badge { margin-right: 0.2em; }
+body.skin-custom .emote { height: 1.5em; }
+
+@media (prefers-reduced-motion: reduce) {
+  .msg, .msg.hide { animation: none; }
+  .msg.hide { opacity: 0; }
 }

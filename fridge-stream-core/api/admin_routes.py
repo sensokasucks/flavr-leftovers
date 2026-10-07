@@ -97,10 +97,19 @@ class AlertTestBody(BaseModel):
 
 
 class AlertStyleBody(BaseModel):
-    """Skin + optional custom CSS for the alerts overlay (no Core restart)."""
+    """Skin + optional custom CSS (+ options such as sound_volume) for the alerts overlay (no Core restart)."""
 
     skin: Optional[str] = None
     css: Optional[str] = None
+    options: Optional[Dict[str, Any]] = None
+
+
+class ChatStyleBody(BaseModel):
+    """Skin, custom CSS and behaviour options for the chat overlay (no Core restart)."""
+
+    skin: Optional[str] = None
+    css: Optional[str] = None
+    options: Optional[Dict[str, Any]] = None
 
 
 class CommandTestBody(BaseModel):
@@ -1063,6 +1072,9 @@ def create_admin_router(core_state) -> APIRouter:
             "css_version": settings.get("css_version") or 0,
             "css": read_custom_css(),
             "skins": list(SKINS),
+            "options": settings.get("options") or {},
+            "media": settings.get("media") or {},
+            "sounds": settings.get("sounds") or {},
         }
 
     @router.put("/alerts/style")
@@ -1078,6 +1090,8 @@ def create_admin_router(core_state) -> APIRouter:
             if skin not in SKINS:
                 raise HTTPException(400, f"Unknown skin '{body.skin}'. Valid: {', '.join(SKINS)}")
             settings = write_alert_settings(skin=skin)
+        if body.options:
+            settings = write_alert_settings(options=body.options)
         if body.css is not None:
             try:
                 settings = write_custom_css(body.css)
@@ -1087,8 +1101,111 @@ def create_admin_router(core_state) -> APIRouter:
             "ok": True,
             "skin": settings.get("skin") or "classic",
             "css_version": settings.get("css_version") or 0,
+            "options": settings.get("options") or {},
             "message": "Saved — overlay reloads CSS on the next poll (a few seconds).",
         }
+
+    # ------------------------------------------------------------------
+    # Chat overlay look (same idea as the alerts: skin + custom CSS + options)
+    # ------------------------------------------------------------------
+
+    @router.get("/chat/style")
+    async def get_chat_style(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        from core.chat_style import CHAT_STYLE
+
+        settings = CHAT_STYLE.read_settings()
+        return {
+            "skin": settings["skin"],
+            "css_version": settings["css_version"],
+            "css": CHAT_STYLE.read_css(),
+            "skins": list(CHAT_STYLE.skins),
+            "options": settings["options"],
+            "media": settings["media"],
+            "sounds": settings["sounds"],
+        }
+
+    @router.put("/chat/style")
+    async def put_chat_style(body: ChatStyleBody, x_admin_token: Optional[str] = Header(None)):
+        """Write overlay/chat-custom.css, the skin and/or options. The overlay picks it up live."""
+        _auth(x_admin_token)
+        from core.chat_style import CHAT_STYLE
+
+        settings = CHAT_STYLE.read_settings()
+        if body.skin is not None:
+            skin = (body.skin or "").strip().lower()
+            if skin not in CHAT_STYLE.skins:
+                raise HTTPException(400, f"Unknown skin '{body.skin}'. Valid: {', '.join(CHAT_STYLE.skins)}")
+            settings = CHAT_STYLE.write_settings(skin=skin)
+        if body.options:
+            settings = CHAT_STYLE.write_settings(options=body.options)
+        if body.css is not None:
+            try:
+                settings = CHAT_STYLE.write_css(body.css)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+        return {
+            "ok": True,
+            "skin": settings["skin"],
+            "css_version": settings["css_version"],
+            "options": settings["options"],
+            "message": "Saved — overlay reloads on the next poll (a few seconds).",
+        }
+
+    # ------------------------------------------------------------------
+    # Overlay pictures and sounds (alerts, chat): uploaded as base64 JSON, stored by slot
+    # ------------------------------------------------------------------
+
+    def _overlay_style(name: str):
+        from core.alerts import ALERT_STYLE
+        from core.chat_style import CHAT_STYLE
+
+        styles = {"alerts": ALERT_STYLE, "chat": CHAT_STYLE}
+        style = styles.get((name or "").lower().strip())
+        if style is None:
+            raise HTTPException(404, f"Unknown overlay '{name}'")
+        return style
+
+    def _assets_payload(style) -> Dict[str, Any]:
+        from core.overlay_style import MAX_ASSET_BYTES
+
+        media, sounds = style.list_assets()
+        return {
+            "media": media,
+            "sounds": sounds,
+            "image_slots": list(style.image_slots),
+            "sound_slots": list(style.sound_slots),
+            "max_bytes": MAX_ASSET_BYTES,
+        }
+
+    @router.get("/overlays/{name}/assets")
+    async def list_overlay_assets(name: str, x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        return _assets_payload(_overlay_style(name))
+
+    @router.post("/overlays/{name}/assets/{slot}")
+    async def upload_overlay_asset(name: str, slot: str, body: Dict[str, Any] = Body(default={}),
+                                   x_admin_token: Optional[str] = Header(None)):
+        """{data}: the file as base64 (a data: URL is fine). Replaces the slot's old file."""
+        _auth(x_admin_token)
+        style = _overlay_style(name)
+        try:
+            url = style.save_asset_base64(slot, str(body.get("data") or ""))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        style.write_settings(bump_css=True)       # nudges open overlays to re-read the list
+        return {"ok": True, "url": url, **_assets_payload(style)}
+
+    @router.delete("/overlays/{name}/assets/{slot}")
+    async def delete_overlay_asset(name: str, slot: str, kind: Optional[str] = None,
+                                   x_admin_token: Optional[str] = Header(None)):
+        """?kind=image|sound picks which file when a slot has both (the alert kinds)."""
+        _auth(x_admin_token)
+        style = _overlay_style(name)
+        if not style.delete_asset(slot, kind=kind):
+            raise HTTPException(404, "Nothing uploaded for that slot.")
+        style.write_settings(bump_css=True)
+        return {"ok": True, **_assets_payload(style)}
 
     # ------------------------------------------------------------------
     # Integrations test bench (per-game command / metrics / overlay)

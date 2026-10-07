@@ -41,7 +41,8 @@
     <div class="nav-group">
       <div class="nav-heading">Overlays</div>
       <button class="tab" data-keywords="end credits roll crawl star wars matrix typewriter teletype ticker motion preset font letterbox grain movie cast job pin csv" data-tab="credits">Credits</button>
-      <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look" data-tab="alerts">Alerts</button>
+      <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look sound picture gif webm upload" data-tab="alerts">Alerts</button>
+      <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom" data-tab="chatlook">Chat overlay</button>
     </div>
 
     <div class="nav-group">
@@ -815,6 +816,7 @@
     <div class="subtabs" data-subtabs="alerts">
       <button type="button" class="subtab active" data-sub="fire">Presets + custom</button>
       <button type="button" class="subtab" data-sub="look">Look (CSS)</button>
+      <button type="button" class="subtab" data-sub="media">Pictures and sounds</button>
     </div>
     <div class="alert-split acc-stack" data-acc="alerts">
       <details class="acc" open data-sub="fire">
@@ -918,6 +920,23 @@
         </fieldset>
       </div>
       </details>
+      <details class="acc" data-sub="media">
+      <summary>Pictures and sounds</summary>
+      <div class="acc-body">
+        <fieldset class="cfg-card">
+          <legend>Pictures and sounds</legend>
+          <p class="hint">
+            One picture (GIF, WebM, PNG, WebP, JPEG) and one sound (MP3, OGG, WAV) per alert kind. Uploads land in
+            <code>overlay/assets/alerts/</code>; dropping files there by hand works too (<code>follow.gif</code>, <code>raid.mp3</code>…).
+          </p>
+          <label>Sound volume <span class="field-help"><span id="alert-opt-volume-val">80</span>%</span>
+            <input id="alert-opt-volume" type="range" min="0" max="100" step="5" value="80" />
+          </label>
+          <div id="alerts-assets" class="asset-list"></div>
+          <p id="alerts-assets-status" class="muted"></p>
+        </fieldset>
+      </div>
+      </details>
       <details class="acc" open data-sub="preview" data-aside>
       <summary>Live overlay preview</summary>
       <div class="acc-body">
@@ -929,6 +948,119 @@
           src="/overlay/alerts.html?preview=1"
         ></iframe>
         <p class="hint">Same overlay OBS will show. Tests queue if you fire several in a row.</p>
+      </div>
+      </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- Chat overlay look -->
+  <section id="tab-chatlook" class="panel">
+    <p class="tab-intro">
+      The chat overlay (<code>/overlay/chat.html</code>) uses the Streamlabs Chat Box layout, so CSS written for Streamlabs,
+      StreamElements or an OBS browser source drops in. Pick a skin, paste your CSS, add pictures and sounds; the overlay
+      updates live in OBS / XSplit.
+    </p>
+    <div class="subtabs" data-subtabs="chatlook">
+      <button type="button" class="subtab active" data-sub="look">Look (CSS)</button>
+      <button type="button" class="subtab" data-sub="media">Pictures and sounds</button>
+    </div>
+    <div class="alert-split acc-stack" data-acc="chatlook">
+      <details class="acc" open data-sub="look">
+      <summary>Look (CSS)</summary>
+      <div class="acc-body">
+        <fieldset class="cfg-card">
+          <legend>Skin and behaviour</legend>
+          <p class="hint">Classic = Stream Core's look. Plain = the bare base chat CSS packs expect. Custom CSS only = your rules, nothing else.</p>
+          <div class="skin-row" id="chat-skin-row">
+            <label class="check"><input type="radio" name="chat-skin" id="chat-skin-classic" value="classic" checked /> Classic</label>
+            <label class="check"><input type="radio" name="chat-skin" id="chat-skin-plain" value="plain" /> Plain</label>
+            <label class="check"><input type="radio" name="chat-skin" id="chat-skin-custom" value="custom" /> Custom CSS only</label>
+          </div>
+          <div class="row2">
+            <label>Hide messages after (seconds, 0 = keep)
+              <input id="chat-opt-hide" type="number" min="0" max="600" step="1" value="0" />
+            </label>
+            <label>Messages kept on screen
+              <input id="chat-opt-max" type="number" min="1" max="200" step="1" value="30" />
+            </label>
+          </div>
+          <label class="check"><input id="chat-opt-top" type="checkbox" /> Newest message on top</label>
+          <label class="check"><input id="chat-opt-avatars" type="checkbox" /> Show chatter profile pictures</label>
+          <div class="row2">
+            <label>Sound volume <span class="field-help"><span id="chat-opt-volume-val">60</span>%</span>
+              <input id="chat-opt-volume" type="range" min="0" max="100" step="5" value="60" />
+            </label>
+            <label>At most one sound every (seconds)
+              <input id="chat-opt-gap" type="number" min="0" max="60" step="0.5" value="2" />
+            </label>
+          </div>
+          <div class="form-row" style="margin-top:12px">
+            <button class="primary" id="chat-opt-save" type="button">Save behaviour</button>
+            <span id="chat-opt-status" class="muted"></span>
+          </div>
+        </fieldset>
+        <fieldset class="cfg-card">
+          <legend>Custom CSS</legend>
+          <label>Custom CSS
+            <textarea id="chat-css" rows="10" spellcheck="false" placeholder="Paste Streamlabs / StreamElements chat CSS here…"></textarea>
+          </label>
+          <div class="form-row" style="margin-top:12px">
+            <button class="primary" id="chat-css-save" type="button">Save CSS</button>
+            <button id="chat-css-reload" type="button">Reload preview</button>
+            <span id="chat-css-status" class="muted"></span>
+          </div>
+          <details class="alert-css-help">
+            <summary>Selector cheat sheet</summary>
+            <p class="hint">
+              <code>#log</code> the list ·
+              <code>#log &gt; div</code> / <code>.msg</code> one message ·
+              <code>[data-from="name"]</code> who sent it ·
+              <code>[data-platform="twitch"]</code> ·
+              <code>.meta</code> badges + name (chatter colour as inline style, like Streamlabs) ·
+              <code>.badges .badge</code> ·
+              <code>.name</code> ·
+              <code>.colon</code> ·
+              <code>.message</code> the text ·
+              <code>.emote</code> ·
+              <code>.plat</code> the K / T / Y letter ·
+              <code>.reply</code> ·
+              <code>.avatar</code> ·
+              <code>.paid</code> Super Chats and Kicks.
+              Variables: <code>--chat-font</code> <code>--chat-size</code> <code>--chat-text</code> <code>--chat-emote-size</code> <code>--chat-gap</code> <code>--chat-bg</code>.
+              Full notes: <code>overlay/CHAT.md</code>.
+            </p>
+          </details>
+        </fieldset>
+      </div>
+      </details>
+      <details class="acc" data-sub="media">
+      <summary>Pictures and sounds</summary>
+      <div class="acc-body">
+        <fieldset class="cfg-card">
+          <legend>Pictures and sounds</legend>
+          <p class="hint">
+            A background picture, picture badges instead of the text chips, a sound for new messages and one for paid
+            messages. Uploads land in <code>overlay/assets/chat/</code>; dropping files there by hand works too
+            (<code>background.png</code>, <code>badge-mod.png</code>, <code>message.mp3</code>…).
+            Sounds play inside OBS / XSplit; a normal browser tab needs one click first.
+          </p>
+          <div id="chat-assets" class="asset-list"></div>
+          <p id="chat-assets-status" class="muted"></p>
+        </fieldset>
+      </div>
+      </details>
+      <details class="acc" open data-sub="preview" data-aside>
+      <summary>Live overlay preview</summary>
+      <div class="acc-body">
+      <div class="alert-preview-wrap">
+        <div class="alert-preview-label">Live overlay preview</div>
+        <iframe
+          id="chat-preview"
+          title="Chat overlay preview"
+          src="/overlay/chat.html?preview=1"
+        ></iframe>
+        <p class="hint">Same overlay OBS will show. Real chat appears here as it arrives; made-up chatters fill it when chat is quiet.</p>
       </div>
       </div>
       </details>

@@ -31,6 +31,9 @@
   let busy = false;
   let lastCssVer = null;
   let mediaMap = {};
+  let soundMap = {};
+  let soundVolume = 0.8;
+  const sounds = {};
 
   function escapeHtml(s) {
     return String(s)
@@ -114,6 +117,22 @@
     }
   }
 
+  // one uploaded sound per kind (Admin → Alerts → Pictures and sounds); OBS plays without a click
+  function playSound(kind) {
+    const url = soundMap[kind];
+    if (!url) return;
+    try {
+      let a = sounds[url];
+      if (!a) {
+        a = new Audio(url);
+        sounds[url] = a;
+      }
+      a.volume = Math.max(0, Math.min(1, Number(soundVolume) || 0));
+      a.currentTime = 0;
+      a.play().catch(() => {});
+    } catch (_) {}
+  }
+
   function show(data) {
     if (!data) return;
     queue.push(data);
@@ -146,6 +165,7 @@
       .join(" · ");
 
     setMedia(kind);
+    playSound(kind);
     box.className = "alert-box " + extra + " show";
 
     const ms = Math.max(1500, Number(data.duration_ms) || 6000);
@@ -169,6 +189,8 @@
       const s = await res.json();
       if (!skinParam && s.skin) applySkin(s.skin);
       if (s.media && typeof s.media === "object") mediaMap = s.media;
+      if (s.sounds && typeof s.sounds === "object") soundMap = s.sounds;
+      if (s.options && s.options.sound_volume != null) soundVolume = Number(s.options.sound_volume);
       const ver = s.css_version || 0;
       if (customLink && ver !== lastCssVer) {
         lastCssVer = ver;

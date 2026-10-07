@@ -17,6 +17,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
+from core.overlay_style import MAX_CUSTOM_CSS_BYTES, OverlayStyle, _CSS_BLOCK  # noqa: F401
+
 # Canonical kinds the overlay knows how to style.
 KINDS: dict[str, dict[str, Any]] = {
     "follow": {
@@ -112,11 +114,6 @@ SKINS = ("classic", "card", "custom")
 OVERLAY_DIR = Path(__file__).resolve().parent.parent / "overlay"
 CUSTOM_CSS_PATH = OVERLAY_DIR / "alerts-custom.css"
 SETTINGS_PATH = OVERLAY_DIR / "alerts-settings.json"
-MAX_CUSTOM_CSS_BYTES = 256_000
-_CSS_BLOCK = re.compile(
-    r"<\s*/?\s*script|<\s*/?\s*style|javascript:|expression\s*\(",
-    re.IGNORECASE,
-)
 
 
 def kind_catalog() -> list[dict[str, Any]]:
@@ -242,83 +239,34 @@ def build_alert(
     }
 
 
-def _overlay_files(overlay_dir: Optional[Path] = None) -> tuple[Path, Path]:
-    root = overlay_dir or OVERLAY_DIR
-    return root / "alerts-custom.css", root / "alerts-settings.json"
+ALERT_STYLE = OverlayStyle(
+    "alerts", SKINS, image_slots=tuple(KINDS), sound_slots=tuple(KINDS),
+    options={"sound_volume": 0.8}, ranges={"sound_volume": (0.0, 1.0)},
+)
 
 
 def list_alert_media(overlay_dir: Optional[Path] = None) -> dict[str, str]:
     """Existing per-kind GIF/WebM files so the overlay never 404-probes."""
-    root = overlay_dir or OVERLAY_DIR
-    folder = root / "assets" / "alerts"
-    out: dict[str, str] = {}
-    if not folder.is_dir():
-        return out
-    for kind in KINDS:
-        for ext in ("webm", "gif", "webp", "png", "svg"):
-            path = folder / f"{kind}.{ext}"
-            if path.is_file():
-                out[kind] = f"assets/alerts/{kind}.{ext}"
-                break
-    return out
+    return ALERT_STYLE.list_assets(overlay_dir)[0]
 
 
 def read_alert_settings(overlay_dir: Optional[Path] = None) -> dict[str, Any]:
-    _, settings_path = _overlay_files(overlay_dir)
-    skin = "classic"
-    css_version = 0
-    if settings_path.is_file():
-        try:
-            data = json.loads(settings_path.read_text(encoding="utf-8") or "{}")
-            if isinstance(data, dict):
-                if data.get("skin") in SKINS:
-                    skin = data["skin"]
-                css_version = int(data.get("css_version") or 0)
-        except (OSError, TypeError, ValueError, json.JSONDecodeError):
-            pass
-    return {
-        "skin": skin,
-        "css_version": css_version,
-        "media": list_alert_media(overlay_dir),
-    }
+    """skin, css_version, options (sound_volume), media {kind: url}, sounds {kind: url}."""
+    return ALERT_STYLE.read_settings(overlay_dir)
 
 
 def write_alert_settings(
     skin: Optional[str] = None,
     bump_css: bool = False,
     overlay_dir: Optional[Path] = None,
+    options: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
-    _, settings_path = _overlay_files(overlay_dir)
-    current = read_alert_settings(overlay_dir)
-    if skin in SKINS:
-        current["skin"] = skin
-    if bump_css:
-        current["css_version"] = int(time.time())
-    payload = {
-        "skin": current["skin"],
-        "css_version": current["css_version"],
-    }
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    settings_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-    return read_alert_settings(overlay_dir)
+    return ALERT_STYLE.write_settings(skin=skin, bump_css=bump_css, options=options, overlay_dir=overlay_dir)
 
 
 def read_custom_css(overlay_dir: Optional[Path] = None) -> str:
-    css_path, _ = _overlay_files(overlay_dir)
-    if css_path.is_file():
-        return css_path.read_text(encoding="utf-8")
-    return ""
+    return ALERT_STYLE.read_css(overlay_dir)
 
 
 def write_custom_css(css: str, overlay_dir: Optional[Path] = None) -> dict[str, Any]:
-    if not isinstance(css, str):
-        raise ValueError("css must be a string")
-    raw = css.replace("\r\n", "\n")
-    if len(raw.encode("utf-8")) > MAX_CUSTOM_CSS_BYTES:
-        raise ValueError("Custom CSS is too large (max 256 KB)")
-    if _CSS_BLOCK.search(raw):
-        raise ValueError("Custom CSS cannot contain script/style tags or expressions")
-    css_path, _ = _overlay_files(overlay_dir)
-    css_path.parent.mkdir(parents=True, exist_ok=True)
-    css_path.write_text(raw, encoding="utf-8")
-    return write_alert_settings(bump_css=True, overlay_dir=overlay_dir)
+    return ALERT_STYLE.write_css(css, overlay_dir)

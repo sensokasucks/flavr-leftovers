@@ -4,10 +4,16 @@
   <meta charset="UTF-8" />
   <title>Chat Overlay</title>
   <link rel="stylesheet" href="chat.css" />
+  <link rel="stylesheet" id="chat-custom-css" href="chat-custom.css" />
 </head>
-<body>
-  <div id="chat-root">
-    <div id="messages"></div>
+<body class="skin-classic">
+  <!--
+    DOM matches the Streamlabs Chat Box (and StreamElements chat) layout so CSS written for
+    those widgets drops in: #log > div[data-from][data-id] > .meta (.badges .badge, .name, .colon)
+    + .message (.emote). See CHAT.md.
+  -->
+  <div id="chat-root" class="widget-ChatBox">
+    <div id="log" class="sl__chat__layout messages"></div>
   </div>
   <script src="chat.js"></script>
 </body>

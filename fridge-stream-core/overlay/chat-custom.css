@@ -1,0 +1,30 @@
+/* Fridge Stream Core — your chat overlay CSS
+ *
+ * Paste Streamlabs Chat Box / StreamElements / OBS Custom CSS rules here, then Save
+ * in Admin → Chat overlay. They load after the built-in skin.
+ *
+ * If a pack fights the default look, set the skin to "Plain" or "Custom CSS only".
+ *
+ * Variables (set these instead of rewriting everything):
+ *   --chat-font  --chat-size  --chat-text  --chat-name-weight
+ *   --chat-emote-size  --chat-gap  --chat-bg  --chat-badge-size  --chat-avatar-size
+ *
+ * Selectors (Streamlabs Chat Box layout):
+ *   #log                      the list
+ *   #log > div  /  .msg       one message   [data-from="name"]  [data-platform="kick|twitch|youtube"]
+ *   .meta                     badges + name (the chatter's colour is an inline style here)
+ *   .badges .badge            .badge.mod .vip .sub .broadcaster .og .founder
+ *   .name  .colon             the name and the ":" after it
+ *   .message  .emote          the text and its emotes
+ *   .plat  .reply  .avatar    platform letter, "Replying to" line, chatter picture
+ *   .paid                     Super Chats and Kicks
+ *
+ * Pictures and sounds: Admin → Chat overlay → Pictures and sounds, or overlay/assets/chat/
+ * (background.png, badge-mod.png, message.mp3, paid.mp3 …). Full notes in overlay/CHAT.md.
+ *
+ * Example — uncomment to try:
+ *
+ * :root { --chat-size: 20px; --chat-bg: none; }
+ * .name { text-transform: uppercase; }
+ * .msg[data-platform="youtube"] .message { color: #ffd3d0; }
+ */

@@ -63,13 +63,13 @@ python main.py
 
 | Overlay | URL | Purpose |
 |---------|-----|---------|
-| **Combined chat** | `http://127.0.0.1:3850/overlay/chat.html` | All enabled platforms (K/T/Y badges) |
+| **Combined chat** | `http://127.0.0.1:3850/overlay/chat.html` | All enabled platforms (K/T/Y badges). Skins, custom CSS (Streamlabs / StreamElements chat CSS drops in), pictures and sounds: Admin → Chat overlay, notes in [overlay/CHAT.md](overlay/CHAT.md) |
 | **Kick only** | `…/overlay/chat.html?platform=kick` | Filtered |
 | **Twitch only** | `…/overlay/chat.html?platform=twitch` | Filtered |
 | **YouTube only** | `…/overlay/chat.html?platform=youtube` | Filtered |
 | **Multi filter** | `…/overlay/chat.html?platforms=kick,twitch` | Subset |
 | **Minecraft stats** | `http://127.0.0.1:3850/overlay/overlay.html` | HP, CPM, power, inventory |
-| **Stream alerts** | `http://127.0.0.1:3850/overlay/alerts.html` | Follow / sub / raid / Super Chat — Streamlabs/SE CSS compatible |
+| **Stream alerts** | `http://127.0.0.1:3850/overlay/alerts.html` | Follow / sub / raid / Super Chat — Streamlabs/SE CSS compatible; pictures and sounds per kind uploaded in Admin → Alerts |
 | **Chat credits** | `http://127.0.0.1:3850/overlay/credits.html` | Unique-chatter end credits (enable in Admin → Credits). Style editor + keys: [overlay/CREDITS.md](overlay/CREDITS.md), motions: [overlay/MOTIONS.md](overlay/MOTIONS.md) |
 | **OpenTTD companies** | `http://127.0.0.1:3850/overlay/openttd.html` | Companies + Chat Fund (`openttd.enabled`) |
 | **OpenTTD ticker** | `http://127.0.0.1:3850/overlay/openttd-ticker.html` | Thin company tape |
@@ -80,7 +80,7 @@ python main.py
 | **Chat reactions** | `http://127.0.0.1:3850/overlay/reactions.html` | Fallback for 🍅 / !tomato reactions when Stream Rooms isn't connected. Full canvas, transparent. Setup: Admin → Config → Reactions, spec [docs/REACTIONS.md](docs/REACTIONS.md) |
 | Root | `http://127.0.0.1:3850/` | Same as Minecraft stats |
 
-Use a **transparent** Webpage source. Chat is a separate source so you can place and size it on its own. Add `?badges=0` to hide platform letters on combined chat. Alerts are a third source — test them from the admin **Alert test** tab. Paste existing Streamlabs / StreamElements CSS there (see [overlay/ALERTS.md](overlay/ALERTS.md)).
+Use a **transparent** Webpage source. Chat is a separate source so you can place and size it on its own. Add `?badges=0` to hide platform letters on combined chat. Alerts are a third source — test them from the admin **Alerts** tab. Both chat and alerts take the CSS you already have from Streamlabs / StreamElements / OBS Custom CSS (their ids and classes are the same), plus uploaded pictures and sounds: see [overlay/CHAT.md](overlay/CHAT.md) and [overlay/ALERTS.md](overlay/ALERTS.md).
 
 ### Admin dashboard (chat log + points + config editor)
 

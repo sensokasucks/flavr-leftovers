@@ -310,6 +310,10 @@
     if (tabId === "status") loadStatus();
     if (tabId === "sources") loadSources();
     if (tabId === "alerts") initAlertsTab();
+    if (tabId === "chatlook") {
+      loadChatStyle();
+      loadOverlayAssets("chat");
+    }
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "market") initMarketTab();
@@ -857,6 +861,7 @@
       alertsReady = true;
       setAlertStatus("Ready — click a preset or Fire test alert");
       loadAlertStyle();
+      loadAlertAssets();
     } catch (e) {
       alertsReady = false;
       setAlertStatus(String(e.message || e), false);
@@ -966,6 +971,201 @@
   }
   if ($("alert-css-reload")) {
     $("alert-css-reload").onclick = () => applyPreviewSkin(selectedSkin());
+  }
+
+  // ── Chat overlay look (skin, behaviour, custom CSS) ──────────
+  function setChatStatus(id, msg, ok = true) {
+    const el = $(id);
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = ok ? "#53fc18" : "#ff5c5c";
+  }
+
+  function selectedChatSkin() {
+    const el = document.querySelector('input[name="chat-skin"]:checked');
+    return (el && el.value) || "classic";
+  }
+
+  function applyChatPreviewSkin(skin) {
+    const iframe = $("chat-preview");
+    if (!iframe) return;
+    iframe.src = "/overlay/chat.html?preview=1&skin=" + encodeURIComponent(skin || "classic") + "&t=" + Date.now();
+  }
+
+  function chatOptionsFromForm() {
+    return {
+      hide_after_sec: num($("chat-opt-hide").value, 0),
+      max_messages: num($("chat-opt-max").value, 30),
+      newest_on_top: $("chat-opt-top").checked,
+      show_avatars: $("chat-opt-avatars").checked,
+      sound_volume: num($("chat-opt-volume").value, 60) / 100,
+      sound_min_gap_sec: num($("chat-opt-gap").value, 2),
+    };
+  }
+
+  function fillChatOptions(o) {
+    if (!o || !$("chat-opt-hide")) return;
+    $("chat-opt-hide").value = o.hide_after_sec ?? 0;
+    $("chat-opt-max").value = o.max_messages ?? 30;
+    $("chat-opt-top").checked = !!o.newest_on_top;
+    $("chat-opt-avatars").checked = !!o.show_avatars;
+    $("chat-opt-volume").value = Math.round((o.sound_volume ?? 0.6) * 100);
+    $("chat-opt-volume-val").textContent = $("chat-opt-volume").value;
+    $("chat-opt-gap").value = o.sound_min_gap_sec ?? 2;
+  }
+
+  async function loadChatStyle() {
+    if (!$("chat-css")) return;
+    try {
+      const data = await api("/api/admin/chat/style");
+      const skin = data.skin || "classic";
+      const radio = $("chat-skin-" + skin);
+      if (radio) radio.checked = true;
+      $("chat-css").value = data.css || "";
+      fillChatOptions(data.options);
+      applyChatPreviewSkin(skin);
+      setChatStatus("chat-css-status", "Loaded");
+    } catch (e) {
+      setChatStatus("chat-css-status", String(e.message || e), false);
+    }
+  }
+
+  async function saveChatStyle(part) {
+    const body = {};
+    if (part === "skin") body.skin = selectedChatSkin();
+    if (part === "css") body.css = $("chat-css").value;
+    if (part === "options") body.options = chatOptionsFromForm();
+    const statusId = part === "options" ? "chat-opt-status" : "chat-css-status";
+    try {
+      const res = await api("/api/admin/chat/style", { method: "PUT", body: JSON.stringify(body) });
+      applyChatPreviewSkin(res.skin || selectedChatSkin());
+      setChatStatus(statusId, res.message || "Saved");
+    } catch (e) {
+      setChatStatus(statusId, String(e.message || e), false);
+    }
+  }
+
+  document.querySelectorAll('input[name="chat-skin"]').forEach((el) => {
+    el.onchange = () => saveChatStyle("skin");
+  });
+  if ($("chat-css-save")) $("chat-css-save").onclick = () => saveChatStyle("css");
+  if ($("chat-css-reload")) $("chat-css-reload").onclick = () => applyChatPreviewSkin(selectedChatSkin());
+  if ($("chat-opt-save")) $("chat-opt-save").onclick = () => saveChatStyle("options");
+  if ($("chat-opt-volume")) {
+    $("chat-opt-volume").oninput = () => { $("chat-opt-volume-val").textContent = $("chat-opt-volume").value; };
+  }
+  if ($("alert-opt-volume")) {
+    $("alert-opt-volume").oninput = () => { $("alert-opt-volume-val").textContent = $("alert-opt-volume").value; };
+    $("alert-opt-volume").onchange = async () => {
+      try {
+        await api("/api/admin/alerts/style", {
+          method: "PUT",
+          body: JSON.stringify({ options: { sound_volume: num($("alert-opt-volume").value, 80) / 100 } }),
+        });
+        const st = $("alerts-assets-status");
+        if (st) st.textContent = "Volume saved";
+      } catch (e) {
+        const st = $("alerts-assets-status");
+        if (st) st.textContent = String(e.message || e);
+      }
+    };
+  }
+
+  // ── Overlay pictures and sounds (alerts + chat), uploaded as base64 JSON ──
+  const ASSET_LABELS = {
+    alerts: {
+      follow: "Follow", subscribe: "Subscribe", resub: "Resub", gift: "Gifted sub", raid: "Raid", host: "Host",
+      bits: "Bits / cheer", superchat: "Super Chat", donation: "Donation",
+    },
+    chat: {
+      background: "Background picture", "badge-broadcaster": "Host badge", "badge-mod": "Mod badge",
+      "badge-vip": "VIP badge", "badge-sub": "Sub badge", "badge-og": "OG badge", "badge-founder": "Founder badge",
+      message: "New message sound", paid: "Paid message sound (Super Chat, Kicks)",
+    },
+  };
+
+  function assetRow(name, slot, kind, url) {
+    const label = (ASSET_LABELS[name] || {})[slot] || slot;
+    const accept = kind === "sound" ? "audio/*" : "image/*,video/webm";
+    let current = '<span class="muted">none</span>';
+    if (url) {
+      const src = "/overlay/" + url + "?t=" + Date.now();
+      if (kind === "sound") current = `<audio controls preload="none" src="${src}"></audio>`;
+      else if (/\.webm$/i.test(url)) current = `<video class="asset-thumb" muted loop autoplay playsinline src="${src}"></video>`;
+      else current = `<img class="asset-thumb" src="${src}" alt="" />`;
+    }
+    return `<div class="asset-row" data-slot="${slot}" data-kind="${kind}">
+      <div class="asset-label"><strong>${label}</strong><span class="muted">${kind === "sound" ? "sound" : "picture"} · <code>${slot}</code></span></div>
+      <div class="asset-current">${current}</div>
+      <div class="asset-actions">
+        <input type="file" accept="${accept}" />
+        <button type="button" class="asset-upload">Upload</button>
+        ${url ? '<button type="button" class="asset-remove">Remove</button>' : ""}
+      </div>
+    </div>`;
+  }
+
+  async function loadOverlayAssets(name) {
+    const box = $(name + "-assets");
+    if (!box) return;
+    try {
+      const data = await api(`/api/admin/overlays/${name}/assets`);
+      let html = "";
+      for (const slot of data.image_slots || []) html += assetRow(name, slot, "image", (data.media || {})[slot]);
+      for (const slot of data.sound_slots || []) html += assetRow(name, slot, "sound", (data.sounds || {})[slot]);
+      box.innerHTML = html;
+      box.querySelectorAll(".asset-row").forEach((row) => {
+        const slot = row.dataset.slot;
+        const st = $(name + "-assets-status");
+        row.querySelector(".asset-upload").onclick = async () => {
+          const f = row.querySelector('input[type="file"]').files[0];
+          if (!f) { if (st) st.textContent = "Pick a file first."; return; }
+          if (st) st.textContent = "Uploading…";
+          try {
+            const dataUrl = await new Promise((resolve, reject) => {
+              const rd = new FileReader();
+              rd.onload = () => resolve(rd.result);
+              rd.onerror = () => reject(new Error("Couldn't read the file"));
+              rd.readAsDataURL(f);
+            });
+            await api(`/api/admin/overlays/${name}/assets/${encodeURIComponent(slot)}`, {
+              method: "POST",
+              body: JSON.stringify({ data: dataUrl }),
+            });
+            if (st) st.textContent = `Saved ${slot}. Open overlays pick it up within a few seconds.`;
+            loadOverlayAssets(name);
+          } catch (e) {
+            if (st) st.textContent = String(e.message || e);
+          }
+        };
+        const rm = row.querySelector(".asset-remove");
+        if (rm) {
+          rm.onclick = async () => {
+            if (!confirm(`Remove the ${slot} file?`)) return;
+            try {
+              await api(`/api/admin/overlays/${name}/assets/${encodeURIComponent(slot)}?kind=${row.dataset.kind}`, { method: "DELETE" });
+              if (st) st.textContent = `Removed ${slot}.`;
+              loadOverlayAssets(name);
+            } catch (e) {
+              if (st) st.textContent = String(e.message || e);
+            }
+          };
+        }
+      });
+    } catch (e) {
+      box.innerHTML = `<span class="muted">${String(e.message || e)}</span>`;
+    }
+  }
+
+  async function loadAlertAssets() {
+    await loadOverlayAssets("alerts");
+    try {
+      const data = await api("/api/admin/alerts/style");
+      if ($("alert-opt-volume") && data.options && data.options.sound_volume != null) {
+        $("alert-opt-volume").value = Math.round(Number(data.options.sound_volume) * 100);
+        $("alert-opt-volume-val").textContent = $("alert-opt-volume").value;
+      }
+    } catch (_) {}
   }
 
   // Stats
@@ -3934,6 +4134,11 @@
         fields: ["crd-cmd-perm"], button: "crd-style-save" },
       { key: "alert-css", page: "alerts", sub: "look", name: "Alert CSS",
         fields: ["alert-css"], button: "alert-css-save" },
+      { key: "chat-css", page: "chatlook", sub: "look", name: "Chat overlay CSS",
+        fields: ["chat-css"], button: "chat-css-save" },
+      { key: "chat-opts", page: "chatlook", sub: "look", name: "Chat overlay behaviour",
+        fields: ["chat-opt-hide", "chat-opt-max", "chat-opt-top", "chat-opt-avatars", "chat-opt-volume", "chat-opt-gap"],
+        button: "chat-opt-save" },
       { key: "mkt-mc", page: "market", sub: "minecraft", name: "Minecraft market", group: "mkt-mc",
         scope: '#tab-market .acc[data-sub="minecraft"]', button: "mkt-save" },
       { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-mc",
