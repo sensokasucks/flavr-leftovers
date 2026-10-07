@@ -34,8 +34,11 @@ kick:
 twitch:
   enabled: false
   channel: "YOUR_TWITCH_CHANNEL"   # twitch.tv/THIS_PART (no #)
-  # Read-only via anonymous IRC — no OAuth needed to listen.
+  # Chat is read over anonymous IRC; no login needed to listen.
   third_party_emotes: true        # BetterTTV / FrankerFaceZ / 7TV emotes (public APIs, no keys)
+  avatars: true                   # chatter pictures; needs "Connect Twitch" in the dashboard (token in data/)
+  client_id: ""                   # Advanced: your own Twitch app. Empty = Stream Core's built-in public app
+  client_secret: ""               # only for a "Confidential" app of your own; never commit it
 
 youtube:
   enabled: false

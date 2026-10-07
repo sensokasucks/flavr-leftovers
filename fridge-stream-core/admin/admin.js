@@ -1537,6 +1537,11 @@
     $("cfg-tw-enabled").checked = !!tw.enabled;
     $("cfg-tw-channel").value = tw.channel ?? "";
     $("cfg-tw-3p").checked = tw.third_party_emotes !== false;
+    $("cfg-tw-avatars").checked = tw.avatars !== false;
+    $("cfg-tw-client-id").value = tw.client_id ?? "";
+    $("cfg-tw-client-secret").value = tw.client_secret ?? "";
+    if (tw.client_id || tw.client_secret) document.querySelector(".tw-advanced").open = true;
+    loadTwitchAuth();
 
     $("cfg-mc-enabled").checked = !!m.enabled;
     $("cfg-mc-player").value = m.player_name ?? "";
@@ -1609,6 +1614,66 @@
     });
   }
 
+  // ── Twitch account (device code sign-in) ──────────────────
+  // Core does the talking to Twitch; this only shows the code and the state. While a code is
+  // waiting, the state is re-read every few seconds so the page flips to "Connected" by itself.
+  let twAuthTimer = null;
+
+  function showTwitchAuth(s) {
+    const state = $("tw-auth-state");
+    const codeBox = $("tw-auth-code");
+    if (!state || !codeBox) return;
+    const pending = s.pending;
+    codeBox.hidden = !pending;
+    $("tw-auth-connect").hidden = !!pending;
+    $("tw-auth-cancel").hidden = !pending;
+    $("tw-auth-disconnect").hidden = !s.connected || !!pending;
+    if (pending) {
+      $("tw-auth-digits").textContent = pending.user_code || "";
+      $("tw-auth-link").href = pending.verification_uri || "https://www.twitch.tv/activate";
+      state.textContent = "Twitch account: waiting for you to enter the code…";
+    } else if (s.connected) {
+      state.textContent = `Twitch account: connected as ${s.login || "(name pending)"}` +
+        (s.builtin_app ? "" : " (your own app)");
+      $("tw-auth-connect").textContent = "Reconnect";
+    } else {
+      state.textContent = s.has_secret
+        ? "Twitch account: not connected (pictures use your app's secret)"
+        : "Twitch account: not connected";
+      $("tw-auth-connect").textContent = "Connect Twitch";
+    }
+    if (s.error) state.textContent += ` — ${s.error}`;
+    clearTimeout(twAuthTimer);
+    if (pending) twAuthTimer = setTimeout(loadTwitchAuth, 3000);
+  }
+
+  async function loadTwitchAuth() {
+    if (!$("tw-auth-state")) return;
+    try {
+      showTwitchAuth(await api("/api/admin/twitch/auth"));
+    } catch (e) {
+      $("tw-auth-state").textContent = `Twitch account: ${e.message || e}`;
+    }
+  }
+
+  async function twitchAuthAction(action) {
+    try {
+      showTwitchAuth(await api(`/api/admin/twitch/auth/${action}`, { method: "POST" }));
+    } catch (e) {
+      setStatus(String(e.message || e), false);
+    }
+  }
+
+  if ($("tw-auth-connect")) {
+    $("tw-auth-connect").onclick = () => twitchAuthAction("start");
+    $("tw-auth-cancel").onclick = () => twitchAuthAction("cancel");
+    $("tw-auth-disconnect").onclick = () => {
+      if (confirm("Disconnect your Twitch account from Stream Core? Chatter pictures stop until you connect again.")) {
+        twitchAuthAction("disconnect");
+      }
+    };
+  }
+
   function collectConfigFromForm() {
     const chatroomRaw = $("cfg-kick-chatroom").value.trim();
     const kick = {
@@ -1636,6 +1701,9 @@
         enabled: $("cfg-tw-enabled").checked,
         channel: $("cfg-tw-channel").value.trim().replace(/^#/, ""),
         third_party_emotes: $("cfg-tw-3p").checked,
+        avatars: $("cfg-tw-avatars").checked,
+        client_id: $("cfg-tw-client-id").value.trim(),
+        client_secret: $("cfg-tw-client-secret").value.trim(),
       },
       youtube: {
         enabled: $("cfg-yt-enabled").checked,

@@ -14,6 +14,8 @@ import re
 from typing import Any, Optional
 
 from adapters.base import BaseAdapter
+from adapters.twitch_auth import get_auth
+from adapters.twitch_avatars import TwitchAvatars
 from adapters.twitch_emotes import ThirdPartyEmotes, parse_twitch_emotes, strip_action
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
@@ -144,6 +146,9 @@ class TwitchAdapter(BaseAdapter):
         self._writer: Optional[asyncio.StreamWriter] = None
         # BTTV / FFZ / 7TV emotes, loaded once the channel's room-id is known
         self.emotes3p = ThirdPartyEmotes(bool(cfg.get("third_party_emotes", True)))
+        # chatter pictures through Helix; needs the streamer's Twitch sign-in (or an own app with a secret)
+        self.auth = get_auth(config)
+        self.avatars = TwitchAvatars(bool(cfg.get("avatars", True)), auth=self.auth)
 
     async def start(self) -> None:
         if not self.channel or self.channel.startswith("your_"):
@@ -158,6 +163,7 @@ class TwitchAdapter(BaseAdapter):
         self._running = False
         self._stop.set()
         self.emotes3p.stop()
+        self.avatars.stop()
         if self._writer:
             try:
                 self._writer.close()
@@ -257,6 +263,18 @@ class TwitchAdapter(BaseAdapter):
             badges=badge_names,
             color=tags.get("color") or None,
         )
+        pic = self.avatars.get(user.id)
+        if pic:
+            user.profile_image_url = pic
+        elif pic is None:
+            uid, uname = user.id, user.username
+
+            async def _found(url: str) -> None:
+                await self.bus.publish_user_update(
+                    {"platform": "twitch", "id": uid, "username": uname, "profile_image_url": url}
+                )
+
+            self.avatars.request(uid, _found)
         log.info("[Twitch] %s: %s", user.username, msg)
         bits = cheer_bits(tags)
         await self._emit(

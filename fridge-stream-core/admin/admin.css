@@ -528,6 +528,13 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   font-size: 0.8rem;
   color: var(--muted);
 }
+.tw-auth { margin: 10px 0 6px; padding: 10px 12px; border: 1px solid var(--border, #333); border-radius: 8px; }
+.tw-auth p { margin: 4px 0; }
+.tw-auth-digits { font-size: 1.9rem; font-weight: 700; letter-spacing: 0.25em; font-family: ui-monospace, Consolas, monospace; margin: 6px 0 !important; }
+.tw-auth-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
+.tw-auth button.secondary { opacity: 0.85; }
+.tw-advanced { margin-top: 8px; }
+.tw-advanced > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
 .cfg-card label.check {
   display: flex;
   align-items: center;

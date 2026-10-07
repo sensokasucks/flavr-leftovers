@@ -1055,12 +1055,37 @@
 
       <fieldset class="cfg-card">
         <legend>Twitch</legend>
-        <p class="hint">Read-only anonymous IRC — no OAuth needed to listen.</p>
+        <p class="hint">Chat is read without a login. Connect your Twitch account for chatter profile pictures.</p>
         <label class="check"><input id="cfg-tw-enabled" type="checkbox" /> Enabled</label>
         <label>Channel <span class="field-help">twitch.tv/<strong>this</strong></span>
           <input id="cfg-tw-channel" type="text" placeholder="twitch.tv/THIS_PART" />
         </label>
         <label class="check"><input id="cfg-tw-3p" type="checkbox" /> BetterTTV / FrankerFaceZ / 7TV emotes</label>
+        <label class="check"><input id="cfg-tw-avatars" type="checkbox" /> Chatter profile pictures</label>
+        <div class="tw-auth" id="tw-auth">
+          <p class="tw-auth-state" id="tw-auth-state">Twitch account: checking…</p>
+          <div class="tw-auth-code" id="tw-auth-code" hidden>
+            <p>Go to <a id="tw-auth-link" href="https://www.twitch.tv/activate" target="_blank" rel="noopener">twitch.tv/activate</a> and enter this code:</p>
+            <p class="tw-auth-digits" id="tw-auth-digits"></p>
+            <p class="hint">Core notices by itself once you have entered it. The code is good for about 15 minutes.</p>
+          </div>
+          <div class="tw-auth-buttons">
+            <button type="button" id="tw-auth-connect">Connect Twitch</button>
+            <button type="button" id="tw-auth-disconnect" class="secondary" hidden>Disconnect</button>
+            <button type="button" id="tw-auth-cancel" class="secondary" hidden>Cancel</button>
+          </div>
+          <p class="hint">The sign-in happens between this PC and Twitch; the token is kept in <code>data\twitch_token.json</code> and sent nowhere else. Core asks only to read chat and to post in it.</p>
+        </div>
+        <details class="tw-advanced">
+          <summary>Advanced: use your own Twitch app</summary>
+          <p class="hint">Leave empty to use Stream Core's built-in public app. Register one at dev.twitch.tv/console/apps if you want your own; a secret exists only for a "Confidential" app, and with a secret Core can fetch pictures even without a sign-in.</p>
+          <label>Client ID
+            <input id="cfg-tw-client-id" type="text" autocomplete="off" placeholder="built-in" />
+          </label>
+          <label>Client Secret
+            <input id="cfg-tw-client-secret" type="password" autocomplete="off" placeholder="none (public app)" />
+          </label>
+        </details>
       </fieldset>
 
       <fieldset class="cfg-card">

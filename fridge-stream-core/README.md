@@ -185,8 +185,9 @@ Core will automatically route approved chat commands to every registered game.
 |----------|-------------|-------|
 | **Kick** | `kick.enabled`, `channel_slug` | Pusher WebSocket; optional `chatroom_id` |
 | **Chat replies** | (none) | A message sent with the platform's reply button (Kick, Twitch) carries `reply_to` (`user`, a shortened `message`, `message_id`) in the `/ws` chat payload; the chat overlay and Stream Rooms show "Replying to Name: ...". YouTube live chat has no reply button |
-| **Kick pictures** | `kick.avatars` | Chatter profile pictures, looked up once per chatter and cached (`data/kick_avatars.json`). YouTube pictures come with chat; Twitch none yet |
-| **Twitch** | `twitch.enabled`, `channel`, `third_party_emotes` | Anonymous IRC (no OAuth to listen). Emotes (native + BetterTTV / FrankerFaceZ / 7TV) ride along in the chat payload |
+| **Kick pictures** | `kick.avatars` | Chatter profile pictures, looked up once per chatter and cached (`data/kick_avatars.json`). YouTube pictures come with chat |
+| **Twitch** | `twitch.enabled`, `channel`, `third_party_emotes` | Chat over anonymous IRC (no login to listen). Emotes (native + BetterTTV / FrankerFaceZ / 7TV) ride along in the chat payload |
+| **Twitch sign-in** | `twitch.avatars`, `twitch.client_id`, `twitch.client_secret` | **Connect Twitch** in the dashboard (Settings → Core + chat platforms → Twitch): Core shows a code, you enter it at twitch.tv/activate, done. Uses Stream Core's built-in public Twitch app (device code flow; the exchange is between your PC and Twitch, nothing passes through a third party). The token lives in `data/twitch_token.json`, is refreshed by Core and sent nowhere but Twitch; **Disconnect** revokes it. With it, chatter profile pictures come from the Twitch API (`data/twitch_avatars.json`, up to 100 chatters per request). Advanced: your own app's Client ID (and, for a confidential app, Client Secret) instead of the built-in one; a secret alone is enough for pictures without a sign-in |
 | **YouTube** | `youtube.enabled`, `mode`, `video_id`, `api_key` | `innertube` (no quota) or `official` (Data API) |
 
 YouTube `video_id` changes every live session. Prefer `mode: innertube` unless you need official Super Chat metadata via the Data API.

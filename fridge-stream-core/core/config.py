@@ -52,6 +52,13 @@ DEFAULTS: Dict[str, Any] = {
         "channel": "YOUR_TWITCH_CHANNEL",
         # BetterTTV / FrankerFaceZ / 7TV emotes in the chat payload + chat overlay
         "third_party_emotes": True,
+        # chatter profile pictures through the Twitch API (needs "Connect Twitch" in the dashboard;
+        # cached in data/twitch_avatars.json)
+        "avatars": True,
+        # Advanced: your own Twitch app instead of Stream Core's built-in public one.
+        # Empty = built-in. A secret only exists for a "Confidential" app; keep it out of git.
+        "client_id": "",
+        "client_secret": "",
     },
     "youtube": {
         "enabled": False,  # opt-in chat platform

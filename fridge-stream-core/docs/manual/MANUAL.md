@@ -137,7 +137,19 @@ All three are off until you turn them on. Go to **Settings → Core + chat platf
 ![Core + chat platforms](images/sc-cfg-platforms.png)
 
 - **Kick**: your channel slug, the part after `kick.com/`. Core finds the chat room id by itself and remembers it. **Chatter profile pictures** looks each new chatter's picture up once (so their picture appears a moment after their first message) and keeps it. Kick also sends hosts, Kicks gifts and subs, which become alerts.
-- **Twitch**: your channel name. Core listens anonymously, so there's no login and nothing to authorise. **BetterTTV / FrankerFaceZ / 7TV emotes** ride along with every message, so overlays and Stream Rooms show them. Cheers, raids and subs become alerts.
+- **Twitch**: your channel name. Core listens to chat anonymously, so reading needs no login. **BetterTTV / FrankerFaceZ / 7TV emotes** ride along with every message, so overlays and Stream Rooms show them. Cheers, raids and subs become alerts. For **Chatter profile pictures** Twitch wants to know who is asking, so connect your account (next heading).
+
+### Connecting your Twitch account
+
+Under the Twitch settings press **Connect Twitch**. Core shows an eight-letter code and a link to `twitch.tv/activate`; open the link (you're normally already logged in there), type the code, press Activate and allow Stream Core. Within a few seconds the dashboard says **connected as** your name. That's it: the sign-in stays until you press **Disconnect**, Core renews it in the background, and chatters' pictures start showing in the chat overlay and Stream Rooms from their next message.
+
+A few things worth knowing:
+
+- The code is good for about 15 minutes. If it runs out, press **Connect Twitch** again.
+- Stream Core asks Twitch for two things only: to read your chat and to post in it. It never sees your password, and the exchange is between your PC and Twitch; nothing goes through anyone else's server.
+- The sign-in is kept in `data\twitch_token.json` on your PC and is sent to Twitch only. **Disconnect** tells Twitch to cancel it and deletes the file. You can also revoke it any time on Twitch under Settings → Connections (look for Stream Core).
+- Twitch cancels a sign-in itself after a long stretch without use or when you change your password; the dashboard then says so, and one more **Connect Twitch** fixes it.
+- **Advanced: use your own Twitch app** is for people who registered their own app at dev.twitch.tv. Paste its Client ID (and, for a "Confidential" app, the Client Secret). With a secret Core can fetch pictures even without the sign-in. Leave both empty to use Stream Core's built-in app, which is the normal case.
 - **YouTube**: the live video's id (the `v=` part of its address), which changes every stream. Mode **innertube** needs no API key and has no quota, so leave it on that unless you need the official API's Super Chat details. Members and Super Chats become alerts.
 
 Core can *read* all three, but it can't *post* into Kick or YouTube chat without a login. Its answers to commands ("you have 5 points") therefore show on the **replies overlay** and on Stream Rooms' reply screen, not in the platform's chat.
@@ -378,13 +390,14 @@ Game toggles need a Core restart; everything else applies live.
 
 | Where | What |
 |---|---|
-| `config\config.yaml` | All settings. The dashboard writes it; you can edit it by hand too (Core notices). Your tokens and keys live here and nowhere else. |
+| `config\config.yaml` | All settings. The dashboard writes it; you can edit it by hand too (Core notices). Your keys live here (and the Twitch sign-in in `data\`) and nowhere else. |
 | `config\commands.json` | The chat commands (Settings → Chat commands). |
 | `config\trivia.json` | Your trivia questions (`trivia.example.json` is the sample). |
 | `config\cast\*.json` | Movie-style credits layouts. |
 | `data\stream_core.db` | Points, users, linked accounts, the chat log, stream attendance. Back this folder up if you care about points. |
 | `data\admin_token.txt` | The generated admin token, when you didn't set one. |
-| `data\kick_avatars.json`, `chat_games.json`, `reactions_optout.json` | Caches and small state files. |
+| `data\twitch_token.json` | Your Twitch sign-in (see section 5). Delete it, or press **Disconnect**, to forget it. |
+| `data\kick_avatars.json`, `twitch_avatars.json`, `chat_games.json`, `reactions_optout.json` | Caches and small state files. |
 | `overlay\assets\alerts\` | Your alert pictures and videos. |
 | `.venv\` | Core's private Python. Delete it and run install again if Python ever gets confused. |
 
@@ -392,7 +405,8 @@ Game toggles need a Core restart; everything else applies live.
 
 - Core listens on **127.0.0.1** only and refuses requests that come from other web sites or that name another host, so a page you visit can't talk to it. Only turn that off (**Settings → Advanced**) if you serve it on your LAN on purpose.
 - The **admin token** is the dashboard's password. Change it under **Settings → Points, permissions + chat → Admin token**; the dashboard switches to the new one as you save.
-- Nothing posts into your chat: Core only reads. Alerts, replies and boards are overlays on your own stream.
+- Nothing posts into your chat: Core only reads (the Twitch sign-in asks for permission to post so that a later version can answer commands in chat, but today's Core never does). Alerts, replies and boards are overlays on your own stream.
+- The Twitch sign-in never leaves your PC except to talk to Twitch, and **Disconnect** cancels it at Twitch too.
 - Game bridges (the Minecraft mods, the Factorio bridge) only accept calls from Core.
 
 ## 23. Troubleshooting

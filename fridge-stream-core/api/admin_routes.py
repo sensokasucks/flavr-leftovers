@@ -563,6 +563,42 @@ def create_admin_router(core_state) -> APIRouter:
             msg = f"{name} is off (enable it in Config)."
         return {"ok": running or not enabled, "running": running, "message": msg, **info}
 
+    # ------------------------------------------------------------------
+    # Twitch sign-in (device code). Never returns the tokens themselves.
+    # ------------------------------------------------------------------
+
+    def _twitch_auth():
+        from adapters.twitch_auth import get_auth
+
+        return get_auth(getattr(core_state, "config", None) or load_config())
+
+    @router.get("/twitch/auth")
+    async def twitch_auth_status(x_admin_token: Optional[str] = Header(None)):
+        """Connected? As whom? Is a sign-in code waiting to be entered?"""
+        _auth(x_admin_token)
+        return _twitch_auth().status()
+
+    @router.post("/twitch/auth/start")
+    async def twitch_auth_start(x_admin_token: Optional[str] = Header(None)):
+        """Ask Twitch for a sign-in code; Core polls in the background until it is entered."""
+        _auth(x_admin_token)
+        return await _twitch_auth().start_login()
+
+    @router.post("/twitch/auth/cancel")
+    async def twitch_auth_cancel(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        auth = _twitch_auth()
+        auth.cancel_login()
+        return auth.status()
+
+    @router.post("/twitch/auth/disconnect")
+    async def twitch_auth_disconnect(x_admin_token: Optional[str] = Header(None)):
+        """Revoke the token at Twitch and delete data/twitch_token.json."""
+        _auth(x_admin_token)
+        auth = _twitch_auth()
+        await auth.disconnect()
+        return auth.status()
+
     @router.get("/commands")
     async def get_commands(x_admin_token: Optional[str] = Header(None)):
         _auth(x_admin_token)
