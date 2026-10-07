@@ -161,7 +161,16 @@
     row.className = "msg";
     if (data.platform) row.dataset.platform = data.platform;
     if (data.message_id) row.dataset.id = data.message_id;
+    // a reply made with the platform's reply button: "Replying to Name: what they said"
+    let replyHtml = "";
+    const r = data.reply_to;
+    if (r && typeof r === "object" && r.user) {
+      const quote = String(r.message || "").slice(0, 80);
+      replyHtml = `<div class="reply">\u21a9 Replying to <b>${escapeHtml(String(r.user))}</b>` +
+        (quote ? `: ${escapeHtml(quote)}${String(r.message || "").length > 80 ? "\u2026" : ""}` : "") + `</div>`;
+    }
     row.innerHTML =
+      replyHtml +
       platformBadge(data.platform) +
       badgeElements(user) +
       `<span class="user" style="color:${escapeHtml(color)}">${name}</span>` +

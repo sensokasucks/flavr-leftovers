@@ -40,10 +40,45 @@ def _parse_tags(raw: str) -> dict[str, str]:
     for part in raw.split(";"):
         if "=" in part:
             k, v = part.split("=", 1)
-            out[k] = v.replace("\\s", " ")
+            out[k] = _untag(v)
         else:
             out[part] = ""
     return out
+
+
+def _untag(v: str) -> str:
+    """IRCv3 tag value escapes: \\s space, \\: semicolon, \\\\ backslash, \\r, \\n."""
+    out = []
+    i = 0
+    while i < len(v):
+        c = v[i]
+        if c == "\\" and i + 1 < len(v):
+            n = v[i + 1]
+            out.append({"s": " ", ":": ";", "\\": "\\", "r": "\r", "n": "\n"}.get(n, n))
+            i += 2
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def twitch_reply_to(tags: dict[str, str]) -> Optional[dict]:
+    """Twitch's reply button adds reply-parent-* tags. Returns ChatEvent.reply_to, or None."""
+    parent_id = tags.get("reply-parent-msg-id") or ""
+    who = tags.get("reply-parent-display-name") or tags.get("reply-parent-user-login") or ""
+    if not parent_id or not who:
+        return None
+    return {"user": who, "message": (tags.get("reply-parent-msg-body") or "")[:200], "message_id": parent_id}
+
+
+def strip_reply_mention(msg: str, reply_to: Optional[dict]) -> str:
+    """A Twitch reply starts with "@Name ": drop it, the "Replying to" line says who."""
+    if not reply_to or not msg.startswith("@"):
+        return msg
+    head, _, rest = msg.partition(" ")
+    if head[1:].lower() == str(reply_to.get("user", "")).lower():
+        return rest.strip() or msg
+    return msg
 
 
 def _int(raw: Any, default: int = 1) -> int:
@@ -203,6 +238,10 @@ class TwitchAdapter(BaseAdapter):
         emotes = parse_twitch_emotes(tags.get("emotes", ""), msg)
         emotes = sorted(emotes + self.emotes3p.match(msg, emotes), key=lambda e: e["start"])
         display = tags.get("display-name") or nick
+        reply_to = twitch_reply_to(tags)
+        if reply_to:
+            msg = strip_reply_mention(msg, reply_to)
+            emotes = [e for e in emotes if e.get("start", 0) < len(msg)]
         badges = (tags.get("badges") or "").split(",")
         badge_names = [b.split("/")[0] for b in badges if b]
         user = ChatUser(
@@ -231,5 +270,6 @@ class TwitchAdapter(BaseAdapter):
                 paid_amount=float(bits) if bits else None,
                 paid_currency="bits" if bits else None,
                 is_paid=bits > 0,
+                reply_to=reply_to,
             )
         )

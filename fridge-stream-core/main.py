@@ -559,6 +559,8 @@ class StreamCore:
                     "badges": event.user.badges,
                     "title": title,
                 },
+                # a reply made with the platform's reply button: who it answers and a short quote
+                "reply_to": event.reply_to,
             },
         }
         self.recent_chat.append(payload["data"])

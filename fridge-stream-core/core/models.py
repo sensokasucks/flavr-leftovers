@@ -77,6 +77,10 @@ class ChatEvent:
     # Kick keeps its inline [emote:id:name] tokens instead.
     emotes: list[dict] = field(default_factory=list)
 
+    # A reply to another chatter, made with the platform's own reply button (Kick, Twitch):
+    # {"user": display name, "message": what they replied to (shortened), "message_id": its id}.
+    reply_to: Optional[dict] = None
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["platform"] = self.platform.value

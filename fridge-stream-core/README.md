@@ -184,6 +184,7 @@ Core will automatically route approved chat commands to every registered game.
 | Platform | Config keys | Notes |
 |----------|-------------|-------|
 | **Kick** | `kick.enabled`, `channel_slug` | Pusher WebSocket; optional `chatroom_id` |
+| **Chat replies** | (none) | A message sent with the platform's reply button (Kick, Twitch) carries `reply_to` (`user`, a shortened `message`, `message_id`) in the `/ws` chat payload; the chat overlay and Stream Rooms show "Replying to Name: ...". YouTube live chat has no reply button |
 | **Kick pictures** | `kick.avatars` | Chatter profile pictures, looked up once per chatter and cached (`data/kick_avatars.json`). YouTube pictures come with chat; Twitch none yet |
 | **Twitch** | `twitch.enabled`, `channel`, `third_party_emotes` | Anonymous IRC (no OAuth to listen). Emotes (native + BetterTTV / FrankerFaceZ / 7TV) ride along in the chat payload |
 | **YouTube** | `youtube.enabled`, `mode`, `video_id`, `api_key` | `innertube` (no quota) or `official` (Data API) |

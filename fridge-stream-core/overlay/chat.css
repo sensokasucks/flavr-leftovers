@@ -125,6 +125,17 @@ html, body {
   font-weight: 500;
 }
 
+/* "Replying to Name: ..." above a reply (the platform's reply button) */
+.reply {
+  flex-basis: 100%;
+  font-size: 0.8em;
+  color: #c9ccd4;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .emote {
   height: 28px;
   width: auto;

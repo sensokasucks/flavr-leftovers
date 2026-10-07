@@ -9,6 +9,9 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Chat replies show who they answer.** A message sent with Kick's or Twitch's reply button now carries `reply_to` in the `/ws` chat payload (`user`, a shortened `message`, `message_id`), read from Kick's `metadata.original_sender` / `original_message` and Twitch's `reply-parent-*` IRC tags (the leading "@Name" Twitch adds to a reply is dropped). The chat overlay shows a small "↩ Replying to Name: what they said" line above the message; Stream Rooms shows it on its chat windows and speech bubbles. YouTube live chat has no reply button, so nothing changes there. IRC tag values are now fully unescaped (`\:` and `\` too). Tests: `tests/test_chat_replies.py`. (`adapters/kick.py` `kick_reply_to`, `adapters/twitch.py` `twitch_reply_to`.)
+
 ### Security
 
 Binding to `127.0.0.1` kept other PCs out, but any web page open in the streamer's browser could still call the local APIs. These changes close that.

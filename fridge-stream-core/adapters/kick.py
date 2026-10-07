@@ -23,6 +23,27 @@ from websockets.exceptions import ConnectionClosed
 
 from adapters.base import BaseAdapter
 from adapters.kick_avatars import KickAvatars
+
+
+def kick_reply_to(data: dict) -> Optional[dict]:
+    """Kick's reply button puts the original under ``metadata``:
+    ``{"original_sender": {"id", "username"}, "original_message": {"id", "content"}}``.
+    Returns ChatEvent.reply_to, or None when the message isn't a reply."""
+    meta = data.get("metadata") if isinstance(data, dict) else None
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except (json.JSONDecodeError, TypeError):
+            meta = None
+    if not isinstance(meta, dict):
+        return None
+    sender = meta.get("original_sender") or {}
+    original = meta.get("original_message") or {}
+    who = str(sender.get("username") or sender.get("slug") or "").strip() if isinstance(sender, dict) else ""
+    if not who:
+        return None
+    text = str(original.get("content") or "").strip() if isinstance(original, dict) else ""
+    return {"user": who, "message": text[:200], "message_id": str(original.get("id") or "") if isinstance(original, dict) else ""}
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
@@ -549,6 +570,7 @@ class KickAdapter(BaseAdapter):
             message=content,
             message_id=str(data.get("id") or data.get("message_id") or ""),
             raw=data,
+            reply_to=kick_reply_to(data),
         )
 
         log.info("[Kick] %s: %s", user.username, content)
