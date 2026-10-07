@@ -63,9 +63,12 @@ class BaseAdapter(abc.ABC):
         user_id: str = "",
         months: Optional[int] = None,
         qty: Optional[int] = None,
+        viewers: Optional[int] = None,
+        amount: Optional[float] = None,
+        currency: str = "",
         message: str = "",
     ) -> None:
-        """Sub / resub / gift seen on the platform → overlay alert on the bus.
+        """Sub / resub / gift / raid / tip seen on the platform → overlay alert on the bus.
 
         Core fills in `duration_ms` from `overlay.alert_duration_ms` (source=platform).
         """
@@ -76,6 +79,9 @@ class BaseAdapter(abc.ABC):
             platform=self.platform.value,
             months=months,
             qty=qty,
+            viewers=viewers,
+            amount=amount,
+            currency=currency,
             message=message,
         )
         payload["source"] = "platform"

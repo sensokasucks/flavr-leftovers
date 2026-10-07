@@ -30,6 +30,7 @@ APIs that the tabs depend on must not disappear:
 Auth:
 
 - [ ] `_auth` never accepts `change-me` / empty. Fallback token lives in `data/admin_token.txt` and is printed at startup.
+- [ ] `api()` unwraps FastAPI `detail` (`readableError`); a 401 calls `needToken()` (token box shown + highlighted + focused, message says where the token lives). Saving Config with a new `points.admin_token` updates the browser's stored token (`cfg-save`).
 
 Save rules:
 
@@ -55,7 +56,16 @@ Save rules:
 - [ ] Landing page is **Live controls** (status chips, credits roll buttons, test alerts, dry-run command). Live buttons use `data-proxy="<id>"` to press the feature page's real button — don't duplicate handlers.
 - [ ] Flat sidebar, no collapsible groups. Settings sub-pages are sidebar items (`data-tab="config" data-sub="…"`); the config pill bar is hidden.
 - [ ] Pages with `.acc-stack[data-acc]` show one sub-page at a time (`showSub`); `data-aside` sections (Credits / Alerts preview) stay visible beside every sub-page.
-- [ ] Save config.yaml bar shows only on the yaml sub-pages (core, games, points, advanced); Reactions / groups / commands keep their own save buttons.
+- [ ] Save config.yaml bar shows only on the yaml sub-pages (core, games, points, advanced); Reactions / groups / commands keep their own save buttons — and those stay **visible** (hide `.config-savebar` there, never every `.config-actions`).
+- [ ] Every page with settings has the **page save bar** (`.page-savebar`, admin.js "Page save bar"): Chat games, Credits, Alerts, Market, and Config → Reactions / Command groups / Chat commands. A new block of settings is added to its `sections` list (scope or fields + its own Save button or save function) — otherwise its edits are never flagged or saved by the bar / Ctrl+S.
+- [ ] Unsaved edits: orange dot on the sidebar item and sub-page pill; leaving that page (sidebar, Back) asks first; closing the tab asks (`beforeunload`). Action / test fields are not sections.
+- [ ] Each block's own Save button keeps working; the bar clicks it (or calls its save function), and only clears a block when a write call succeeded (`apiWrites` / `apiFails` counters in `api()`).
 - [ ] Routes are `#page/sub`; Back works; last page + last sub per page remembered in localStorage.
 - [ ] Search (`/`) indexes nav items (+ `data-keywords`), sub-page pills, labels, legends and credits editor chips; a new setting with a `<label>` is searchable with no extra work.
 - [ ] Element ids used by admin.js are unchanged by layout work — move markup, don't rename ids.
+
+## Accessibility (2026-10)
+
+- [ ] `:focus-visible` outline on every control; `html.hc` high-contrast theme (header `#hc-toggle`, `prefers-contrast: more`, remembered in localStorage).
+- [ ] Form-only deletes / resets (reaction, command, group, Reset form to defaults) use `undoToast()` (role=status, Ctrl+Z) — not `confirm()`. Anything that writes or acts immediately keeps its `confirm()`.
+- [ ] Under 900 px: sidebar is a drawer behind `#nav-toggle` (label = current page); no page scrolls sideways (tables scroll inside their card).

@@ -3,7 +3,7 @@
   --panel: #171b24;
   --border: #2a3140;
   --text: #e8ecf4;
-  --muted: #8b95a8;
+  --muted: #a3adbf;      /* (was #8b95a8) about 7:1 on the panels, so small hints read easily */
   --accent: #53fc18;
   --accent-dim: #3a9e12;
   --danger: #ff5c5c;
@@ -48,6 +48,7 @@ body {
 .token-row.has-token label,
 .token-row.has-token input,
 .token-row.has-token #save-token { display: none; }
+.token-row.needs-token #token { outline: 2px solid var(--warn); }
 .link-btn {
   background: transparent;
   border-color: transparent;
@@ -98,7 +99,7 @@ button.danger { color: var(--danger); }
 .pill.ok { background: #1a3a14; color: var(--accent); border-color: var(--accent-dim); }
 .pill.off { background: #2a1a1a; color: var(--danger); }
 .url-cell { font-size: 0.8rem; word-break: break-all; }
-.hint { color: var(--muted); font-size: 0.85rem; margin: 6px 0 10px; }
+.hint { color: var(--muted); font-size: 0.875rem; margin: 6px 0 10px; }
 
 .stats {
   display: flex;
@@ -234,8 +235,11 @@ button.danger { color: var(--danger); }
 }
 /* Settings sub-pages are listed in the sidebar instead. */
 #tab-config .subtabs { display: none; }
-#tab-config:not(.yaml-sub) .config-actions,
+/* Only the config.yaml save bar + banner belong to the yaml sub-pages; Reactions / Command groups /
+   Chat commands keep their own Save buttons (hiding every .config-actions hid those too). */
+#tab-config:not(.yaml-sub) .config-actions.config-savebar,
 #tab-config:not(.yaml-sub) #config-banner { display: none; }
+#tab-config.yaml-sub .page-savebar { display: none; }
 /* Save bar: sticks under the top bar while the Config sub-pages scroll. */
 #tab-config .config-actions.config-savebar {
   position: sticky;
@@ -981,3 +985,128 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
 .fun-mood legend input { font-weight: 700; width: 12em; }
 .fun-mood textarea { width: 100%; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.82rem; }
 .fun-mood label { display: block; margin: 6px 0; }
+
+/* Page save bar: every page with settings gets the same sticky bar as Config (admin.js "Page save
+   bar"). It saves every section with unsaved edits on that page; dots mark pages / sub-pages with
+   unsaved edits. */
+.page-savebar {
+  position: sticky;
+  top: 56px;
+  z-index: 20;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+.page-savebar .ps-save { font-size: 1rem; padding: 8px 18px; }
+.page-savebar.dirty .ps-save { box-shadow: 0 0 0 2px var(--warn); }
+.page-savebar[hidden] { display: none; }
+.admin-nav .tab.unsaved::after,
+.subtab.unsaved::after {
+  content: "\2022";
+  color: var(--warn);
+  margin-left: 6px;
+  font-weight: 700;
+}
+
+
+/* ---- Accessibility ---- */
+/* Keyboard focus: always visible (mouse clicks don't show it). */
+:focus-visible {
+  outline: 2px solid var(--warn);
+  outline-offset: 2px;
+}
+button:focus:not(:focus-visible), .tab:focus:not(:focus-visible) { outline: none; }
+.field-help, .muted { font-size: max(0.8rem, 12.8px); }
+
+/* High contrast (header button, or the system "more contrast" setting). */
+html.hc {
+  --bg: #000;
+  --panel: #0b0b0d;
+  --border: #9aa3b5;
+  --text: #fff;
+  --muted: #dde2ec;
+  --accent: #7dff4d;
+  --danger: #ff8080;
+  --warn: #ffd166;
+}
+html.hc .cfg-card, html.hc .live-card, html.hc fieldset, html.hc table, html.hc .config-savebar, html.hc .page-savebar { border-width: 2px; }
+html.hc input, html.hc select, html.hc textarea, html.hc button { border: 1px solid var(--border); }
+html.hc button.primary { color: #000; }
+html.hc a { text-decoration: underline; }
+html.hc :focus-visible { outline-width: 3px; }
+html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offset: -2px; }
+#hc-toggle[aria-pressed="true"] { color: var(--accent); }
+
+/* Undo instead of "Are you sure?" for edits that aren't saved yet. */
+.undo-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: calc(100vw - 32px);
+  padding: 10px 12px 10px 16px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+.undo-toast[hidden] { display: none; }
+.undo-toast button:first-of-type { font-weight: 700; }
+
+/* Phone / tablet: the sidebar is a drawer behind "☰ Menu"; bigger touch targets. */
+.nav-toggle { display: none; }
+@media (max-width: 900px) {
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    font-weight: 700;
+  }
+  .topbar { gap: 10px; padding: 8px 12px; }
+  .topbar .stats { order: 5; flex-basis: 100%; font-size: 0.85rem; }
+  .token-row { margin-left: 0; }
+  .token-row input { width: min(230px, 50vw); }
+  .admin-nav {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(320px, 86vw);
+    height: 100vh;
+    z-index: 50;
+    border-right: 1px solid var(--border);
+    border-bottom: 0;
+    box-shadow: 12px 0 30px rgba(0, 0, 0, 0.55);
+  }
+  body.nav-open .admin-nav { display: block; }
+  body.nav-open::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    background: rgba(0, 0, 0, 0.45);
+  }
+  .nav-group { flex-direction: column; flex-wrap: nowrap; align-items: stretch; }
+  .tab { width: 100%; min-height: 44px; border-radius: 6px; }
+  .panel { padding: 12px 12px 40px; }
+  .page-savebar, #tab-config .config-actions.config-savebar { top: 0; }
+  button, select { min-height: 40px; }
+  .subtabs { overflow-x: auto; flex-wrap: nowrap; }
+  .subtab { white-space: nowrap; }
+}
+@media (max-width: 900px) {
+  fieldset { min-width: 0; }
+  .panel table { display: block; overflow-x: auto; max-width: 100%; }
+  .row2, .row3, .live-grid, .fun-grid, .credits-layout, .alert-split, .integ-layout, .market-mc-grid { grid-template-columns: 1fr !important; }
+  .panel input, .panel select, .panel textarea { max-width: 100%; }
+}

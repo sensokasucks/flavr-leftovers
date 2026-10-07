@@ -13,15 +13,126 @@
     };
   }
 
-  async function api(path, opts = {}) {
-    const res = await fetch(path, {
-      ...opts,
-      headers: { ...headers(), ...(opts.headers || {}) },
-    });
-    if (!res.ok) {
-      const t = await res.text();
-      throw new Error(t || res.statusText);
+  /** FastAPI answers errors as {"detail": ...}; show the detail, not the JSON around it. */
+  function readableError(text, status, statusText) {
+    let msg = text || statusText || ("HTTP " + status);
+    try {
+      const j = JSON.parse(text);
+      const d = j && j.detail !== undefined ? j.detail : j && j.error;
+      if (typeof d === "string") msg = d;
+      else if (Array.isArray(d)) msg = d.map((x) => (x.loc ? x.loc.slice(1).join(".") + ": " : "") + (x.msg || JSON.stringify(x))).join("; ");
+      else if (d && typeof d === "object") msg = JSON.stringify(d);
+    } catch (_) {}
+    if (status === 401 && !/token/i.test(msg)) msg = "Admin token missing or wrong. " + msg;
+    return msg;
+  }
+
+  // A 401 anywhere: bring the token box back (it hides once a token is saved) and point at it.
+  let tokenNag = 0;
+  function needToken() {
+    const row = $("token-row");
+    if (!row) return;
+    row.classList.remove("has-token");
+    row.classList.add("needs-token");
+    if ($("token-change")) $("token-change").hidden = true;
+    if (!tokenNag) {
+      tokenNag = 1;
+      setStatus("Paste the admin token: it's printed when Stream Core starts, and saved in data/admin_token.txt (or set points.admin_token in config.yaml).", false);
+      $("token").focus();
     }
+  }
+
+  /**
+   * "Deleted X · Undo" at the bottom of the page for edits that only change the form (nothing is
+   * written until Save), instead of an "Are you sure?" box. Announced to screen readers.
+   */
+  let undoTimer = 0;
+  function undoToast(message, undo) {
+    let box = $("undo-toast");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "undo-toast";
+      box.className = "undo-toast";
+      box.setAttribute("role", "status");
+      box.setAttribute("aria-live", "polite");
+      document.body.appendChild(box);
+    }
+    box.innerHTML = "";
+    const msg = document.createElement("span");
+    msg.textContent = message;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = "Undo";
+    btn.onclick = () => {
+      box.hidden = true;
+      clearTimeout(undoTimer);
+      undo();
+    };
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "link-btn";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "×";
+    close.onclick = () => { box.hidden = true; };
+    box.append(msg, btn, close);
+    box.hidden = false;
+    clearTimeout(undoTimer);
+    undoTimer = setTimeout(() => { box.hidden = true; }, 10000);
+  }
+  // Ctrl/Cmd+Z right after a delete undoes it too (not while typing in a box)
+  document.addEventListener("keydown", (ev) => {
+    if (!(ev.ctrlKey || ev.metaKey) || String(ev.key).toLowerCase() !== "z") return;
+    const box = $("undo-toast");
+    const t = ev.target;
+    if (!box || box.hidden || (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable))) return;
+    ev.preventDefault();
+    box.querySelector("button").click();
+  });
+
+  // High contrast: brighter text, solid borders, stronger focus outline. Follows the system
+  // "more contrast" setting until you pick; the choice is remembered in this browser.
+  const hcKey = "stream_core_high_contrast";
+  function applyContrast() {
+    let pref = null;
+    try { pref = localStorage.getItem(hcKey); } catch (_) {}
+    const on = pref === null ? window.matchMedia("(prefers-contrast: more)").matches : pref === "1";
+    document.documentElement.classList.toggle("hc", on);
+    const b = $("hc-toggle");
+    if (b) b.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  if ($("hc-toggle")) {
+    $("hc-toggle").onclick = () => {
+      const on = !document.documentElement.classList.contains("hc");
+      try { localStorage.setItem(hcKey, on ? "1" : "0"); } catch (_) {}
+      applyContrast();
+    };
+  }
+  applyContrast();
+
+  // Write calls that worked / calls that failed. The page save bar compares these around a
+  // section's own save handler (those catch their errors) to tell whether the save went through.
+  var apiWrites = 0;
+  var apiFails = 0;
+
+  async function api(path, opts = {}) {
+    const write = String(opts.method || "GET").toUpperCase() !== "GET";
+    let res;
+    try {
+      res = await fetch(path, {
+        ...opts,
+        headers: { ...headers(), ...(opts.headers || {}) },
+      });
+    } catch (e) {
+      apiFails += 1;
+      throw e;
+    }
+    if (!res.ok) {
+      apiFails += 1;
+      const t = await res.text();
+      if (res.status === 401) needToken();
+      throw new Error(readableError(t, res.status, res.statusText));
+    }
+    if (write) apiWrites += 1;
     const ct = res.headers.get("content-type") || "";
     if (ct.includes("application/json")) return res.json();
     return res;
@@ -52,6 +163,8 @@
   $("token").value = localStorage.getItem(tokenKey) || "";
   $("save-token").onclick = () => {
     localStorage.setItem(tokenKey, $("token").value.trim());
+    tokenNag = 0;
+    $("token-row").classList.remove("needs-token");
     setStatus("Token saved");
     refreshStats();
     loadStatus();
@@ -140,6 +253,7 @@
       b.classList.toggle("active", hit);
       if (hit) b.setAttribute("aria-current", "page");
       else b.removeAttribute("aria-current");
+      if (hit && $("nav-toggle-label")) $("nav-toggle-label").textContent = b.textContent.trim();
     });
   }
 
@@ -206,6 +320,8 @@
   }
 
   function go(tabId, sub) {
+    if (!pageCanLeave(tabId)) return;
+    if (typeof setNavOpen === "function" && narrow) setNavOpen(false);
     const hash = "#" + tabId + (sub ? "/" + sub : "");
     if (location.hash !== hash) history.pushState(null, "", hash);
     activateTab(tabId, sub);
@@ -216,13 +332,45 @@
     if (!raw) return false;
     const [tabId, sub] = raw.split("/");
     if (!$("tab-" + tabId)) return false;
+    if (!pageCanLeave(tabId)) {
+      // Back / Forward away from unsaved edits: stay, and put the address back
+      const cur = document.querySelector(".panel.active");
+      const here = cur ? cur.id.replace(/^tab-/, "") : "";
+      if (here) history.pushState(null, "", "#" + here + (cur.dataset.sub ? "/" + cur.dataset.sub : ""));
+      return true;
+    }
     activateTab(tabId, sub);
     return true;
   }
 
   document.querySelectorAll(".admin-nav .tab").forEach((btn) => {
-    btn.onclick = () => go(btn.dataset.tab, btn.dataset.sub);
+    btn.onclick = () => {
+      go(btn.dataset.tab, btn.dataset.sub);
+      setNavOpen(false);
+    };
   });
+
+  // Narrow screens (phone / tablet beside the stream): the sidebar becomes a drawer behind "☰ Menu".
+  var narrow = window.matchMedia("(max-width: 900px)");
+  function setNavOpen(open) {
+    const on = !!open && narrow.matches;
+    document.body.classList.toggle("nav-open", on);
+    if ($("nav-toggle")) $("nav-toggle").setAttribute("aria-expanded", on ? "true" : "false");
+    if (on && $("nav-search")) $("nav-search").focus();
+  }
+  if ($("nav-toggle")) $("nav-toggle").onclick = () => setNavOpen(!document.body.classList.contains("nav-open"));
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && document.body.classList.contains("nav-open")) {
+      setNavOpen(false);
+      $("nav-toggle").focus();
+    }
+  });
+  document.addEventListener("click", (ev) => {
+    if (!document.body.classList.contains("nav-open")) return;
+    if (ev.target.closest("#admin-nav") || ev.target.closest("#nav-toggle")) return;
+    setNavOpen(false);
+  });
+  narrow.addEventListener("change", () => setNavOpen(false));
   document.querySelectorAll(".subtabs").forEach((bar) => {
     const panel = bar.closest(".panel");
     bar.addEventListener("click", (ev) => {
@@ -638,6 +786,10 @@
   }
 
   if ($("status-refresh")) $("status-refresh").onclick = () => loadStatus();
+  // Status keeps itself current while it's open (platforms reconnect on their own after a save).
+  setInterval(() => {
+    if ($("tab-status") && $("tab-status").classList.contains("active") && document.visibilityState === "visible") loadStatus();
+  }, 10000);
   if ($("sources-refresh")) $("sources-refresh").onclick = () => loadSources();
 
   // ------------------------------------------------------------------
@@ -1416,6 +1568,7 @@
     $("cfg-pts-follow").value = pts.follow_points ?? 250;
     $("cfg-pts-gift").value = pts.gift_points ?? 1000;
     $("cfg-pts-token").value = pts.admin_token ?? "";
+    syncTokenHint();
 
     const clog = cfg.chat_log || {};
     if ($("cfg-chatlog-enabled")) {
@@ -1601,19 +1754,35 @@
       setCfgStatus("Load config first", false);
       return;
     }
-    if (!confirm("Fill the form with built-in defaults? (not saved yet)")) return;
+    // nothing is written until Save, so: do it, and offer Undo instead of asking first
+    const before = collectConfigFromForm();
+    const wasDirty = $("cfg-savebar") && $("cfg-savebar").classList.contains("dirty");
     fillConfigForm(lastDefaults, lastDefaults);
     setCfgDirty(true);
     setCfgStatus("Form reset to defaults — click Save & apply to write disk");
+    undoToast("Form reset to built-in defaults (not saved).", () => {
+      fillConfigForm(before, lastDefaults);
+      setCfgDirty(wasDirty);
+      setCfgStatus("Reset undone");
+    });
   };
 
   $("cfg-save").onclick = async () => {
     try {
       const config = collectConfigFromForm();
+      const newToken = String(((config.points || {}).admin_token) || "").trim();
       const res = await api("/api/admin/config", {
         method: "PUT",
         body: JSON.stringify({ config }),
       });
+      // points.admin_token applies as soon as it's saved: switch this page to it too, or every
+      // call from here on would be refused with the old one
+      if (newToken && newToken !== "change-me" && newToken !== token()) {
+        localStorage.setItem(tokenKey, newToken);
+        $("token").value = newToken;
+        syncTokenRow();
+        setStatus("Admin token changed — this page now uses the new one", true);
+      }
       setCfgStatus(res.message || "Saved", true);
       setStatus(res.message || "Config saved — chat platforms applied", true);
       setCfgDirty(false);
@@ -1621,6 +1790,17 @@
       setCfgStatus(String(e.message || e), false);
     }
   };
+
+  // "change-me" / empty in the token field means the generated token in data/admin_token.txt is in use.
+  function syncTokenHint() {
+    const el = $("cfg-pts-token-hint");
+    if (!el || !$("cfg-pts-token")) return;
+    const v = $("cfg-pts-token").value.trim();
+    el.textContent = (!v || v === "change-me")
+      ? "Not set: Stream Core uses the random token it printed at startup (data/admin_token.txt). Type your own here to replace it; saving switches this page to it."
+      : "Your own token. Saving applies it at once and switches this page to it.";
+  }
+  if ($("cfg-pts-token")) $("cfg-pts-token").addEventListener("input", syncTokenHint);
 
   // Save bar: flag unsaved edits, Ctrl/Cmd+S saves while Config is open.
   function setCfgDirty(dirty) {
@@ -1715,8 +1895,13 @@
       const del = tr.querySelector(".grp-del");
       if (del) {
         del.onclick = () => {
+          const at = groupsState.indexOf(g);
           groupsState = groupsState.filter((x) => x.id !== g.id);
           renderGroupsTable();
+          undoToast(`Removed group "${g.id}" (Save groups to make it stick).`, () => {
+            groupsState.splice(Math.max(0, Math.min(at, groupsState.length)), 0, g);
+            renderGroupsTable();
+          });
         };
       }
       tb.appendChild(tr);
@@ -2239,11 +2424,17 @@
       };
     });
     $("rx-del-btn").onclick = () => {
-      if (!confirm(`Delete reaction "${e.label || e.id}"? (Save to make it stick)`)) return;
-      rxCfg.entries.splice(rxSel, 1);
+      const at = rxSel;
+      const gone = rxCfg.entries.splice(at, 1)[0];
       rxSel = -1;
       rxRenderTable();
       rxRenderDetail();
+      undoToast(`Deleted reaction "${gone.label || gone.id}" (Save to make it stick).`, () => {
+        rxCfg.entries.splice(Math.min(at, rxCfg.entries.length), 0, gone);
+        rxSel = rxCfg.entries.indexOf(gone);
+        rxRenderTable();
+        rxRenderDetail();
+      });
     };
     $("rx-test-btn").onclick = async () => {
       const out = $("rx-test-out");
@@ -2556,12 +2747,17 @@
     };
 
     $("cmd-delete").onclick = () => {
-      if (!confirm("Delete command !" + name + "?")) return;
+      const def = commandsState[name];
       delete commandsState[name];
       selectedCmd = null;
       $("cmd-detail").innerHTML = `<p class="muted">Select a command or click Add</p>`;
       renderCmdTable();
       setCmdStatus("Removed from list — save to write disk");
+      undoToast("Deleted !" + name + " (Save to make it stick).", () => {
+        commandsState[name] = def;
+        selectCommand(name);
+        setCmdStatus("Delete undone");
+      });
     };
   }
 
@@ -3603,6 +3799,312 @@
       }
     };
   }
+
+  // ------------------------------------------------------------------
+  // Page save bar: one "Save changes" bar on every page that has settings.
+  // Each section below is a block of settings with its own existing Save button (or save function);
+  // the bar tracks which sections have unsaved edits and saves them all, Ctrl/Cmd+S included.
+  // The sections' own buttons keep working and clear the "unsaved" mark too. Run / test / action
+  // fields (poll question, test chat, alert test, tester, grant shares ...) are not sections.
+  // ------------------------------------------------------------------
+  var PAGE_SAVER = null;
+
+  /** Leaving `tabId`'s page for another one: ask first if the current page has unsaved edits. */
+  function pageCanLeave(nextTab) {
+    const cur = document.querySelector(".panel.active");
+    const here = cur ? cur.id.replace(/^tab-/, "") : "";
+    if (!here || here === nextTab) return true;
+    const names = pageUnsavedNames(here);
+    if (!names.length) return true;
+    const ok = confirm(
+      "Unsaved changes on this page: " + names.join(", ") + ".\n\n" +
+      "OK = leave without saving (they'll be lost).\nCancel = stay here and save first."
+    );
+    if (ok) pageDiscard(here);
+    return ok;
+  }
+
+  function pageUnsavedNames(page) {
+    const out = [];
+    if (page === "config" && $("cfg-savebar") && $("cfg-savebar").classList.contains("dirty")) out.push("config.yaml settings");
+    if (!PAGE_SAVER) return out;
+    PAGE_SAVER.sections.forEach((s) => {
+      if (s.page === page && s.dirty && !out.includes(s.name)) out.push(s.name);
+    });
+    return out;
+  }
+
+  function pageDiscard(page) {
+    if (!PAGE_SAVER) return;
+    PAGE_SAVER.sections.forEach((s) => {
+      if (s.page === page) s.dirty = false;
+    });
+    PAGE_SAVER.render();
+  }
+
+  (function setupPageSaver() {
+    const sections = [
+      { key: "fun-settings", page: "fun", sub: "settings", name: "Chat games settings", group: "fun",
+        scope: '#tab-fun .acc[data-sub="settings"]', button: "fun-save" },
+      { key: "fun-moods", page: "fun", sub: "moods", name: "Emote combos", group: "fun",
+        scope: '#tab-fun .acc[data-sub="moods"]', button: "fun-save-moods" },
+      { key: "crd-enable", page: "credits", sub: "run", name: "Credits on/off",
+        fields: ["crd-enabled"], button: "crd-enable-save" },
+      { key: "crd-look", page: "credits", sub: "style", name: "Credits look",
+        scope: "#crd-style-editor", clicks: ".cs-motion, .cs-preset", button: "cs-save",
+        save: async () => {
+          if (!window.CreditsStyleEditor || !$("cs-save")) return;
+          const st = document.querySelector("#cs-status");
+          try {
+            await pushCreditsTheme(CreditsStyleEditor.collect(), true);
+            if (st) st.textContent = "Saved";
+          } catch (e) {
+            if (st) st.textContent = String(e.message || e);
+          }
+        } },
+      { key: "crd-perm", page: "credits", sub: "movie", name: "!credit permission",
+        fields: ["crd-cmd-perm"], button: "crd-style-save" },
+      { key: "alert-css", page: "alerts", sub: "look", name: "Alert CSS",
+        fields: ["alert-css"], button: "alert-css-save" },
+      { key: "mkt-mc", page: "market", sub: "minecraft", name: "Minecraft market", group: "mkt-mc",
+        scope: '#tab-market .acc[data-sub="minecraft"]', button: "mkt-save" },
+      { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-mc",
+        fields: ["mkt-hour-cap", "mkt-steam-sec"], button: "mkt-save", also: ["mkt-inv-save"] },
+      { key: "mkt-fx", page: "market", sub: "factorio", name: "Factorio market",
+        scope: '#tab-market .acc[data-sub="factorio"]', button: "mkt-fx-save" },
+      { key: "rx", page: "config", sub: "reactions", name: "Reactions",
+        scope: "#rx-wrap", ignore: '[id^="rx-test"], #rx-img-name, #rx-img-file',
+        clicks: "#rx-add, #rx-del-btn", button: "rx-save", reload: "rx-reload" },
+      { key: "grp", page: "config", sub: "groups", name: "Command groups",
+        scope: "#cfg-groups-wrap", clicks: "#grp-add, .grp-del", button: "grp-save", reload: "grp-reload" },
+      { key: "cmd", page: "config", sub: "commands", name: "Chat commands",
+        scope: '#tab-config .acc[data-sub="commands"]', inputMarks: false,
+        clicks: "#cmd-add, #cmd-apply, #cmd-delete", button: "cmd-save", reload: "cmd-reload",
+        // edits in the command form only count once applied to the list: apply them first
+        before: () => {
+          if (PAGE_SAVER.cmdFormEdited && $("cmd-apply")) $("cmd-apply").click();
+        } },
+    ].filter((s) => $("tab-" + s.page) && (s.save || $(s.button)));
+
+    const bars = {};
+    PAGE_SAVER = { sections, cmdFormEdited: false, render };
+
+    const inScope = (s, el) => {
+      if (!el || !el.closest) return false;
+      if (s.fields) return s.fields.includes(el.id);
+      const root = document.querySelector(s.scope);
+      if (!root || !root.contains(el)) return false;
+      if (s.ignore && el.closest(s.ignore)) return false;
+      return true;
+    };
+
+    function markDirty(s) {
+      if (s.dirty) return;
+      s.dirty = true;
+      render();
+    }
+
+    function markClean(sec) {
+      sections.forEach((s) => {
+        if (s === sec || (sec.group && s.group === sec.group) || s.button === sec.button) s.dirty = false;
+      });
+      if (sec.key === "cmd") PAGE_SAVER.cmdFormEdited = false;
+      const st = bars[sec.page] && bars[sec.page].querySelector(".ps-status");
+      if (st) {
+        st.textContent = "Saved " + sec.name;
+        st.style.color = "";
+      }
+      render();
+    }
+
+    // Only the person's own edits count (form fills from the server don't fire trusted events).
+    ["input", "change"].forEach((type) => {
+      document.addEventListener(type, (ev) => {
+        if (!ev.isTrusted) return;
+        const el = ev.target;
+        if (el && el.type === "file") return;
+        sections.forEach((s) => {
+          if (!inScope(s, el)) return;
+          if (s.key === "cmd") {
+            if ($("cmd-detail") && $("cmd-detail").contains(el)) PAGE_SAVER.cmdFormEdited = true;
+            return;
+          }
+          if (s.inputMarks !== false) markDirty(s);
+        });
+      }, true);
+    });
+    document.addEventListener("click", (ev) => {
+      if (!ev.isTrusted) return;
+      sections.forEach((s) => {
+        if (!s.clicks) return;
+        const hit = ev.target.closest && ev.target.closest(s.clicks);
+        if (hit && inScope(s, hit)) markDirty(s);
+      });
+    }, true);
+
+    // Runs one section's save. Its own handler shows its status; the call counters say whether it worked.
+    async function runSave(s) {
+      if (s.before) s.before();
+      const writes = apiWrites;
+      const fails = apiFails;
+      try {
+        if (s.save) await s.save();
+        else {
+          const btn = $(s.button);
+          if (btn && typeof btn.onclick === "function") await btn.onclick();
+          else if (btn) btn.click();
+        }
+      } catch (e) {
+        return false;
+      }
+      const ok = apiFails === fails && apiWrites > writes;
+      if (ok) markClean(s);
+      return ok;
+    }
+
+    // A section's own Save button: clear its "unsaved" mark once that save went through.
+    sections.forEach((s) => {
+      [s.button].concat(s.also || []).forEach((id) => {
+        const btn = $(id);
+        if (!btn) {
+          // drawn later (the credits style editor mounts when Credits opens): watch clicks on it
+          document.addEventListener("click", (ev) => {
+            if (!ev.target.closest || !ev.target.closest("#" + id)) return;
+            const writes = apiWrites;
+            const fails = apiFails;
+            setTimeout(() => {
+              if (apiFails === fails && apiWrites > writes) markClean(s);
+            }, 1500);
+          });
+          return;
+        }
+        if (btn.dataset.psWired) return;
+        btn.dataset.psWired = "1";
+        if (id !== s.button) {
+          btn.onclick = () => runSave(s);     // extra button (e.g. Investors) runs the section's save
+          return;
+        }
+        if (typeof btn.onclick === "function" && !s.save) {
+          const orig = btn.onclick;
+          btn.onclick = async (ev) => {
+            const writes = apiWrites;
+            const fails = apiFails;
+            await orig.call(btn, ev);
+            if (apiFails === fails && apiWrites > writes) markClean(s);
+          };
+        } else {
+          // handler added with addEventListener (credits look): watch the call counters briefly
+          btn.addEventListener("click", () => {
+            const writes = apiWrites;
+            const fails = apiFails;
+            setTimeout(() => {
+              if (apiFails === fails && apiWrites > writes) markClean(s);
+            }, 1500);
+          });
+        }
+      });
+      if (s.reload && $(s.reload)) {
+        $(s.reload).addEventListener("click", () => {
+          s.dirty = false;
+          if (s.key === "cmd") PAGE_SAVER.cmdFormEdited = false;
+          render();
+        });
+      }
+    });
+
+    async function savePage(page) {
+      const panel = $("tab-" + page);
+      const sub = panel ? panel.dataset.sub || "" : "";
+      let todo = sections.filter((s) => s.page === page && s.dirty);
+      if (!todo.length) todo = sections.filter((s) => s.page === page && s.sub === sub);   // save what's on screen
+      const bar = bars[page];
+      const status = bar && bar.querySelector(".ps-status");
+      if (!todo.length) {
+        if (status) status.textContent = "Nothing to save on this page";
+        return;
+      }
+      const seen = new Set();
+      const failed = [];
+      if (status) status.textContent = "Saving…";
+      for (const s of todo) {
+        const id = s.group || s.button || s.key;
+        if (seen.has(id)) continue;
+        seen.add(id);
+        if (!(await runSave(s))) failed.push(s.name);
+      }
+      if (status) {
+        status.textContent = failed.length
+          ? "Not saved: " + failed.join(", ") + " (see the message by its own Save button)"
+          : "Saved " + todo.map((s) => s.name).filter((n, i, a) => a.indexOf(n) === i).join(", ");
+        status.style.color = failed.length ? "var(--danger)" : "";
+      }
+    }
+
+    // One bar per page, under the title (and under the config.yaml bar on Config).
+    [...new Set(sections.map((s) => s.page))].forEach((page) => {
+      const panel = $("tab-" + page);
+      const bar = document.createElement("div");
+      bar.className = "config-actions page-savebar";
+      bar.dataset.page = page;
+      bar.innerHTML =
+        '<button type="button" class="primary ps-save" title="Save every unsaved setting on this page (Ctrl+S)">Save changes</button>' +
+        '<span class="cfg-dirty ps-dirty" hidden></span>' +
+        '<span class="muted ps-status"></span>';
+      bar.querySelector(".ps-save").onclick = () => savePage(page);
+      const after = page === "config" ? $("cfg-savebar") : panel.querySelector(":scope > .page-head");
+      if (after && after.nextSibling) panel.insertBefore(bar, after.nextSibling);
+      else panel.prepend(bar);
+      bars[page] = bar;
+    });
+
+    function render() {
+      Object.entries(bars).forEach(([page, bar]) => {
+        const names = sections.filter((s) => s.page === page && s.dirty).map((s) => s.name);
+        const uniq = names.filter((n, i) => names.indexOf(n) === i);
+        bar.classList.toggle("dirty", uniq.length > 0);
+        const flag = bar.querySelector(".ps-dirty");
+        flag.hidden = !uniq.length;
+        flag.textContent = "Unsaved: " + uniq.join(", ");
+        if (uniq.length) bar.querySelector(".ps-status").textContent = "";
+      });
+      // dots on the sidebar items and the sub-page pills
+      document.querySelectorAll(".admin-nav .tab").forEach((b) => {
+        const t = b.dataset.tab;
+        const on = b.dataset.sub
+          ? sections.some((s) => s.page === t && s.sub === b.dataset.sub && s.dirty)
+          : sections.some((s) => s.page === t && s.dirty);
+        b.classList.toggle("unsaved", on);
+      });
+      document.querySelectorAll(".subtabs").forEach((sb) => {
+        const panel = sb.closest(".panel");
+        const page = panel ? panel.id.replace(/^tab-/, "") : "";
+        sb.querySelectorAll(".subtab[data-sub]").forEach((b) => {
+          b.classList.toggle("unsaved", sections.some((s) => s.page === page && s.sub === b.dataset.sub && s.dirty));
+        });
+      });
+    }
+
+    // Ctrl/Cmd+S on any page with a save bar (the config.yaml sub-pages keep their own handler).
+    document.addEventListener("keydown", (ev) => {
+      if (!(ev.ctrlKey || ev.metaKey) || ev.altKey || String(ev.key).toLowerCase() !== "s") return;
+      const panel = document.querySelector(".panel.active");
+      if (!panel) return;
+      const page = panel.id.replace(/^tab-/, "");
+      if (!bars[page] || (page === "config" && panel.classList.contains("yaml-sub"))) return;
+      ev.preventDefault();
+      savePage(page);
+    });
+
+    // Closing / reloading the tab with unsaved edits anywhere: the browser asks first.
+    window.addEventListener("beforeunload", (ev) => {
+      const cfgDirty = $("cfg-savebar") && $("cfg-savebar").classList.contains("dirty");
+      if (!cfgDirty && !sections.some((s) => s.dirty)) return;
+      ev.preventDefault();
+      ev.returnValue = "";
+    });
+
+    render();
+  })();
 
   refreshStats();
   loadUsers();

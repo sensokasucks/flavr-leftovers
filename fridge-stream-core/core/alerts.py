@@ -146,11 +146,13 @@ def _fmt_amount(amount: Optional[float], currency: str) -> str:
     if amount is None:
         return ""
     cur = (currency or "").strip()
-    if cur.lower() in ("bits", "bit"):
+    if cur.lower() in ("bits", "bit", "kicks", "kick"):
+        # platform tokens are whole numbers: "500 bits", "100 KICKs"
+        label = "bits" if cur.lower().startswith("bit") else "KICKs"
         try:
-            return f"{int(amount)} bits"
+            return f"{int(amount)} {label}"
         except (TypeError, ValueError):
-            return f"{amount} bits"
+            return f"{amount} {label}"
     if cur:
         try:
             return f"{float(amount):.2f} {cur}"

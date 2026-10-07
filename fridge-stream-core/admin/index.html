@@ -9,6 +9,7 @@
 </head>
 <body>
   <header class="topbar">
+    <button type="button" id="nav-toggle" class="nav-toggle" aria-controls="admin-nav" aria-expanded="false">☰ <span id="nav-toggle-label">Menu</span></button>
     <div class="brand">Stream Core <span>Admin</span></div>
     <div id="stats" class="stats"></div>
     <div class="token-row" id="token-row">
@@ -16,6 +17,7 @@
       <input type="password" id="token" placeholder="points.admin_token, or data/admin_token.txt" />
       <button id="save-token">Save</button>
       <button type="button" id="token-change" class="link-btn" hidden>Change token</button>
+      <button type="button" id="hc-toggle" class="link-btn" aria-pressed="false" title="Brighter text, solid borders and a stronger focus outline">High contrast</button>
       <span id="status" class="muted"></span>
     </div>
   </header>
@@ -311,7 +313,7 @@
 
   <!-- Status hub -->
   <section id="tab-status" class="panel active">
-    <p class="tab-intro">Live view of what Stream Core is running. Refresh after you start or stop adapters/games. Chat platforms reconnect when you save Config; games still need a Core restart.</p>
+    <p class="tab-intro">Live view of what Stream Core is running; it refreshes itself every 10 seconds while open. Chat platforms reconnect when you save Config; games still need a Core restart.</p>
     <div class="toolbar">
       <button id="status-refresh" class="primary">Refresh status</button>
       <span id="status-updated" class="muted"></span>
@@ -657,6 +659,7 @@
           </label>
         </div>
         <div class="form-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
+          <button type="button" class="primary" id="mkt-inv-save" title="Saves the hourly cap and Steam refresh (with the Minecraft market settings)">Save cap + refresh</button>
           <button type="button" id="mkt-hold-grant">Grant shares</button>
           <button type="button" id="mkt-div-test">Test 10-pt dividend</button>
         </div>
@@ -1188,9 +1191,10 @@
         <label>Points per gifted sub <span class="field-help">To the gifter, for each sub gifted</span>
           <input id="cfg-pts-gift" type="number" min="0" />
         </label>
-        <label>Admin token <span class="field-help">Paste into the header above</span>
-          <input id="cfg-pts-token" type="text" autocomplete="off" />
+        <label>Admin token <span class="field-help">Unlocks this dashboard</span>
+          <input id="cfg-pts-token" type="text" autocomplete="off" placeholder="change-me = use the generated token" />
         </label>
+        <p class="hint" id="cfg-pts-token-hint"></p>
       </fieldset>
 
       <fieldset class="cfg-card">

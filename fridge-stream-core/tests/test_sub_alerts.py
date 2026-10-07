@@ -64,7 +64,7 @@ class TwitchTests(unittest.TestCase):
         self.assertEqual((g["kind"], g["qty"]), ("gift", 1))
         b = usernotice_alert({"msg-id": "submysterygift", "login": "amy", "msg-param-mass-gift-count": "10"})
         self.assertEqual((b["kind"], b["qty"]), ("gift", 10))
-        self.assertIsNone(usernotice_alert({"msg-id": "raid", "login": "x"}))
+        self.assertIsNone(usernotice_alert({"msg-id": "ritual", "login": "x"}))   # (raids: test_platform_events)
 
     def test_gift_bomb_recipients_do_not_alert(self):
         self.assertIsNone(usernotice_alert({"msg-id": "subgift", "login": "amy",

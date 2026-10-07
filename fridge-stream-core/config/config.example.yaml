@@ -26,6 +26,8 @@ kick:
   # 2. Find "chatroom": { "id": 12345678, ... }
   # 3. Uncomment and set:
   # chatroom_id: 12345678
+  # channel_id: 1234567          # optional; the top-level "id" from the same page. Hosts and Kicks
+  #                                # use it. Core learns it from the viewer-count lookup if unset.
   poll_viewer_interval_sec: 15
   avatars: true                    # chatter profile pictures (one lookup per chatter, cached)
 

@@ -76,6 +76,57 @@ def kick_sub_alert(event_name: str, data: dict[str, Any]) -> Optional[dict[str, 
     return {"kind": "subscribe", "username": user, "display_name": user}
 
 
+# Raids (Kick calls them hosts) arrive on the chatroom channel; Kicks (Kick's own tips) on the
+# channel's own Pusher channel. Names seen from Kick's web client; payload fields are read
+# defensively because Kick doesn't document them (the first one of each is logged in full).
+KICK_HOST_EVENTS = ("StreamHostEvent",)
+KICK_TIP_EVENTS = ("KicksGifted",)
+
+
+def _event_short(event_name: str) -> str:
+    return event_name.rsplit("\\", 1)[-1]
+
+
+def kick_event_alert(event_name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
+    """Pusher host / Kicks events → `_emit_alert` kwargs (None when the payload has no name)."""
+    short = _event_short(event_name)
+    if short in KICK_HOST_EVENTS:
+        host = str(data.get("host_username") or data.get("username") or "")
+        if not host:
+            return None
+        try:
+            viewers = int(data.get("number_viewers") or data.get("viewers") or 0)
+        except (TypeError, ValueError):
+            viewers = 0
+        msg = str(data.get("optional_message") or data.get("message") or "")
+        if viewers > 0:
+            return {"kind": "raid", "username": host, "display_name": host, "viewers": viewers, "message": msg}
+        return {"kind": "host", "username": host, "display_name": host, "message": msg}
+    if short in KICK_TIP_EVENTS:
+        sender = data.get("sender") or data.get("user") or {}
+        if not isinstance(sender, dict):
+            sender = {}
+        name = str(sender.get("username") or sender.get("slug") or data.get("username")
+                   or data.get("gifter_username") or "")
+        if not name:
+            return None
+        gift = data.get("gift") if isinstance(data.get("gift"), dict) else {}
+        amount: Any = gift.get("amount") or data.get("amount") or data.get("kicks") or 0
+        try:
+            amount = float(amount)
+        except (TypeError, ValueError):
+            amount = 0.0
+        if amount <= 0:
+            return None
+        msg = data.get("message")       # (the viewer's message sits beside the gift, not inside it)
+        if isinstance(msg, dict):
+            msg = msg.get("content") or msg.get("message") or ""
+        return {"kind": "donation", "username": name, "display_name": name,
+                "user_id": str(sender.get("id") or ""), "amount": amount, "currency": "KICKs",
+                "message": str(msg or "")}
+    return None
+
+
 class KickAdapter(BaseAdapter):
     platform = Platform.KICK
 
@@ -86,6 +137,13 @@ class KickAdapter(BaseAdapter):
         # Optional manual override if Kick's REST API keeps returning 403
         raw_id = kick_cfg.get("chatroom_id")
         self.chatroom_id: Optional[int] = int(raw_id) if raw_id not in (None, "", 0, "0") else None
+        # The channel's own id (not the chatroom's): Kicks arrive on its Pusher channel. Found by
+        # the viewer poll, or set kick.channel_id by hand.
+        raw_ch = kick_cfg.get("channel_id")
+        self.channel_id: Optional[int] = int(raw_ch) if raw_ch not in (None, "", 0, "0") else None
+        self._ws = None
+        self._channel_subscribed = False
+        self._logged_events: set[str] = set()
         self.poll_interval: float = float(kick_cfg.get("poll_viewer_interval_sec", 15))
         self._ws_task: Optional[asyncio.Task] = None
         self._viewer_task: Optional[asyncio.Task] = None
@@ -291,6 +349,17 @@ class KickAdapter(BaseAdapter):
                 if r.status_code != 200:
                     return
                 data = r.json()
+                if not self.channel_id and data.get("id"):
+                    try:
+                        self.channel_id = int(data["id"])
+                        log.info("Kick channel id %s (for Kicks)", self.channel_id)
+                    except (TypeError, ValueError):
+                        pass
+                if self.channel_id and not self._channel_subscribed and self._ws is not None:
+                    try:
+                        await self._subscribe_channel(self._ws)
+                    except Exception:
+                        log.debug("Kick channel subscribe failed", exc_info=True)
                 livestream = data.get("livestream") or {}
                 if livestream.get("is_live"):
                     count = livestream.get("viewer_count") or livestream.get("viewers") or 0
@@ -316,6 +385,8 @@ class KickAdapter(BaseAdapter):
                 ) as ws:
                     log.info("Kick Pusher connected")
                     backoff = 3.0
+                    self._ws = ws
+                    self._channel_subscribed = False
                     await self._subscribe(ws)
                     async for raw in ws:
                         if not self._running:
@@ -348,6 +419,14 @@ class KickAdapter(BaseAdapter):
             "event": "pusher:subscribe",
             "data": {"auth": "", "channel": f"chatrooms.{self.chatroom_id}"},
         }))
+        if self.channel_id:
+            await self._subscribe_channel(ws)
+
+    async def _subscribe_channel(self, ws) -> None:
+        """The channel's own Pusher channels (Kicks and other channel-wide events)."""
+        for name in (f"channel_{self.channel_id}", f"channel.{self.channel_id}"):
+            await ws.send(json.dumps({"event": "pusher:subscribe", "data": {"auth": "", "channel": name}}))
+        self._channel_subscribed = True
 
     async def _handle_raw(self, raw: str | bytes) -> None:
         try:
@@ -372,6 +451,29 @@ class KickAdapter(BaseAdapter):
                     return
             if isinstance(data, dict):
                 await self._on_chat_message(data)
+            return
+
+        if _event_short(event_name) in KICK_HOST_EVENTS + KICK_TIP_EVENTS:
+            data = msg.get("data")
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    return
+            if not isinstance(data, dict):
+                return
+            short = _event_short(event_name)
+            if short not in self._logged_events:
+                # Kick doesn't document these payloads: keep the first of each in the log
+                self._logged_events.add(short)
+                log.info("[Kick] first %s payload: %s", short, json.dumps(data, default=str)[:800])
+            key = short + json.dumps(data, sort_keys=True, default=str)
+            if key in self._seen_subs:
+                return
+            self._seen_subs.append(key)
+            alert = kick_event_alert(event_name, data)
+            if alert:
+                await self._emit_alert(**alert)
             return
 
         if event_name in KICK_SUB_EVENTS:

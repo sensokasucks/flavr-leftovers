@@ -76,7 +76,25 @@ def usernotice_alert(tags: dict[str, str], msg: str = "") -> Optional[dict[str, 
         return {"kind": "gift", **who, "qty": 1}
     if kind in ("submysterygift", "anonsubmysterygift"):
         return {"kind": "gift", **who, "qty": _int(tags.get("msg-param-mass-gift-count"))}
+    if kind == "raid":
+        # the raider is msg-param-login / -displayName; login / display-name are the same person
+        raider = tags.get("msg-param-login") or who["username"]
+        return {
+            "kind": "raid",
+            "username": raider,
+            "display_name": tags.get("msg-param-displayName") or who["display_name"] or raider,
+            "user_id": who["user_id"],
+            "viewers": _int(tags.get("msg-param-viewerCount"), 0),
+        }
     return None
+
+
+def cheer_bits(tags: dict[str, str]) -> int:
+    """Bits cheered in a chat message (the `bits` tag), 0 for a plain message."""
+    try:
+        return max(0, int(tags.get("bits") or 0))
+    except (TypeError, ValueError):
+        return 0
 
 
 class TwitchAdapter(BaseAdapter):
@@ -201,6 +219,7 @@ class TwitchAdapter(BaseAdapter):
             color=tags.get("color") or None,
         )
         log.info("[Twitch] %s: %s", user.username, msg)
+        bits = cheer_bits(tags)
         await self._emit(
             ChatEvent(
                 platform=Platform.TWITCH,
@@ -208,5 +227,9 @@ class TwitchAdapter(BaseAdapter):
                 message=msg,
                 message_id=tags.get("id"),
                 emotes=emotes,
+                # a cheer: Core fires the Bits alert from paid chat (like a Super Chat)
+                paid_amount=float(bits) if bits else None,
+                paid_currency="bits" if bits else None,
+                is_paid=bits > 0,
             )
         )
