@@ -22,6 +22,7 @@ if str(ROOT) not in sys.path:
 from adapters.kick import KickAdapter, kick_sub_alert  # noqa: E402
 from adapters.twitch import TwitchAdapter, usernotice_alert  # noqa: E402
 from adapters.youtube import YouTubeAdapter, official_member_alert  # noqa: E402
+from adapters.youtube_capture import FieldScout  # noqa: E402
 from core.alerts import build_alert  # noqa: E402
 from core.config import DEFAULTS  # noqa: E402
 from core.event_bus import EventBus  # noqa: E402
@@ -52,6 +53,9 @@ class Rig:
         self.bus.on_alert(on_alert)
         self.bus.on_chat(on_chat)
         self.adapter = cls(config or {}, self.bus, MetricsAggregator({}))
+        if hasattr(self.adapter, "scout"):
+            # (not the real data/youtube_new_fields.jsonl)
+            self.adapter.scout = FieldScout(Path(tempfile.gettempdir()) / "fridge_test_youtube_new_fields.jsonl")
 
 
 class TwitchTests(unittest.TestCase):
