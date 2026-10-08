@@ -361,6 +361,7 @@ def create_admin_router(core_state) -> APIRouter:
             "commands_loaded": cmd_count,
             "points_enabled": bool((cfg.get("points") or {}).get("enabled", False)),
             "chat_log_enabled": bool((cfg.get("chat_log") or {}).get("enabled", False)),
+            "chat_log_only_flagged": bool((cfg.get("chat_log") or {}).get("only_flagged", False)),
             "credits": {
                 "configured_enabled": bool((cfg.get("credits") or {}).get("enabled")),
                 "running": bool(getattr(getattr(core_state, "credits", None), "enabled", False)),

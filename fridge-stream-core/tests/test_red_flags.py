@@ -124,6 +124,15 @@ class FlagList(unittest.TestCase):
         self.assertEqual(len(only), 2)
         self.assertEqual(run(self.rf.list())[0]["messages"], 2)
 
+    def test_chat_log_only_flagged(self):
+        self.store.configure_chat_log({"enabled": True, "only_flagged": True})
+        run(self.store.process_chat(chat("amy", "hi")))
+        run(self.store.process_chat(chat("spammer", "buy viewers", uid="42"), award=False, flagged=True))
+        self.assertEqual([r["username"] for r in run(self.store.search_chat())], ["spammer"])
+        self.store.configure_chat_log({"enabled": False, "only_flagged": True})
+        run(self.store.process_chat(chat("spammer", "more", uid="42"), award=False, flagged=True))
+        self.assertEqual(len(run(self.store.search_chat())), 1)
+
     def test_matching_recent(self):
         items = [
             {"platform": "kick", "user": {"id": "1", "username": "a", "display_name": "A"}},
@@ -144,7 +153,8 @@ class CoreHidesFlagged(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         core.store = Store(Path(tmp.name) / "t.db", None, {"enabled": True})
         core.red_flags = RedFlags(core.store, {})
-        core.state.config = {"red_flags": {"phrases": ["buy viewers"]}}
+        core.state.config = {"red_flags": {"phrases": ["buy viewers"]},
+                             "chat_log": {"enabled": True, "only_flagged": True}}
         sent: list = []
 
         class WS:
@@ -173,9 +183,9 @@ class CoreHidesFlagged(unittest.TestCase):
         self.assertFalse([p for p in sent if p["type"] == "alert"])
         # the catch-up history new overlays get has lost the earlier line too
         self.assertEqual([c["message"] for c in core.recent_chat], ["hi"])
-        # still in the chat log
-        logged = run(core.store.search_chat(flagged_only=True))
-        self.assertEqual(len(logged), 3)
+        # still in the chat log, and (only_flagged) nobody else is
+        logged = run(core.store.search_chat())
+        self.assertEqual([r["message"] for r in logged], ["still here", "buy viewers cheap"])
 
 
 class AdminRoutes(unittest.TestCase):

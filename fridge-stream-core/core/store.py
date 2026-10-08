@@ -139,11 +139,18 @@ class Store:
         self.enabled = bool(cfg.get("enabled", False))
         self.per_message = int(cfg.get("per_message", 1))
         self.cooldown_sec = float(cfg.get("cooldown_sec", 30))
-        log_cfg = chat_log_cfg or {}
-        self.log_chat = bool(log_cfg.get("enabled", False))
+        self.log_chat = False
+        self.log_only_flagged = False   # chat_log.only_flagged: keep just red-flagged chatters' lines
+        self.configure_chat_log(chat_log_cfg)
         self._last_award: dict[int, float] = {}  # user_id -> last award time
         self._lock = asyncio.Lock()
         self._init_db()
+
+    def configure_chat_log(self, cfg: dict | None) -> None:
+        """Follow ``chat_log:`` in config (admin save applies it without a restart)."""
+        cfg = cfg if isinstance(cfg, dict) else {}
+        self.log_chat = bool(cfg.get("enabled", False))
+        self.log_only_flagged = bool(cfg.get("only_flagged", False))
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
@@ -340,9 +347,10 @@ class Store:
             conn.commit()
             return new_bal
 
-    async def process_chat(self, event: ChatEvent, award: bool = True) -> dict:
+    async def process_chat(self, event: ChatEvent, award: bool = True, flagged: bool = False) -> dict:
         """Ensure user exists, optionally log message, maybe award chat points
-        (``award`` False: red-flagged chatters are logged but earn nothing)."""
+        (``flagged``: a red-flagged chatter, logged even with ``chat_log.only_flagged``;
+        ``award`` False: they earn nothing)."""
         platform = event.platform.value
         uid = await self.get_or_create_user(
             platform,
@@ -350,7 +358,8 @@ class Store:
             event.user.username,
             event.user.display_name,
         )
-        if self.log_chat:
+        logged = self.log_chat and (flagged or not self.log_only_flagged)
+        if logged:
             await self._run(self._log_chat_sync, event, uid)
 
         awarded = 0
@@ -370,7 +379,7 @@ class Store:
                 awarded = self.per_message
 
         await self.record_stream_day(uid)
-        return {"user_id": uid, "awarded": awarded, "balance": balance, "logged": self.log_chat}
+        return {"user_id": uid, "awarded": awarded, "balance": balance, "logged": logged}
 
     def _record_stream_day_sync(self, user_id: int, day: str) -> None:
         with self._connect() as conn:

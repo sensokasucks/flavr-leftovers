@@ -534,7 +534,9 @@ class StreamCore:
 
     async def _on_chat(self, event: ChatEvent) -> None:
         # Red-flagged chatters (or the line that flags them) never reach an overlay or Stream Rooms
-        self.red_flags.configure((getattr(self.state, "config", None) or self.config).get("red_flags"))
+        live = getattr(self.state, "config", None) or self.config
+        self.red_flags.configure(live.get("red_flags"))
+        self.store.configure_chat_log(live.get("chat_log"))
         try:
             flagged = await self.red_flags.check(event)
         except Exception:
@@ -1102,7 +1104,7 @@ class StreamCore:
         """A red-flagged chatter: saved in the chat log (when it is on), shown nowhere, no points."""
         self.router.parse_message(event)      # marks is_command for the log
         try:
-            await self.store.process_chat(event, award=False)
+            await self.store.process_chat(event, award=False, flagged=True)
         except Exception:
             log.exception("store.process_chat failed")
         if flagged.get("new"):

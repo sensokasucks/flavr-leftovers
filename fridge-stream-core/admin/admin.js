@@ -1818,6 +1818,7 @@
     try {
       const s = await api("/api/admin/status");
       banner.hidden = !!s.chat_log_enabled;
+      if ($("chat-log-only-flagged")) $("chat-log-only-flagged").hidden = !(s.chat_log_enabled && s.chat_log_only_flagged);
     } catch {
       banner.hidden = true;
     }
@@ -2199,6 +2200,9 @@
     if ($("cfg-chatlog-enabled")) {
       $("cfg-chatlog-enabled").checked = !!clog.enabled;
     }
+    if ($("cfg-chatlog-only-flagged")) {
+      $("cfg-chatlog-only-flagged").checked = !!clog.only_flagged;
+    }
     const crd = cfg.credits || {};
     if ($("cfg-credits-enabled")) {
       $("cfg-credits-enabled").checked = !!crd.enabled;
@@ -2402,6 +2406,7 @@
       },
       chat_log: {
         enabled: $("cfg-chatlog-enabled") ? $("cfg-chatlog-enabled").checked : false,
+        only_flagged: $("cfg-chatlog-only-flagged") ? $("cfg-chatlog-only-flagged").checked : false,
       },
       credits: creditsConfigBlock(),
     };

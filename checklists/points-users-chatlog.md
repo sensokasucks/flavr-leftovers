@@ -25,6 +25,6 @@ Home: `core/store.py`. DB: `data/stream_core.db`.
 
 ## After-change verify
 
-- [ ] Example config still has `points.enabled: false` and `chat_log.enabled: false`.
+- [ ] Example config still has `points.enabled: false`, `chat_log.enabled: false` and `chat_log.only_flagged: false`.
 - [ ] Admin tabs **Users & Points** and **Chat History** still render.
 - [ ] Status hub still shows points on/off.

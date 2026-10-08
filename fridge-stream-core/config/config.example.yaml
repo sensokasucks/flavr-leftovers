@@ -162,6 +162,7 @@ points:
 # Off by default — the live overlay still works without this.
 chat_log:
   enabled: false
+  only_flagged: false   # true = save only red-flagged chatters' lines (see red_flags)
 
 # Red flags: a chat line containing one of these phrases puts its sender on a list
 # (Chat history tab) and Core keeps them off every overlay and out of Stream Rooms.

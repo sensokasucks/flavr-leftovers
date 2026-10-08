@@ -978,9 +978,12 @@
     <p id="chat-log-banner" class="config-banner" hidden>
       Chat logging is currently <strong>off</strong>. New messages are not saved. Existing rows (if any) still show below.
     </p>
+    <p id="chat-log-only-flagged" class="config-banner" hidden>
+      Chat history is saved <strong>only for red-flagged chatters</strong> (Config → Points, permissions + chat → Chat history log).
+    </p>
     <fieldset class="cfg-card rf-card" id="rf-card">
       <legend>🚩 Red flags</legend>
-      <p class="hint">A chat line with one of these phrases red-flags its sender. Core then keeps them off every overlay and out of Stream Rooms (chat, seats, reactions, commands, points, credits, alerts). What they write still goes in the chat log when <strong>Save chat history</strong> is on, so you can read it here.</p>
+      <p class="hint">A chat line with one of these phrases red-flags its sender. Core then keeps them off every overlay and out of Stream Rooms (chat, seats, reactions, commands, points, credits, alerts). What they write still goes in the chat log when <strong>Save chat history</strong> is on, so you can read it here. To save nobody else's chat, tick <strong>Only for red-flagged chatters</strong> under Save chat history.</p>
       <label class="check" title="Off = nobody is hidden and nobody new gets flagged. The list below is kept."><input id="rf-enabled" type="checkbox" /> Hide red-flagged chatters</label>
       <label class="check" title="A moderator or you quoting a phrase (to warn chat) is not flagged."><input id="rf-skip-mods" type="checkbox" /> Never flag moderators or the streamer</label>
       <label>Red flag phrases <span class="field-help">One per line. Upper or lower case doesn't matter. Whole words only ("ass" does not catch "class"); <code>*</code> stands for any letters ("scam*" catches "scammer").</span>
@@ -1237,6 +1240,7 @@
         <legend>Chat history log</legend>
         <p class="hint">Writes every message to SQLite for this dashboard's Chat History tab and CSV export. The live overlay does not need this. Off by default.</p>
         <label class="check"><input id="cfg-chatlog-enabled" type="checkbox" /> Save chat history</label>
+        <label class="check" title="Everyone else's chat is not saved. Red-flagged chatters are set on the Chat history page."><input id="cfg-chatlog-only-flagged" type="checkbox" /> Only for red-flagged chatters</label>
       </fieldset>
     </div>
       </div>
