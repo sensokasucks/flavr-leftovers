@@ -83,6 +83,23 @@ def strip_reply_mention(msg: str, reply_to: Optional[dict]) -> str:
     return msg
 
 
+def shift_emotes(emotes: list[dict], full: str, shown: str) -> list[dict]:
+    """Emote ranges count from the start of the whole message; ``shown`` is that message with
+    the reply's "@Name " cut off the front, so move every range back by what was cut."""
+    if shown == full:
+        return emotes
+    cut = full.find(shown)
+    if cut < 0:
+        return []
+    out = []
+    for e in emotes:
+        start, end = int(e.get("start", 0)) - cut, int(e.get("end", 0)) - cut
+        if start < 0 or end >= len(shown):
+            continue          # the emote was inside the cut-off "@Name"
+        out.append({**e, "start": start, "end": end})
+    return out
+
+
 def _int(raw: Any, default: int = 1) -> int:
     try:
         return max(1, int(raw))
@@ -246,8 +263,9 @@ class TwitchAdapter(BaseAdapter):
         display = tags.get("display-name") or nick
         reply_to = twitch_reply_to(tags)
         if reply_to:
+            full = msg
             msg = strip_reply_mention(msg, reply_to)
-            emotes = [e for e in emotes if e.get("start", 0) < len(msg)]
+            emotes = shift_emotes(emotes, full, msg)
         badges = (tags.get("badges") or "").split(",")
         badge_names = [b.split("/")[0] for b in badges if b]
         user = ChatUser(

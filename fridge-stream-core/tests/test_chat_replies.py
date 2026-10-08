@@ -82,6 +82,22 @@ class TwitchReplies(unittest.TestCase):
         run(rig.adapter._on_line(None, plain))
         self.assertIsNone(rig.chat[1].reply_to)
 
+    def test_reply_keeps_emotes_in_place(self):
+        # Twitch counts emote positions from the start of "@Sen ...", which Core cuts off
+        rig = Rig(TwitchAdapter, {"twitch": {"channel": "fridge", "third_party_emotes": False}})
+        body = "@Sen sorry grimmi14Clap grimmi14Clap"
+        first = body.index("grimmi14Clap")
+        second = body.rindex("grimmi14Clap")
+        tag = f"emotes=123:{first}-{first + 11},{second}-{second + 11}"
+        line = (f"@display-name=Amy;user-id=3;{tag};reply-parent-msg-id=abc;reply-parent-display-name=Sen "
+                f":amy!amy@amy.tmi.twitch.tv PRIVMSG #fridge :{body}")
+        run(rig.adapter._on_line(None, line))
+        e = rig.chat[0]
+        self.assertEqual(e.message, "sorry grimmi14Clap grimmi14Clap")
+        self.assertEqual([(x["start"], x["end"]) for x in e.emotes], [(6, 17), (19, 30)])
+        for x in e.emotes:
+            self.assertEqual(e.message[x["start"]:x["end"] + 1], "grimmi14Clap")
+
 
 if __name__ == "__main__":
     unittest.main()
