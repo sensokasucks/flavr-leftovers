@@ -3200,7 +3200,7 @@
     if (creditsWs) return;
     const proto = location.protocol === "https:" ? "wss" : "ws";
     try {
-      creditsWs = new WebSocket(`${proto}://${location.host}/ws`);
+      creditsWs = new WebSocket(`${proto}://${location.host}/ws?credits=1`);
     } catch (e) {
       creditsWs = null;
       return;
