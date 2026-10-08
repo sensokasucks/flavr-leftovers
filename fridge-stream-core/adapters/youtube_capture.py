@@ -57,6 +57,9 @@ KNOWN_FIELDS = {
     "stickerDisplayHeight", "backgroundColor", "showItemEndpoint", "creatorHeartButton",
     "pdgPurchasedNoveltyLoggingDirectives", "pdgLikeButton", "lowerBumper",
     "headerOverlayImage", "trackingParamsForCreatorHeart",
+    # read by Core: gift header, Super Chat Reply button, reply / leaderboard chips
+    # (an unknown chip icon is noted on its own, "chip:<icon>")
+    "header", "replyButton", "beforeContentButtons",
 }
 
 
@@ -80,6 +83,10 @@ class FieldScout:
                 for field in renderer:
                     if field not in KNOWN_FIELDS:
                         self._note(f"field:{key}.{field}", item)
+
+    def note(self, what: str, sample: Any) -> None:
+        """Saves one sample of something new (once per run)."""
+        self._note(what, sample)
 
     def _note(self, what: str, sample: Any) -> None:
         if what in self._seen:

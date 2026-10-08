@@ -16,9 +16,12 @@ unless mode is forced.
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
 import re
+import urllib.parse
+from collections import OrderedDict
 from typing import Any, Optional
 
 import httpx
@@ -63,6 +66,59 @@ def _member_months(header: str) -> int:
     """'Member for 6 months' / 'Member for 1 year' → months (at least 1)."""
     n = _first_int(header) or 1
     return n * 12 if "year" in (header or "").lower() else n
+
+
+# ----------------------------------------------------------------------
+# Replies to Super Chats (InnerTube)
+# ----------------------------------------------------------------------
+# A Super Chat carries a Reply button; a reply carries a chip in front of the message
+# (beforeContentButtons) titled with the name it answers. Both open the same reply thread,
+# whose id ("Ug…") sits inside the button's base64 panel params, so a reply can be matched
+# to the exact Super Chat it answers.
+
+REPLY_PANEL_TAG = "PAreply_thread"
+_THREAD_RE = re.compile(rb"Ug[A-Za-z0-9_-]{20,}")
+# beforeContentButtons chips that are understood: MESSAGE = reply, CROWN_FILLED = leaderboard rank
+KNOWN_CHIPS = {"MESSAGE", "CROWN_FILLED"}
+
+
+def _panel(vm: dict) -> dict:
+    return (((vm.get("onTap") or {}).get("innertubeCommand") or {}).get("showEngagementPanelEndpoint") or {})
+
+
+def reply_thread_id(vm: dict) -> str:
+    """The reply thread a buttonViewModel opens, or "" when it opens something else."""
+    panel = _panel(vm)
+    if (panel.get("identifier") or {}).get("tag") != REPLY_PANEL_TAG:
+        return ""
+    params = urllib.parse.unquote(str((panel.get("globalConfiguration") or {}).get("params") or ""))
+    if not params:
+        return ""
+    try:
+        raw = base64.urlsafe_b64decode(params + "=" * (-len(params) % 4))
+    except (ValueError, TypeError):
+        return ""
+    m = _THREAD_RE.search(raw)
+    return m.group(0).decode("ascii") if m else ""
+
+
+def superchat_thread_id(renderer: dict) -> str:
+    """A Super Chat's own reply thread (from its Reply button)."""
+    vm = ((((renderer.get("replyButton") or {}).get("pdgReplyButtonViewModel") or {})
+           .get("replyButton") or {}).get("buttonViewModel") or {})
+    return reply_thread_id(vm)
+
+
+def reply_chip(renderer: dict) -> Optional[dict]:
+    """{"user": "@Name", "thread": "Ug…"} when the message is a reply to a Super Chat."""
+    for b in renderer.get("beforeContentButtons") or []:
+        vm = (b or {}).get("buttonViewModel") or {}
+        thread = reply_thread_id(vm)
+        if thread or vm.get("iconName") == "MESSAGE":
+            who = str(vm.get("title") or "").strip()
+            if who:
+                return {"user": who, "thread": thread}
+    return None
 
 
 def official_member_alert(snippet: dict, author: dict) -> tuple[bool, Optional[dict]]:
@@ -118,6 +174,9 @@ class YouTubeAdapter(BaseAdapter):
         self._seen_max = 500
         # notes chat data YouTube added that Core doesn't read yet (data/youtube_new_fields.jsonl)
         self.scout = FieldScout()
+        # reply thread id -> the Super Chat it belongs to, so replies can quote it
+        self._superchats: OrderedDict[str, dict] = OrderedDict()
+        self._superchats_max = 300
 
     async def start(self) -> None:
         if not self.video_id and not self.live_chat_id:
@@ -542,9 +601,32 @@ class YouTubeAdapter(BaseAdapter):
             elif tip:
                 badges.append(tip)
 
+        for b in renderer.get("beforeContentButtons") or []:
+            icon = str(((b or {}).get("buttonViewModel") or {}).get("iconName") or "")
+            if icon and icon not in KNOWN_CHIPS:
+                self.scout.note(f"chip:{icon}", item)
+        # a reply to a Super Chat (YouTube's reply button): who and what it answers
+        reply_to = None
+        chip = reply_chip(renderer)
+        if chip:
+            parent = self._superchats.get(chip["thread"]) if chip["thread"] else None
+            reply_to = dict(parent) if parent else {"user": chip["user"], "message": "", "message_id": ""}
+            # like Twitch, drop a leading "@Name " (the "Replying to" line says who)
+            head = reply_to["user"] + " "
+            if text.startswith(head) and len(text) > len(head):
+                n = len(head)
+                text = text[n:]
+                emotes = [dict(e, start=e["start"] - n, end=e["end"] - n) for e in emotes if e["start"] >= n]
+
         paid = None
         currency = None
         is_paid = "liveChatPaidMessageRenderer" in item or "liveChatPaidStickerRenderer" in item
+        if is_paid and mid:
+            thread = superchat_thread_id(renderer)
+            if thread:
+                self._superchats[thread] = {"user": name, "message": text[:200], "message_id": mid}
+                while len(self._superchats) > self._superchats_max:
+                    self._superchats.popitem(last=False)
         if is_paid:
             amt = renderer.get("purchaseAmountText") or {}
             amt_text = amt.get("simpleText") or ""
@@ -579,6 +661,7 @@ class YouTubeAdapter(BaseAdapter):
                 is_paid=is_paid,
                 raw=renderer,
                 emotes=emotes,
+                reply_to=reply_to,
             )
         )
 

@@ -106,13 +106,13 @@ class YouTubeFieldScout(unittest.TestCase):
 
     def test_new_things_saved_once(self):
         scout = FieldScout(self.path)
-        item = {"liveChatTextMessageRenderer": {"id": "1", "message": {}, "beforeContentButtons": [{"x": 1}]}}
+        item = {"liveChatTextMessageRenderer": {"id": "1", "message": {}, "superChatPoll": [{"x": 1}]}}
         scout.check_item(item)
         scout.check_item(item)
         scout.check_item({"liveChatSuperChatReplyRenderer": {"id": "2"}})
         scout.check_action({"addSuperChatReplyAction": {}})
         got = [x["new"] for x in self.lines()]
-        self.assertEqual(got, ["field:liveChatTextMessageRenderer.beforeContentButtons",
+        self.assertEqual(got, ["field:liveChatTextMessageRenderer.superChatPoll",
                                "item:liveChatSuperChatReplyRenderer", "action:addSuperChatReplyAction"])
         self.assertEqual(self.lines()[0]["sample"], item)
 
