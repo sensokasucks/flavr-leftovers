@@ -253,7 +253,8 @@ class PluginManager:
         m = lp.manifest
         out = [
             {"name": str(o.get("name") or o.get("file")), "url": f"{base}/overlay/{o.get('file')}",
-             "notes": str(o.get("notes") or "")}
+             "notes": str(o.get("notes") or ""),
+             **{k: o[k] for k in ("params", "settings") if isinstance(o.get(k), list)}}
             for o in m.get("overlays") or [] if isinstance(o, dict) and o.get("file")
         ]
         section = (self.get_config() or {}).get(pid) or {}

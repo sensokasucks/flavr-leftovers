@@ -768,21 +768,201 @@
     }
   }
 
+  // ── Sources & overlays: the list, and a Customise panel per overlay ──
+  // Each row's switches come from Core (core/overlay_catalog.py, or a plugin's manifest). The
+  // panel draws one control per switch and rewrites the address as you change them; nothing is
+  // saved in Core, the address is the setting, so two OBS sources can differ.
+  const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+  const openSourcePanels = new Set();
+
+  function buildOverlayUrl(page, params, values) {
+    const q = new URLSearchParams();
+    for (const p of params) {
+      const v = values[p.key];
+      if (p.type === "bool") {
+        if (!!v !== !!p.default) q.set(p.key, v ? (p.on || "1") : (p.off || "0"));
+      } else if (p.type === "multi") {
+        const list = Array.isArray(v) ? v : [];
+        if (list.length) q.set(p.key, list.join(","));
+      } else {
+        const s = v == null ? "" : String(v).trim();
+        if (s !== "" && s !== String(p.default == null ? "" : p.default)) q.set(p.key, s);
+        else if (s !== "" && p.type === "text" && p.default) q.set(p.key, s);   // a chart's ticker is always written
+      }
+    }
+    const qs = q.toString().replace(/%2C/g, ",");
+    return page + (qs ? "?" + qs : "");
+  }
+
+  function paramControl(id, p) {
+    const name = `${id}-${p.key}`;
+    const help = p.help ? `<span class="field-help">${esc(p.help)}</span>` : "";
+    if (p.type === "bool") {
+      return `<label class="check src-param" data-key="${esc(p.key)}"><input type="checkbox" ${p.default ? "checked" : ""} /> ${esc(p.label)}${help}</label>`;
+    }
+    if (p.type === "tri" || p.type === "select") {
+      const opts = (p.options || []).map(([v, l]) => `<option value="${esc(v)}" ${String(v) === String(p.default ?? "") ? "selected" : ""}>${esc(l)}</option>`).join("");
+      return `<label class="src-param" data-key="${esc(p.key)}">${esc(p.label)}${help}<select>${opts}</select></label>`;
+    }
+    if (p.type === "multi") {
+      const boxes = (p.options || []).map(([v, l]) => `<label class="check"><input type="checkbox" value="${esc(v)}" /> ${esc(l)}</label>`).join("");
+      return `<div class="src-param src-multi" data-key="${esc(p.key)}"><div class="src-param-title">${esc(p.label)}${help}</div><div class="src-multi-boxes">${boxes}</div></div>`;
+    }
+    if (p.type === "number") {
+      const attrs = ["min", "max", "step"].filter((k) => p[k] != null).map((k) => `${k}="${esc(p[k])}"`).join(" ");
+      return `<label class="src-param" data-key="${esc(p.key)}">${esc(p.label)}${help}<input type="number" ${attrs} value="${esc(p.default ?? "")}" /></label>`;
+    }
+    return `<label class="src-param" data-key="${esc(p.key)}">${esc(p.label)}${help}<input type="text" value="${esc(p.default ?? "")}" placeholder="${esc(p.placeholder || "")}" /></label>`;
+  }
+
+  function readParamValues(panel, params) {
+    const values = {};
+    for (const p of params) {
+      const box = panel.querySelector(`.src-param[data-key="${CSS.escape(p.key)}"]`);
+      if (!box) continue;
+      if (p.type === "bool") values[p.key] = box.querySelector("input").checked;
+      else if (p.type === "multi") values[p.key] = [...box.querySelectorAll("input:checked")].map((i) => i.value);
+      else values[p.key] = box.querySelector("select, input").value;
+    }
+    return values;
+  }
+
+  function configControl(c) {
+    if (c.type === "bool") return `<label class="check src-config" data-key="${esc(c.key)}"><input type="checkbox" /> ${esc(c.label)}</label>`;
+    const attrs = ["min", "max", "step"].filter((k) => c[k] != null).map((k) => `${k}="${esc(c[k])}"`).join(" ");
+    return `<label class="src-config" data-key="${esc(c.key)}">${esc(c.label)}<input type="number" ${attrs} /></label>`;
+  }
+
+  function getPath(obj, key) {
+    return key.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
+  }
+
+  function setPath(obj, key, value) {
+    const parts = key.split(".");
+    let o = obj;
+    for (const k of parts.slice(0, -1)) {
+      if (!o[k] || typeof o[k] !== "object") o[k] = {};
+      o = o[k];
+    }
+    o[parts[parts.length - 1]] = value;
+  }
+
+  async function fillConfigControls(panel, fields) {
+    if (!fields.length) return;
+    try {
+      const data = await api("/api/admin/config");
+      const cfg = data.config || {};
+      for (const c of fields) {
+        const box = panel.querySelector(`.src-config[data-key="${CSS.escape(c.key)}"] input`);
+        if (!box) continue;
+        const v = getPath(cfg, c.key);
+        if (c.type === "bool") box.checked = !!v;
+        else box.value = v ?? "";
+      }
+    } catch (_) {}
+  }
+
+  async function saveConfigControls(panel, fields, statusEl) {
+    try {
+      const data = await api("/api/admin/config");
+      const cfg = data.config || {};
+      for (const c of fields) {
+        const box = panel.querySelector(`.src-config[data-key="${CSS.escape(c.key)}"] input`);
+        if (!box) continue;
+        setPath(cfg, c.key, c.type === "bool" ? box.checked : num(box.value, getPath(cfg, c.key)));
+      }
+      const res = await api("/api/admin/config", { method: "PUT", body: JSON.stringify({ config: cfg }) });
+      statusEl.textContent = res.message || "Saved";
+    } catch (e) {
+      statusEl.textContent = String(e.message || e);
+    }
+  }
+
+  function sourcePanel(src, idx) {
+    const id = `src${idx}`;
+    const params = src.params || [];
+    const settings = src.settings || [];
+    const config = src.config || [];
+    const page = src.page || src.url.split("?")[0];
+    let html = `<div class="src-panel" data-page="${esc(page)}">`;
+    if (params.length) html += `<div class="src-params">${params.map((p) => paramControl(id, p)).join("")}</div>`;
+    else html += `<p class="hint">This overlay has no switches on its address.</p>`;
+    html += `<div class="src-url-row"><code class="src-url">${esc(src.url)}</code><button type="button" class="src-copy">Copy</button><button type="button" class="src-preview-btn">Preview</button></div>`;
+    html += `<div class="src-preview" hidden></div>`;
+    if (config.length) {
+      html += `<div class="src-config-box"><div class="src-param-title">Saved settings (config.yaml)</div>${config.map(configControl).join("")}<div class="form-row"><button type="button" class="src-config-save">Save settings</button><span class="muted src-config-status"></span></div></div>`;
+    }
+    if (settings.length) {
+      html += `<p class="hint">More for this overlay: ${settings.map((s) => `<a href="${esc(s.hash)}">${esc(s.label)}</a>`).join(" · ")}</p>`;
+    }
+    html += `</div>`;
+    return html;
+  }
+
+  function wireSourcePanel(tr, src) {
+    const panel = tr.querySelector(".src-panel");
+    const params = src.params || [];
+    const page = panel.dataset.page;
+    const urlEl = panel.querySelector(".src-url");
+    const previewBox = panel.querySelector(".src-preview");
+    const refresh = () => {
+      urlEl.textContent = buildOverlayUrl(page, params, readParamValues(panel, params));
+      if (!previewBox.hidden) showPreview();
+    };
+    const showPreview = () => {
+      previewBox.hidden = false;
+      previewBox.innerHTML = `<iframe title="Overlay preview" src="${esc(urlEl.textContent)}"></iframe><p class="hint">Transparent parts show the checkerboard. The source in OBS has your scene behind it instead.</p>`;
+    };
+    panel.querySelectorAll(".src-param input, .src-param select").forEach((el) => { el.oninput = refresh; el.onchange = refresh; });
+    panel.querySelector(".src-copy").onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(urlEl.textContent);
+        setStatus("Copied URL");
+      } catch {
+        setStatus("Copy failed — select the URL manually", false);
+      }
+    };
+    panel.querySelector(".src-preview-btn").onclick = () => {
+      if (previewBox.hidden) showPreview();
+      else { previewBox.hidden = true; previewBox.innerHTML = ""; }
+    };
+    const save = panel.querySelector(".src-config-save");
+    if (save) {
+      fillConfigControls(panel, src.config || []);
+      save.onclick = () => saveConfigControls(panel, src.config || [], panel.querySelector(".src-config-status"));
+    }
+    refresh();
+  }
+
   async function loadSources() {
     const tb = $("sources-table") && $("sources-table").querySelector("tbody");
     if (!tb) return;
     try {
       const s = await api("/api/admin/status");
       tb.innerHTML = "";
-      for (const src of s.sources || []) {
+      (s.sources || []).forEach((src, idx) => {
+        const canCustomise = Array.isArray(src.params) || (src.settings && src.settings.length) || (src.config && src.config.length);
         const tr = document.createElement("tr");
         tr.innerHTML =
-          `<td><strong>${src.name}</strong></td>` +
-          `<td><code class="url-cell">${src.url}</code></td>` +
-          `<td class="muted">${src.notes || ""}</td>` +
-          `<td><button type="button" class="copy-url" data-url="${src.url.replace(/"/g, "&quot;")}">Copy</button></td>`;
+          `<td><strong>${esc(src.name)}</strong></td>` +
+          `<td><code class="url-cell">${esc(src.url)}</code></td>` +
+          `<td class="muted">${esc(src.notes || "")}</td>` +
+          `<td class="src-actions"><button type="button" class="copy-url" data-url="${esc(src.url)}">Copy</button>` +
+          (canCustomise ? `<button type="button" class="src-customise" data-idx="${idx}">Customise</button>` : "") + `</td>`;
         tb.appendChild(tr);
-      }
+        if (canCustomise) {
+          const ptr = document.createElement("tr");
+          ptr.className = "src-panel-row";
+          ptr.hidden = !openSourcePanels.has(src.name);
+          ptr.innerHTML = `<td colspan="4">${sourcePanel(src, idx)}</td>`;
+          tb.appendChild(ptr);
+          wireSourcePanel(ptr, src);
+          tr.querySelector(".src-customise").onclick = () => {
+            ptr.hidden = !ptr.hidden;
+            if (ptr.hidden) openSourcePanels.delete(src.name); else openSourcePanels.add(src.name);
+          };
+        }
+      });
       tb.querySelectorAll(".copy-url").forEach((btn) => {
         btn.onclick = async () => {
           try {
