@@ -331,68 +331,9 @@ def create_admin_router(core_state) -> APIRouter:
             for row in plugin_rows
         }
 
-        sources = [
-            {
-                "name": "Admin hub (this page)",
-                "url": f"{base}/admin/",
-                "notes": "Main control panel",
-            },
-            {
-                "name": "Kick / live chat overlay",
-                "url": f"{base}/overlay/chat.html",
-                "notes": "Transparent Webpage source — chat with emotes",
-            },
-            {
-                "name": "Metrics overlay",
-                "url": f"{base}/overlay/overlay.html",
-                "notes": "Viewers, CPM, power level (+ Minecraft HP / inventory with the Minecraft plugin)",
-            },
-            {
-                "name": "Stream alerts overlay",
-                "url": f"{base}/overlay/alerts.html",
-                "notes": "Transparent Webpage source — follow / sub / raid / Super Chat. Test from the Alerts tab.",
-            },
-            {
-                "name": "Chat Credits overlay",
-                "url": f"{base}/overlay/credits.html",
-                "notes": "Built-in unique-chatter end credits (Admin → Credits). Transparent Webpage source.",
-            },
-            {
-                "name": "Chat Credits (standalone app)",
-                "url": "http://127.0.0.1:3854/",
-                "notes": "Optional separate process if you don't want credits inside Core",
-            },
-            {
-                "name": "Fridge Market ticker",
-                "url": f"{base}/overlay/market.html",
-                "notes": "Scrolling live tape. ?symbols=FRG,FACT  ?speed=80  ?book=factorio",
-            },
-            {
-                "name": "Fridge Market board",
-                "url": f"{base}/overlay/market-board.html",
-                "notes": "Quote cards + sparklines. Transparent Webpage source.",
-            },
-            {
-                "name": "Fridge Market chart",
-                "url": f"{base}/overlay/market-chart.html?symbol=FACT",
-                "notes": "TV-style line graph. layout=hero|grid  points=180  bare=1",
-            },
-            {
-                "name": "Fridge Market cycle",
-                "url": f"{base}/overlay/market-cycle.html?symbols=FRG,FACT,STEVE",
-                "notes": "Cycles a chosen set. dwell=8 points=180 solid=1",
-            },
-            {
-                "name": "Chat reactions (fallback)",
-                "url": f"{base}/overlay/reactions.html",
-                "notes": "Plays reactions when Stream Rooms isn't connected. Full-screen, transparent. debug=1 shows a log",
-            },
-            {
-                "name": "Reactive Image HTTP",
-                "url": "http://127.0.0.1:3851/status",
-                "notes": "Audio-reactive avatar control API",
-            },
-        ]
+        from core.overlay_catalog import sources as overlay_sources
+
+        sources = overlay_sources(base)
         # Each installed game plugin's overlays (its own pages on 3850 + its bridge's pages)
         for row in plugin_rows:
             for o in row["overlays"]:

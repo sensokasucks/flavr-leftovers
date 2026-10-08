@@ -80,7 +80,7 @@ python main.py
 | **Chat reactions** | `http://127.0.0.1:3850/overlay/reactions.html` | Fallback for 🍅 / !tomato reactions when Stream Rooms isn't connected. Full canvas, transparent. Setup: Admin → Config → Reactions, spec [docs/REACTIONS.md](docs/REACTIONS.md) |
 | Root | `http://127.0.0.1:3850/` | Same as Minecraft stats |
 
-Use a **transparent** Webpage source. Chat is a separate source so you can place and size it on its own. Add `?badges=0` to hide platform letters on combined chat. Alerts are a third source — test them from the admin **Alerts** tab. Both chat and alerts take the CSS you already have from Streamlabs / StreamElements / OBS Custom CSS (their ids and classes are the same), plus uploaded pictures and sounds: see [overlay/CHAT.md](overlay/CHAT.md) and [overlay/ALERTS.md](overlay/ALERTS.md).
+Use a **transparent** Webpage source. Chat is a separate source so you can place and size it on its own. Every switch an overlay takes on its address (platform filter, `?badges=0`, skin, hide-after, chart ticker, …) is in the dashboard's **Sources & overlays → Customise** panel, which writes the address for you; the list behind it is `core/overlay_catalog.py`. Alerts are a third source — test them from the admin **Alerts** tab. Both chat and alerts take the CSS you already have from Streamlabs / StreamElements / OBS Custom CSS (their ids and classes are the same), plus uploaded pictures and sounds: see [overlay/CHAT.md](overlay/CHAT.md) and [overlay/ALERTS.md](overlay/ALERTS.md).
 
 ### Admin dashboard (chat log + points + config editor)
 

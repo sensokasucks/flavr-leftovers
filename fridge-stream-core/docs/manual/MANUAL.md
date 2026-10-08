@@ -346,6 +346,10 @@ The same rules can go into OBS's own **Custom CSS** box on the browser source in
 
 Each overlay is a web page. Add it as a **Browser source** (OBS) or **Webpage source** (XSplit) with a transparent background, one source per overlay, so you can place and size each on its own. **On stream → Sources & overlays** lists every address with a **Copy** button.
 
+Most overlays take switches on their address (which platforms the chat shows, the skin, how long messages stay, which ticker a chart draws, and so on). You don't have to remember them: press **Customise** on the overlay's row. A panel opens with one control per switch; as you change them the address at the bottom rewrites itself, **Copy** puts it on the clipboard, and **Preview** shows the result right there. Nothing is saved in Core, the address *is* the setting, so two browser sources of the same overlay can be set up differently. Settings the overlay reads from `config.yaml` (how long an alert stays, for instance) sit on the same panel with a **Save settings** button, and links lead to the overlay's own pages (the chat look, the alerts tests, the credits editor).
+
+![Sources & overlays: the Customise panel](images/sc-sources-customise.png)
+
 ![Sources & overlays](images/sc-sources.png)
 
 | Overlay | Address | Notes |
