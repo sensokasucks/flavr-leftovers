@@ -1637,7 +1637,7 @@
     const proto = location.protocol === "https:" ? "wss" : "ws";
     let ws;
     try {
-      ws = new WebSocket(proto + "://" + location.host + "/ws");
+      ws = new WebSocket(proto + "://" + location.host + "/ws?credits=1");
     } catch (e) {
       setTimeout(connectWs, 2000);
       return;

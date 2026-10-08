@@ -450,8 +450,7 @@ class StreamCore:
                     line = self._credits_extra().get("rating_line", "") if self.credits.enabled else ""
                     if line != getattr(self, "_last_rating_line", "") and self.state.ws_manager:
                         self._last_rating_line = line
-                        await self.state.ws_manager.broadcast(
-                            {"type": "credits_roster", "data": self.credits.snapshot()})
+                        self.state.ws_manager.push_roster(self.credits.snapshot)
                 except Exception:
                     log.exception("chat games tick failed")
 
@@ -576,9 +575,8 @@ class StreamCore:
         try:
             added = self.credits.ingest(event)
             if added and self.state.ws_manager:
-                await self.state.ws_manager.broadcast(
-                    {"type": "credits_roster", "data": self.credits.snapshot()}
-                )
+                # throttled, and only to the credits overlay / Credits tab (api/server.py)
+                self.state.ws_manager.push_roster(self.credits.snapshot)
         except Exception:
             log.exception("credits ingest failed")
 

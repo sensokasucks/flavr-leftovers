@@ -30,27 +30,83 @@ log = logging.getLogger("api.server")
 
 
 class ConnectionManager:
-    """Simple WebSocket fan-out for live overlay / debug clients."""
+    """Simple WebSocket fan-out for live overlay / debug clients.
+
+    The end-credits roster (every unique chatter of the session) grows to megabytes on a
+    long stream, so it only goes to clients that ask for it by connecting to
+    ``/ws?credits=1`` (the credits overlay and the dashboard's Credits tab), and at most
+    once every ``ROSTER_MIN_GAP_SEC``. Everyone else (chat overlay, Stream Rooms) never
+    gets it: a 2 MB message per new chatter filled Stream Rooms' receive buffer and made
+    it drop the connection over and over.
+    """
+
+    ROSTER_MIN_GAP_SEC = 3.0
 
     def __init__(self):
         self.active: Set[WebSocket] = set()
+        self.credits_clients: Set[WebSocket] = set()
+        self._roster_fn = None              # callable -> current roster snapshot
+        self._roster_task: Optional[asyncio.Task] = None
+        self._roster_sent_at = 0.0
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
         self.active.add(ws)
+        if _wants_credits(ws):
+            self.credits_clients.add(ws)
 
     def disconnect(self, ws: WebSocket) -> None:
         self.active.discard(ws)
+        self.credits_clients.discard(ws)
 
     async def broadcast(self, data: dict) -> None:
+        if isinstance(data, dict) and data.get("type") == "credits_roster":
+            await self._send_all(self.credits_clients, data)
+            return
+        await self._send_all(self.active, data)
+
+    def push_roster(self, snapshot_fn) -> None:
+        """The roster changed: send it to the credits clients soon (coalesced, throttled).
+        Nothing is built while no credits client is connected."""
+        self._roster_fn = snapshot_fn
+        if not self.credits_clients:
+            return
+        if self._roster_task is not None and not self._roster_task.done():
+            return              # a send is already scheduled; it will pick up the latest roster
+        try:
+            self._roster_task = asyncio.get_running_loop().create_task(self._roster_later(), name="credits-roster-push")
+        except RuntimeError:
+            pass                # no event loop (tests calling from sync code)
+
+    async def _roster_later(self) -> None:
+        wait = self.ROSTER_MIN_GAP_SEC - (time.monotonic() - self._roster_sent_at)
+        if wait > 0:
+            await asyncio.sleep(wait)
+        fn = self._roster_fn
+        if fn is None or not self.credits_clients:
+            return
+        self._roster_sent_at = time.monotonic()
+        await self._send_all(self.credits_clients, {"type": "credits_roster", "data": fn()})
+
+    async def _send_all(self, clients: Set[WebSocket], data: dict) -> None:
+        if not clients:
+            return
+        text = json.dumps(data)         # serialise once, not once per client
         dead = []
-        for ws in list(self.active):
+        for ws in list(clients):
             try:
-                await ws.send_json(data)
+                await ws.send_text(text)
             except Exception:
                 dead.append(ws)
         for ws in dead:
             self.disconnect(ws)
+
+
+def _wants_credits(ws: WebSocket) -> bool:
+    try:
+        return str(ws.query_params.get("credits", "")).lower() in ("1", "true", "yes")
+    except Exception:
+        return False
 
 
 def create_app(core_state: "CoreState") -> FastAPI:
@@ -352,7 +408,8 @@ def create_app(core_state: "CoreState") -> FastAPI:
             if credits:
                 await ws.send_json({"type": "credits_theme", "data": credits.theme})
                 await ws.send_json({"type": "credits_play", "data": credits.public_play()})
-                await ws.send_json({"type": "credits_roster", "data": credits.snapshot()})
+                if ws in manager.credits_clients:
+                    await ws.send_json({"type": "credits_roster", "data": credits.snapshot()})
             while True:
                 data = await ws.receive_text()
                 if data == "ping":
@@ -371,6 +428,8 @@ def create_app(core_state: "CoreState") -> FastAPI:
                 if reactions is not None and isinstance(msg, dict):
                     try:
                         await reactions.on_client_message(ws, msg)
+                    except WebSocketDisconnect:
+                        raise           # the client left mid-answer: not an error
                     except Exception:
                         log.exception("game client message failed: %s", str(msg.get("type")))
         except WebSocketDisconnect:
