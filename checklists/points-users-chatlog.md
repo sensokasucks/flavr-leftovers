@@ -14,6 +14,7 @@ Home: `core/store.py`. DB: `data/stream_core.db`.
 - [ ] CSV export still works for users and for chat history.
 - [ ] Market trades and dividends use this same points ledger (`source=market` / `source=dividend`). Do not add a second cash book.
 - [ ] OpenTTD `!invest` debits this ledger. Do not invent a parallel points file.
+- [ ] Red flags (`core/red_flags.py`, list in table `red_flagged` in this same DB): a flagged chatter's chat is never broadcast, never in `recent_chat`, gets no reactions / commands / games / points / credits / alerts, but **is** still logged. Flagging sends `chat_user_hidden` once. `red_flags` is owned by its card (admin config save keeps it). `enabled: false` hides nobody but keeps the list. Mods/streamer skipped by default.
 - [ ] Chat reactions spend with `Store.spend_points()` (atomic check-and-debit) and refund with `adjust_points`, `source=reaction`.
 
 ## Drop risks

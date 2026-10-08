@@ -54,7 +54,7 @@
     <div class="nav-group">
       <div class="nav-heading">People</div>
       <button class="tab" data-keywords="viewers points balance accounts link" data-tab="users">Users &amp; points</button>
-      <button class="tab" data-keywords="messages log export csv search" data-tab="chat">Chat history</button>
+      <button class="tab" data-keywords="messages log export csv search red flag flagged phrases hide block troll spam" data-tab="chat">Chat history</button>
     </div>
 
     <div class="nav-group">
@@ -978,6 +978,36 @@
     <p id="chat-log-banner" class="config-banner" hidden>
       Chat logging is currently <strong>off</strong>. New messages are not saved. Existing rows (if any) still show below.
     </p>
+    <fieldset class="cfg-card rf-card" id="rf-card">
+      <legend>🚩 Red flags</legend>
+      <p class="hint">A chat line with one of these phrases red-flags its sender. Core then keeps them off every overlay and out of Stream Rooms (chat, seats, reactions, commands, points, credits, alerts). What they write still goes in the chat log when <strong>Save chat history</strong> is on, so you can read it here.</p>
+      <label class="check" title="Off = nobody is hidden and nobody new gets flagged. The list below is kept."><input id="rf-enabled" type="checkbox" /> Hide red-flagged chatters</label>
+      <label class="check" title="A moderator or you quoting a phrase (to warn chat) is not flagged."><input id="rf-skip-mods" type="checkbox" /> Never flag moderators or the streamer</label>
+      <label>Red flag phrases <span class="field-help">One per line. Upper or lower case doesn't matter. Whole words only ("ass" does not catch "class"); <code>*</code> stands for any letters ("scam*" catches "scammer").</span>
+        <textarea id="rf-phrases" rows="5" spellcheck="false" placeholder="free followers&#10;cheap viewers&#10;scam*"></textarea>
+      </label>
+      <div class="config-actions">
+        <button type="button" id="rf-save" class="primary">Save red flags</button>
+        <span class="muted" id="rf-status"></span>
+      </div>
+      <h4>Red-flagged chatters <span class="muted" id="rf-count"></span></h4>
+      <table id="rf-table">
+        <thead>
+          <tr><th>Name</th><th>Platform</th><th>Why</th><th>When</th><th></th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+      <div class="toolbar rf-add">
+        <input id="rf-name" placeholder="Flag a name by hand…" title="Their chat is hidden from now on, and their recent lines leave the overlay" />
+        <select id="rf-platform" title="Which platform the name is on">
+          <option value="">Every platform</option>
+          <option value="kick">kick</option>
+          <option value="twitch">twitch</option>
+          <option value="youtube">youtube</option>
+        </select>
+        <button type="button" id="rf-flag" title="Red-flag this name now">Red-flag</button>
+      </div>
+    </fieldset>
     <div class="toolbar">
       <input id="chat-user-id" placeholder="User ID (optional)" />
       <select id="chat-platform">
@@ -987,6 +1017,7 @@
         <option value="youtube">youtube</option>
       </select>
       <input id="chat-q" placeholder="Search message text…" />
+      <label class="check" title="Only lines from red-flagged chatters"><input id="chat-flagged" type="checkbox" /> 🚩 only</label>
       <button id="chat-search">Search</button>
       <button id="chat-export">Download CSV</button>
     </div>

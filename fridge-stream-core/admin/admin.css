@@ -1166,3 +1166,15 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 .src-config.check { flex-direction: row; align-items: center; gap: 8px; }
 .src-panel .field-help { display: block; margin-left: 0; }
 .src-panel a { color: var(--accent); }
+
+/* Red flags (Chat history tab) */
+.rf-card { margin-bottom: 16px; }
+.rf-card h4 { margin: 14px 0 6px; }
+.rf-card .rf-add { margin-top: 8px; align-items: center; }
+.rf-card .rf-add select { width: auto; margin-top: 0; }
+.rf-card td.rf-msg { max-width: 420px; }
+.rf-card td.rf-actions { white-space: nowrap; text-align: right; }
+#chat-table tr.rf-row td { background: rgba(255, 92, 92, 0.08); }
+.rf-mark { color: var(--danger); }
+.toolbar label.check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.toolbar label.check input { min-width: 0; flex: none; }

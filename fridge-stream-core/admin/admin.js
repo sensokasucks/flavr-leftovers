@@ -321,6 +321,7 @@
     if (tabId === "market") initMarketTab();
     if (tabId === "chat") {
       loadChat();
+      if (!(PAGE_SAVER && PAGE_SAVER.isDirty("rf"))) loadRedFlags();
       refreshChatLogBanner();
     }
   }
@@ -1831,15 +1832,20 @@
       if (plat) params.set("platform", plat);
       const q = $("chat-q").value.trim();
       if (q) params.set("q", q);
+      if ($("chat-flagged") && $("chat-flagged").checked) params.set("flagged", "1");
       params.set("limit", "200");
       const rows = await api("/api/admin/chat?" + params.toString());
       const tb = $("chat-table").querySelector("tbody");
       tb.innerHTML = "";
       for (const r of rows) {
         const tr = document.createElement("tr");
+        if (r.flagged) {
+          tr.className = "rf-row";
+          tr.title = "Red-flagged: hidden from the overlays and Stream Rooms";
+        }
         tr.innerHTML =
           `<td>${fmtTime(r.timestamp)}</td>` +
-          `<td>${escapeHtml(r.display_name || r.username)} <span class="muted">#${
+          `<td>${r.flagged ? '<span class="rf-mark" aria-label="red-flagged">🚩</span> ' : ""}${escapeHtml(r.display_name || r.username)} <span class="muted">#${
             r.user_id || "?"
           }</span></td>` +
           `<td>${escapeHtml(r.platform)}</td>` +
@@ -1852,6 +1858,103 @@
   }
 
   $("chat-search").onclick = loadChat;
+  if ($("chat-flagged")) $("chat-flagged").onchange = loadChat;
+
+  // ── Red flags (phrases + flagged chatters): own endpoint, Save button + page save bar ──
+  let rfLoaded = false;
+  function fillRedFlags(d) {
+    if (!$("rf-card") || !d) return;
+    $("rf-enabled").checked = d.enabled !== false;
+    $("rf-skip-mods").checked = d.skip_mods !== false;
+    $("rf-phrases").value = (d.phrases || []).join("\n");
+    const list = d.flagged || [];
+    $("rf-count").textContent = list.length ? `(${list.length})` : "(nobody yet)";
+    const tb = $("rf-table").querySelector("tbody");
+    tb.innerHTML = "";
+    for (const f of list) {
+      const tr = document.createElement("tr");
+      const why = f.source === "manual"
+        ? '<span class="muted">flagged by hand</span>'
+        : `said <strong>${escapeHtml(f.phrase)}</strong>: <span class="muted">${escapeHtml(f.message)}</span>`;
+      const name = f.display_name || f.username;
+      tr.innerHTML =
+        `<td>${escapeHtml(name)}</td>` +
+        `<td>${escapeHtml(f.platform || "every")}</td>` +
+        `<td class="rf-msg">${why}</td>` +
+        `<td>${fmtTime(f.flagged_at)}</td>` +
+        `<td class="rf-actions">` +
+        `<button type="button" class="rf-show" title="Show what they wrote in the chat log below">Messages${f.messages ? " (" + f.messages + ")" : ""}</button> ` +
+        `<button type="button" class="rf-unflag" title="Take them off the list: their new chat shows again">Unflag</button></td>`;
+      tr.querySelector(".rf-show").onclick = () => {
+        $("chat-user-id").value = "";
+        $("chat-q").value = "";
+        $("chat-platform").value = f.platform || "";
+        $("chat-flagged").checked = true;
+        loadChat();
+        $("chat-table").scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+      tr.querySelector(".rf-unflag").onclick = async () => {
+        try {
+          fillRedFlags(await api(`/api/admin/red-flags/${f.id}`, { method: "DELETE" }));
+          $("rf-status").textContent = `${name} unflagged: their new chat shows again.`;
+          loadChat();
+        } catch (e) {
+          $("rf-status").textContent = String(e.message || e);
+        }
+      };
+      tb.appendChild(tr);
+    }
+    rfLoaded = true;
+  }
+
+  async function loadRedFlags() {
+    if (!$("rf-card")) return;
+    try {
+      fillRedFlags(await api("/api/admin/red-flags"));
+    } catch (e) {
+      $("rf-status").textContent = String(e.message || e);
+    }
+  }
+
+  async function saveRedFlags() {
+    if (!rfLoaded || !$("rf-card")) return;
+    try {
+      fillRedFlags(await api("/api/admin/red-flags", {
+        method: "PUT",
+        body: JSON.stringify({
+          enabled: $("rf-enabled").checked,
+          skip_mods: $("rf-skip-mods").checked,
+          phrases: $("rf-phrases").value,
+        }),
+      }));
+      $("rf-status").textContent = "Saved. New chat is checked against these phrases.";
+    } catch (e) {
+      $("rf-status").textContent = String(e.message || e);
+      throw e;
+    }
+  }
+
+  if ($("rf-card")) {
+    $("rf-save").onclick = () => saveRedFlags().catch(() => {});
+    $("rf-flag").onclick = async () => {
+      const name = $("rf-name").value.trim();
+      if (!name) return;
+      try {
+        fillRedFlags(await api("/api/admin/red-flags/flag", {
+          method: "POST",
+          body: JSON.stringify({ name, platform: $("rf-platform").value }),
+        }));
+        $("rf-name").value = "";
+        $("rf-status").textContent = `${name} red-flagged.`;
+        loadChat();
+      } catch (e) {
+        $("rf-status").textContent = String(e.message || e);
+      }
+    };
+    $("rf-name").addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("rf-flag").click();
+    });
+  }
   $("chat-export").onclick = () => {
     const uid = $("chat-user-id").value.trim();
     downloadCsv(uid ? parseInt(uid, 10) : null);
@@ -4462,6 +4565,8 @@
       { key: "chat-opts", page: "chatlook", sub: "look", name: "Chat overlay behaviour",
         fields: ["chat-opt-hide", "chat-opt-max", "chat-opt-top", "chat-opt-avatars", "chat-opt-volume", "chat-opt-gap"],
         button: "chat-opt-save" },
+      { key: "rf", page: "chat", sub: "", name: "Red flags",
+        fields: ["rf-enabled", "rf-skip-mods", "rf-phrases"], button: "rf-save", save: saveRedFlags },
       { key: "mkt-set", page: "market", sub: "listings", name: "Market settings", group: "mkt-set",
         scope: "#mkt-switches", button: "mkt-save" },
       { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-set",

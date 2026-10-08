@@ -143,6 +143,13 @@ DEFAULTS: Dict[str, Any] = {
     "chat_log": {
         "enabled": False,  # persist messages to SQLite (Chat History tab)
     },
+    # Red flags (core/red_flags.py, card on the Chat history tab): a chat line with one of these
+    # phrases puts its sender on a list kept off every overlay and out of Stream Rooms
+    "red_flags": {
+        "enabled": True,     # off = nobody hidden, nobody new flagged (the list is kept)
+        "skip_mods": True,   # moderators and the streamer never get flagged by a phrase
+        "phrases": [],       # case-insensitive whole words; * = any letters ("scam*")
+    },
     "credits": {
         "enabled": False,  # unique-chatter end credits overlay
         "ignore_own_channel": True,

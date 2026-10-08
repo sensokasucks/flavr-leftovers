@@ -455,11 +455,14 @@ def create_admin_router(core_state) -> APIRouter:
         q: str = "",
         limit: int = Query(200, ge=1, le=1000),
         offset: int = Query(0, ge=0),
+        flagged: bool = False,
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Chat log rows, newest first; each says ``flagged`` (sender is red-flagged).
+        ``flagged=1`` = only red-flagged chatters' lines."""
         _auth(x_admin_token)
         return await _store().search_chat(
-            user_id=user_id, platform=platform, q=q, limit=limit, offset=offset
+            user_id=user_id, platform=platform, q=q, limit=limit, offset=offset, flagged_only=flagged
         )
 
     @router.get("/chat/export")
@@ -515,7 +518,7 @@ def create_admin_router(core_state) -> APIRouter:
             if isinstance(live.get("command_groups"), dict):
                 incoming["command_groups"] = live["command_groups"]
         # Reactions / chat games / picture settings are owned by their own pages; a stale form copy must not undo them
-        for owned in ("reactions", "chat_games", "avatars"):
+        for owned in ("reactions", "chat_games", "avatars", "red_flags"):
             if isinstance(live.get(owned), dict):
                 incoming[owned] = live[owned]
         # Game plugins' market fields are owned by the Market page (saved there, applied live)
@@ -1199,6 +1202,71 @@ def create_admin_router(core_state) -> APIRouter:
         if apply is not None:
             await apply()
         return {"ok": True, **_avatars_info()}
+
+    # ------------------------------------------------------------------
+    # Red flags (core/red_flags.py): phrases + the flagged chatters (Chat history tab)
+    # ------------------------------------------------------------------
+
+    def _red_flags():
+        rf = getattr(core_state, "red_flags", None)
+        if rf is None:
+            raise HTTPException(503, "Red flags not ready")
+        rf.configure((getattr(core_state, "config", None) or {}).get("red_flags"))
+        return rf
+
+    async def _red_flags_info() -> Dict[str, Any]:
+        rf = _red_flags()
+        return {**rf.info(), "flagged": await rf.list()}
+
+    @router.get("/red-flags")
+    async def get_red_flags(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        return await _red_flags_info()
+
+    @router.put("/red-flags")
+    async def put_red_flags(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Save ``red_flags.enabled`` / ``skip_mods`` / ``phrases`` (list or one per line). Merges config."""
+        from core.red_flags import parse_phrases
+
+        _auth(x_admin_token)
+        cfg = load_config()
+        section = dict(cfg.get("red_flags") or {})
+        for key in ("enabled", "skip_mods"):
+            if key in body:
+                section[key] = bool(body.get(key))
+        if "phrases" in body:
+            section["phrases"] = parse_phrases(body.get("phrases"))
+        cfg["red_flags"] = section
+        save_config(cfg)
+        core_state.config = cfg
+        return {"ok": True, **(await _red_flags_info())}
+
+    @router.post("/red-flags/flag")
+    async def flag_by_hand(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Flag a name by hand: ``{"name": "someone", "platform": "kick"|""}`` (no platform = everywhere)."""
+        _auth(x_admin_token)
+        name = str(body.get("name") or "").strip().lstrip("@")[:80]
+        platform = str(body.get("platform") or "").strip().lower()
+        if ":" in name and not platform:
+            platform, name = (x.strip() for x in name.split(":", 1))
+        if not name:
+            raise HTTPException(400, "name required")
+        if platform and platform not in ("kick", "twitch", "youtube"):
+            raise HTTPException(400, "platform must be kick, twitch or youtube")
+        rf = _red_flags()
+        await rf.flag(platform, "", name, name, source="manual")
+        hide = getattr(core_state, "red_flag_hide", None)
+        if hide is not None:
+            await hide(platform, "", name.lower(), name)
+        return {"ok": True, **(await _red_flags_info())}
+
+    @router.delete("/red-flags/{flag_id}")
+    async def unflag(flag_id: int, x_admin_token: Optional[str] = Header(None)):
+        """Take someone off the list: their new chat shows again (lines already hidden stay hidden)."""
+        _auth(x_admin_token)
+        if await _red_flags().unflag(flag_id) is None:
+            raise HTTPException(404, "Not on the red-flag list")
+        return {"ok": True, **(await _red_flags_info())}
 
     @router.get("/chat/style")
     async def get_chat_style(x_admin_token: Optional[str] = Header(None)):

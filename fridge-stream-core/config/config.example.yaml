@@ -163,6 +163,14 @@ points:
 chat_log:
   enabled: false
 
+# Red flags: a chat line containing one of these phrases puts its sender on a list
+# (Chat history tab) and Core keeps them off every overlay and out of Stream Rooms.
+# Their messages still go in the chat log. Case-insensitive, whole words, * = any letters.
+red_flags:
+  enabled: true
+  skip_mods: true     # moderators and the streamer are never flagged by a phrase
+  phrases: []         # e.g. ["free followers", "scam*"]
+
 # Fridge Market tape (overlays work in preview even while enabled is false).
 # Trading commands are not shipped yet — see docs/MARKET.md.
 market:

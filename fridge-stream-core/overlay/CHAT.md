@@ -96,3 +96,7 @@ Sounds play inside OBS / XSplit without a click. A normal browser tab needs one 
 | Newest on top | `?top=1` | Flip the direction |
 | Chatter pictures | `?avatars=1` | Show profile pictures (Kick, Twitch with Connect Twitch, YouTube) |
 | Sounds | `?sound=0` | Mute this one browser source |
+
+## Red-flagged chatters
+
+Someone red-flagged on the dashboard (**Chat history → 🚩 Red flags**) never reaches this overlay: Core doesn't send their chat. When a person is flagged, Core sends `{"type": "chat_user_hidden", "data": {platform, id, username, display_name}}` once and the overlay removes that person's rows already on screen (`platform` `""` = a name flagged on every platform). Another overlay that keeps chat rows should do the same.

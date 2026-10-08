@@ -264,6 +264,19 @@
     });
   }
 
+  // a chatter was red-flagged in Core: their lines leave the overlay (platform "" = every platform)
+  function removeUser(data) {
+    const plat = String(data.platform || "");
+    const id = String(data.id || "");
+    const names = [data.username, data.display_name].filter(Boolean).map((n) => String(n).toLowerCase());
+    Array.from(logEl.children).forEach((row) => {
+      if (plat && row.dataset.platform !== plat) return;
+      const byId = id && row.dataset.userId === id;
+      const byName = names.includes(String(row.dataset.from || "").toLowerCase());
+      if (byId || byName) row.remove();
+    });
+  }
+
   // Made-up chatters for the dashboard preview when there is no chat yet
   function showSample() {
     const rows = [
@@ -312,6 +325,7 @@
         if (msg.type === "chat" && msg.data) appendMessage(msg.data);
         else if (msg.type === "chat_history" && msg.data) loadHistory(msg.data);
         else if (msg.type === "user_update" && msg.data) userUpdate(msg.data);
+        else if (msg.type === "chat_user_hidden" && msg.data) removeUser(msg.data);
       } catch (_) {}
     };
     ws.onclose = () => {
