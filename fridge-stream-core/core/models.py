@@ -81,6 +81,11 @@ class ChatEvent:
     # {"user": display name, "message": what they replied to (shortened), "message_id": its id}.
     reply_to: Optional[dict] = None
 
+    # A message the chatter paid channel points to make stand out (Twitch):
+    # "highlighted" (Highlight My Message), "gigantified" (Gigantify an Emote: the last
+    # emote is drawn big) or "animated" (Message Effects). None for ordinary messages.
+    highlight: Optional[str] = None
+
     def to_dict(self) -> dict:
         d = asdict(self)
         d["platform"] = self.platform.value

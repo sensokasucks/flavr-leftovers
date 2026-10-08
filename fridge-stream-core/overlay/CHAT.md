@@ -45,7 +45,8 @@ The same rules can go into OBS **Custom CSS** on the browser source instead.
 
 ```
 #log                      the list (Streamlabs / StreamElements id)
-#log > div, .msg          one message; .paid on Super Chats / Kicks, .system on Core's own lines
+#log > div, .msg          one message; .paid on Super Chats / Kicks / Bits, .system on Core's own lines
+                          .highlighted / .gigantified / .animated on Twitch channel-point messages
 [data-from="login"]       who sent it; [data-platform="kick|twitch|youtube"]
 .meta                     badges + name (the chatter's colour is an inline style here, like Streamlabs)
 .badges .badge            badge chips; .badge.mod .vip .sub .broadcaster .og .founder

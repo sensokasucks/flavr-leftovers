@@ -194,6 +194,18 @@ img.badge {
 /* paid messages (Super Chat, Kicks) */
 .msg.paid .message { color: #ffe9a8; }
 
+/* Twitch "Highlight My Message" (channel points): Twitch's purple box */
+.msg.highlighted {
+  background: rgba(117, 94, 188, 0.85);
+  border-left: 4px solid #bf94ff;
+  border-radius: 4px;
+  padding: 2px 8px;
+  text-shadow: none;
+}
+.msg.highlighted .meta { color: #fff !important; }
+/* Twitch "Gigantify an Emote": the last emote is drawn big */
+.msg.gigantified .message .emote:last-of-type { height: calc(var(--chat-emote-size) * 3); }
+
 /* denser layout when many messages */
 .msg.compact {
   font-size: 14px;
