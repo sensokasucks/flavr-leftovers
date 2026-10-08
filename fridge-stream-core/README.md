@@ -93,6 +93,7 @@ http://127.0.0.1:3850/admin/
 - Link Kick / YouTube (etc.) identities so one person keeps one balance
 - Give / take points, notes, merge accounts
 - Download full chat history as CSV (all or per user) when logging is on
+- **🚩 Red flags** (Chat history page): phrases that red-flag whoever says them; flagged chatters are kept off every overlay and out of Stream Rooms but their lines are still logged and marked. List with **Unflag**, flag a name by hand (`red_flags` in config, `core/red_flags.py`)
 - **Live controls** is the landing page: what's running, credits roll buttons, one-click test alerts and a dry-run command box — everything you need mid-stream on one screen.
 - Flat left menu (On stream / Overlays / Games / People / Settings), every page one click away. **Settings** lists each config section as its own page. Busy pages show one section at a time via tabs along the top; Credits and Alerts keep their preview on the right. Pages have addresses (`/admin/#credits/style`), so Back works and you can bookmark a section.
 - **Search** (press `/`) finds pages and individual settings and jumps to the field.

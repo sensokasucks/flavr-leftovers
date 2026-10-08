@@ -54,6 +54,7 @@ try:
     from core.local_guard import is_placeholder_token, resolve_admin_token
     from core.credits import CreditsEngine
     from core.avatar_store import AvatarStore
+    from core.red_flags import RedFlags, matching_recent
     from core.market import MarketTape
     from core.reactions import ReactionEngine
     from core.reaction_images import ReactionImages
@@ -186,6 +187,10 @@ class StreamCore:
         self.state.avatars = self.avatars
         self.state.apply_avatar_settings = self.apply_avatar_settings
         self.state.import_avatar_hide = self.import_avatar_hide
+        # Red flags: phrases that put a chatter on a list kept off every overlay (core/red_flags.py)
+        self.red_flags = RedFlags(self.store, config.get("red_flags"))
+        self.state.red_flags = self.red_flags
+        self.state.red_flag_hide = self.hide_flagged
 
         self._metrics_task: asyncio.Task | None = None
         self._market_task: asyncio.Task | None = None
@@ -528,6 +533,18 @@ class StreamCore:
     # ------------------------------------------------------------------
 
     async def _on_chat(self, event: ChatEvent) -> None:
+        # Red-flagged chatters (or the line that flags them) never reach an overlay or Stream Rooms
+        live = getattr(self.state, "config", None) or self.config
+        self.red_flags.configure(live.get("red_flags"))
+        self.store.configure_chat_log(live.get("chat_log"))
+        try:
+            flagged = await self.red_flags.check(event)
+        except Exception:
+            log.exception("red flag check failed")
+            flagged = None
+        if flagged is not None:
+            await self._on_flagged_chat(event, flagged)
+            return
         # Regulars' titles ride along on the chat packet (name tags in Stream Rooms)
         try:
             await self.chat_games.observe_user(event)
@@ -1083,6 +1100,38 @@ class StreamCore:
             "games_notified": list(self.games.keys()),
         }
 
+    async def _on_flagged_chat(self, event: ChatEvent, flagged: dict) -> None:
+        """A red-flagged chatter: saved in the chat log (when it is on), shown nowhere, no points."""
+        self.router.parse_message(event)      # marks is_command for the log
+        try:
+            await self.store.process_chat(event, award=False, flagged=True)
+        except Exception:
+            log.exception("store.process_chat failed")
+        if flagged.get("new"):
+            u = event.user
+            await self.hide_flagged(event.platform.value, str(u.id or ""), u.username, u.display_name)
+
+    async def hide_flagged(self, platform: str, user_id: str, username: str, display_name: str = "") -> int:
+        """Someone was just red-flagged: take their lines off the chat overlay and Stream Rooms
+        (``chat_user_hidden``), out of the catch-up history and out of the credits. Returns how
+        many recent lines went."""
+        gone = matching_recent(self.recent_chat, platform, user_id, username, display_name)
+        for item in gone:
+            self.recent_chat.remove(item)
+        try:
+            if self.credits.forget(platform, username, display_name) and self.state.ws_manager:
+                self.state.ws_manager.push_roster(self.credits.snapshot)
+        except Exception:
+            log.exception("credits forget failed")
+        if self.state.ws_manager:
+            try:
+                await self.state.ws_manager.broadcast({"type": "chat_user_hidden", "data": {
+                    "platform": platform, "id": user_id, "username": username,
+                    "display_name": display_name or username}})
+            except Exception:
+                log.exception("chat_user_hidden WS broadcast failed")
+        return len(gone)
+
     async def _on_user_update(self, payload: dict) -> None:
         """{"platform", "id", "username", "profile_image_url"} → WS ``type:user_update``.
         Core adds ``avatar_local`` (its own copy) and drops hidden chatters' pictures."""
@@ -1167,6 +1216,10 @@ class StreamCore:
                                                   "profile_image_url": "", "avatar_local": ""})
 
     async def _on_alert(self, payload: dict) -> None:
+        if not payload.get("is_test") and self.red_flags.hides(
+                str(payload.get("platform") or ""), "", str(payload.get("username") or "")):
+            log.info("[alert/%s] hidden: %s is red-flagged", payload.get("kind"), payload.get("username"))
+            return
         if payload.get("source") == "platform":
             # Sub / resub / gift from an adapter: adapters don't see overlay settings.
             ov = self.config.get("overlay") or {}

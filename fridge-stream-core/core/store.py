@@ -98,7 +98,28 @@ CREATE TABLE IF NOT EXISTS stream_attendance (
     PRIMARY KEY (user_id, stream_id)
 );
 CREATE INDEX IF NOT EXISTS idx_attendance_user ON stream_attendance(user_id, stream_id DESC);
+
+-- Red flags (core/red_flags.py): chatters kept off the overlays. platform '' = a name flagged
+-- by hand on every platform; username is lower-case.
+CREATE TABLE IF NOT EXISTS red_flagged (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    platform         TEXT NOT NULL DEFAULT '',
+    platform_user_id TEXT NOT NULL DEFAULT '',
+    username         TEXT NOT NULL DEFAULT '',
+    display_name     TEXT NOT NULL DEFAULT '',
+    phrase           TEXT NOT NULL DEFAULT '',
+    message          TEXT NOT NULL DEFAULT '',
+    source           TEXT NOT NULL DEFAULT 'phrase',
+    flagged_at       REAL NOT NULL
+);
 """
+
+# chat_messages row is from a red-flagged chatter (same rule as RedFlags.is_flagged)
+FLAGGED_SQL = (
+    "EXISTS (SELECT 1 FROM red_flagged f WHERE (f.platform='' OR f.platform=chat_messages.platform) AND ("
+    "(f.platform_user_id!='' AND f.platform_user_id=chat_messages.platform_user_id) OR "
+    "(f.username!='' AND (f.username=lower(chat_messages.username) OR f.username=lower(chat_messages.display_name)))))"
+)
 
 
 # platform_user_id for identities created from an alert that only had a name
@@ -118,11 +139,18 @@ class Store:
         self.enabled = bool(cfg.get("enabled", False))
         self.per_message = int(cfg.get("per_message", 1))
         self.cooldown_sec = float(cfg.get("cooldown_sec", 30))
-        log_cfg = chat_log_cfg or {}
-        self.log_chat = bool(log_cfg.get("enabled", False))
+        self.log_chat = False
+        self.log_only_flagged = False   # chat_log.only_flagged: keep just red-flagged chatters' lines
+        self.configure_chat_log(chat_log_cfg)
         self._last_award: dict[int, float] = {}  # user_id -> last award time
         self._lock = asyncio.Lock()
         self._init_db()
+
+    def configure_chat_log(self, cfg: dict | None) -> None:
+        """Follow ``chat_log:`` in config (admin save applies it without a restart)."""
+        cfg = cfg if isinstance(cfg, dict) else {}
+        self.log_chat = bool(cfg.get("enabled", False))
+        self.log_only_flagged = bool(cfg.get("only_flagged", False))
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
@@ -319,8 +347,10 @@ class Store:
             conn.commit()
             return new_bal
 
-    async def process_chat(self, event: ChatEvent) -> dict:
-        """Ensure user exists, optionally log message, maybe award chat points."""
+    async def process_chat(self, event: ChatEvent, award: bool = True, flagged: bool = False) -> dict:
+        """Ensure user exists, optionally log message, maybe award chat points
+        (``flagged``: a red-flagged chatter, logged even with ``chat_log.only_flagged``;
+        ``award`` False: they earn nothing)."""
         platform = event.platform.value
         uid = await self.get_or_create_user(
             platform,
@@ -328,12 +358,13 @@ class Store:
             event.user.username,
             event.user.display_name,
         )
-        if self.log_chat:
+        logged = self.log_chat and (flagged or not self.log_only_flagged)
+        if logged:
             await self._run(self._log_chat_sync, event, uid)
 
         awarded = 0
         balance = None
-        if self.enabled and self.per_message > 0:
+        if award and self.enabled and self.per_message > 0:
             now = time.time()
             last = self._last_award.get(uid, 0)
             if now - last >= self.cooldown_sec:
@@ -348,7 +379,7 @@ class Store:
                 awarded = self.per_message
 
         await self.record_stream_day(uid)
-        return {"user_id": uid, "awarded": awarded, "balance": balance, "logged": self.log_chat}
+        return {"user_id": uid, "awarded": awarded, "balance": balance, "logged": logged}
 
     def _record_stream_day_sync(self, user_id: int, day: str) -> None:
         with self._connect() as conn:
@@ -768,6 +799,7 @@ class Store:
         q: str = "",
         limit: int = 200,
         offset: int = 0,
+        flagged_only: bool = False,
     ) -> list[dict]:
         clauses = []
         args: list[Any] = []
@@ -780,11 +812,14 @@ class Store:
         if q:
             clauses.append("lower(message) LIKE ?")
             args.append(f"%{q.lower()}%")
+        if flagged_only:
+            clauses.append(FLAGGED_SQL)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         args.extend([limit, offset])
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT * FROM chat_messages {where} ORDER BY timestamp DESC LIMIT ? OFFSET ?",
+                f"SELECT *, {FLAGGED_SQL} AS flagged FROM chat_messages {where} "
+                "ORDER BY timestamp DESC LIMIT ? OFFSET ?",
                 args,
             ).fetchall()
             return [dict(r) for r in rows]
@@ -796,8 +831,65 @@ class Store:
         q: str = "",
         limit: int = 200,
         offset: int = 0,
+        flagged_only: bool = False,
     ) -> list[dict]:
-        return await self._run(self._search_chat_sync, user_id, platform, q, limit, offset)
+        return await self._run(self._search_chat_sync, user_id, platform, q, limit, offset, flagged_only)
+
+    # ------------------------------------------------------------------
+    # Red flags (core/red_flags.py keeps the lookup; this is the table)
+    # ------------------------------------------------------------------
+
+    def list_red_flagged_sync(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT f.*, (SELECT COUNT(*) FROM chat_messages c WHERE c.platform=f.platform "
+                "AND f.platform_user_id!='' AND c.platform_user_id=f.platform_user_id) AS messages "
+                "FROM red_flagged f ORDER BY flagged_at DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def _add_red_flag_sync(self, row: dict) -> dict:
+        with self._connect() as conn:
+            # one row per person: the same account (or name) again only refreshes nothing
+            if row["platform_user_id"]:
+                found = conn.execute(
+                    "SELECT * FROM red_flagged WHERE platform=? AND platform_user_id=?",
+                    (row["platform"], row["platform_user_id"]),
+                ).fetchone()
+            else:
+                found = conn.execute(
+                    "SELECT * FROM red_flagged WHERE platform=? AND platform_user_id='' AND username=?",
+                    (row["platform"], row["username"]),
+                ).fetchone()
+            if found:
+                return dict(found)
+            cur = conn.execute(
+                "INSERT INTO red_flagged (platform, platform_user_id, username, display_name, phrase, message, source, flagged_at) "
+                "VALUES (?,?,?,?,?,?,?,?)",
+                (row["platform"], row["platform_user_id"], row["username"], row["display_name"],
+                 row["phrase"], row["message"], row["source"], time.time()),
+            )
+            conn.commit()
+            return dict(conn.execute("SELECT * FROM red_flagged WHERE id=?", (cur.lastrowid,)).fetchone())
+
+    async def add_red_flag(self, *, platform: str, platform_user_id: str, username: str, display_name: str,
+                           phrase: str = "", message: str = "", source: str = "phrase") -> dict:
+        row = {"platform": platform, "platform_user_id": platform_user_id, "username": username,
+               "display_name": display_name[:120], "phrase": phrase[:200], "message": message[:500],
+               "source": source}
+        return await self._run(self._add_red_flag_sync, row)
+
+    def _remove_red_flag_sync(self, flag_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            found = conn.execute("SELECT * FROM red_flagged WHERE id=?", (flag_id,)).fetchone()
+            if not found:
+                return None
+            conn.execute("DELETE FROM red_flagged WHERE id=?", (flag_id,))
+            conn.commit()
+            return dict(found)
+
+    async def remove_red_flag(self, flag_id: int) -> Optional[dict]:
+        return await self._run(self._remove_red_flag_sync, flag_id)
 
     def _export_chat_csv_sync(self, user_id: Optional[int] = None) -> str:
         rows = self._search_chat_sync(user_id=user_id, limit=1_000_000, offset=0)

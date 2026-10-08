@@ -214,6 +214,20 @@ class CreditsEngine:
         log.info("Credits new chatter [%s] %s", plat, chatter.display_name)
         return chatter
 
+    def forget(self, platform: str, *names: str) -> bool:
+        """Take a chatter off the roll (red-flagged). ``platform`` "" = every platform."""
+        want = {str(n).lower().strip() for n in names if n}
+        drop = [
+            k for k, c in self.chatters.items()
+            if (not platform or c.platform == platform)
+            and want & {c.username.lower(), (c.display_name or "").lower()}
+        ]
+        for k in drop:
+            del self.chatters[k]
+        if drop:
+            self._dirty = True
+        return bool(drop)
+
     def reset(self) -> None:
         self.chatters.clear()
         self.started_at = time.time()
