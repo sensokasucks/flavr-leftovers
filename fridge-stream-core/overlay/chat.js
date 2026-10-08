@@ -150,7 +150,8 @@
 
   function avatarHtml(user) {
     if (!effective().avatars) return "";
-    const url = user.profile_image_url;
+    // Core's own copy first (/avatars/...), the platform's link until Core has it
+    const url = user.avatar_local || user.profile_image_url;
     const attrs = url ? ` src="${escapeHtml(url)}"` : ` hidden`;
     return `<img class="avatar"${attrs} alt="" loading="lazy" />`;
   }
@@ -243,12 +244,20 @@
     if (preview && !logEl.children.length) showSample();
   }
 
-  // a later user_update (Kick / Twitch picture lookups) fills the avatar in
+  // a later user_update fills the avatar in: the platform's link (Kick / Twitch lookups),
+  // then Core's saved copy; "hidden" (the chatter went on the hide list) takes it away
   function userUpdate(data) {
-    if (!data || !data.id || !data.profile_image_url) return;
+    if (!data || !data.id) return;
+    const url = data.avatar_local || data.profile_image_url;
+    if (!url && !data.hidden) return;
     const sel = `[data-platform="${CSS.escape(String(data.platform || ""))}"][data-user-id="${CSS.escape(String(data.id))}"] .avatar`;
     logEl.querySelectorAll(sel).forEach((img) => {
-      img.src = data.profile_image_url;
+      if (data.hidden || !url) {
+        img.removeAttribute("src");
+        img.hidden = true;
+        return;
+      }
+      img.src = url;
       img.hidden = false;
     });
   }

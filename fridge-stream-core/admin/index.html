@@ -1238,6 +1238,16 @@
           <input id="cfg-yt-apikey" type="text" autocomplete="off" placeholder="AIza…" />
         </label>
       </fieldset>
+
+      <fieldset class="cfg-card" id="av-card">
+        <legend>Chatter profile pictures</legend>
+        <p class="hint">Core saves each chatter's picture once (in <code>data\avatars</code>) and serves it to the chat overlay, other overlays and Stream Rooms. The per-platform "Chatter profile pictures" ticks above decide whether Core looks pictures up at all.</p>
+        <label class="check" title="Off = overlays load pictures from Kick / Twitch / YouTube directly"><input id="cfg-av-save-local" type="checkbox" /> Save pictures in Core</label>
+        <label>Never show a picture for <span class="field-help">One name per line. <code>kick:name</code> = only on that platform. Stream Rooms adds its own list here when it connects.</span>
+          <textarea id="cfg-av-hide" rows="4" spellcheck="false" placeholder="some_bot&#10;kick:someone"></textarea>
+        </label>
+        <p class="hint" id="av-info"></p>
+      </fieldset>
     </div>
       </div>
     </details>

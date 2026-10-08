@@ -53,6 +53,7 @@ try:
     from core.store import Store
     from core.local_guard import is_placeholder_token, resolve_admin_token
     from core.credits import CreditsEngine
+    from core.avatar_store import AvatarStore
     from core.market import MarketTape
     from core.reactions import ReactionEngine
     from core.reaction_images import ReactionImages
@@ -154,6 +155,14 @@ class StreamCore:
         )
         self.state.chat_games = self.chat_games
         self.credits.extra = self._credits_extra
+        # Chatter profile pictures saved by Core and served at /avatars/... (core/avatar_store.py)
+        self.avatars = AvatarStore()
+        self._avatars_cfg: dict = {}
+        self.avatars.configure(config.get("avatars") or {})
+        self._avatars_cfg = copy.deepcopy(config.get("avatars") or {})
+        self.state.avatars = self.avatars
+        self.state.apply_avatar_settings = self.apply_avatar_settings
+        self.state.import_avatar_hide = self.import_avatar_hide
 
         self._metrics_task: asyncio.Task | None = None
         self._market_task: asyncio.Task | None = None
@@ -521,6 +530,7 @@ class StreamCore:
 
         for name in list(self.adapters):
             await self._stop_platform(name)
+        self.avatars.stop()
         for game in self.games.values():
             await game.stop()
         log.info("Stream Core stopped")
@@ -536,6 +546,11 @@ class StreamCore:
         except Exception:
             log.exception("chat games attendance failed")
         title = self.chat_games.title_for(event.user)
+        await self.apply_avatar_settings()
+        plat = event.platform.value
+        hidden = self.avatars.is_hidden(plat, event.user.username, event.user.display_name)
+        picture = None if hidden else event.user.profile_image_url
+        local = "" if hidden else self.avatars.local_url(plat, str(event.user.id))
         # Always push to chat overlay clients (emotes live in the raw message text)
         payload = {
             "type": "chat",
@@ -551,7 +566,9 @@ class StreamCore:
                     "username": event.user.username,
                     "display_name": event.user.display_name,
                     "color": event.user.color,
-                    "profile_image_url": event.user.profile_image_url,
+                    "profile_image_url": picture,
+                    # Core's own copy (/avatars/...), "" until it's downloaded
+                    "avatar_local": local,
                     "is_mod": event.user.is_mod,
                     "is_vip": event.user.is_vip,
                     "is_subscriber": event.user.is_subscriber,
@@ -563,6 +580,9 @@ class StreamCore:
             },
         }
         self.recent_chat.append(payload["data"])
+        if not hidden:
+            self.avatars.note(plat, str(event.user.id), event.user.profile_image_url or "",
+                              event.user.username, event.user.display_name, on_ready=self._avatar_ready)
         if len(self.recent_chat) > self.recent_chat_max:
             del self.recent_chat[:-self.recent_chat_max]
 
@@ -1070,18 +1090,87 @@ class StreamCore:
         }
 
     async def _on_user_update(self, payload: dict) -> None:
-        """{"platform", "id", "username", "profile_image_url"} → WS ``type:user_update``."""
+        """{"platform", "id", "username", "profile_image_url"} → WS ``type:user_update``.
+        Core adds ``avatar_local`` (its own copy) and drops hidden chatters' pictures."""
+        plat = str(payload.get("platform") or "")
+        uid = str(payload.get("id") or "")
+        await self.apply_avatar_settings()
+        if self.avatars.is_hidden(plat, str(payload.get("username") or ""), str(payload.get("display_name") or "")):
+            return
+        payload["avatar_local"] = self.avatars.local_url(plat, uid)
+        self.avatars.note(plat, uid, str(payload.get("profile_image_url") or ""),
+                          str(payload.get("username") or ""), str(payload.get("display_name") or ""),
+                          on_ready=self._avatar_ready)
+        await self._send_user_update(payload)
+
+    async def _send_user_update(self, payload: dict) -> None:
         plat = payload.get("platform")
         uid = str(payload.get("id") or "")
         for item in self.recent_chat:
             user = item.get("user") or {}
             if item.get("platform") == plat and str(user.get("id") or "") == uid:
-                user["profile_image_url"] = payload.get("profile_image_url")
+                for k in ("profile_image_url", "avatar_local"):
+                    if k in payload:
+                        user[k] = payload.get(k)
         if self.state.ws_manager:
             try:
                 await self.state.ws_manager.broadcast({"type": "user_update", "data": payload})
             except Exception:
                 log.exception("user_update WS broadcast failed")
+
+    async def _avatar_ready(self, platform: str, user_id: str, local: str) -> None:
+        """Core saved a chatter's picture: overlays and Stream Rooms switch to the local copy."""
+        info = self.avatars.entry(platform, user_id)
+        await self._send_user_update({"platform": platform, "id": user_id, "username": info.get("login") or "",
+                                      "profile_image_url": info.get("url") or "", "avatar_local": local})
+
+    async def import_avatar_hide(self, names: list) -> int:
+        """Stream Rooms hands over its "hide pictures for" names: add the new ones to
+        ``avatars.hide`` in config.yaml (merge, nothing removed). Returns how many were new."""
+        from core.avatar_store import parse_hide
+        from core.config import save_config
+
+        try:
+            cfg = load_config()         # merge into what is on disk, like every config save
+        except Exception:
+            cfg = copy.deepcopy(getattr(self.state, "config", None) or self.config)
+        section = dict(cfg.get("avatars") or {})
+        have = list(section.get("hide") or [])
+        known = set(parse_hide(have))
+        added = 0
+        for p, n in parse_hide(names[:500] if isinstance(names, list) else []):
+            if (p, n) in known or ("", n) in known:
+                continue
+            have.append(f"{p}:{n}" if p else n)
+            known.add((p, n))
+            added += 1
+        if not added:
+            return 0
+        section["hide"] = have
+        cfg["avatars"] = section
+        self.state.config = cfg
+        try:
+            save_config(cfg)
+        except Exception:
+            log.exception("could not save avatars.hide")
+        log.info("Added %d name(s) from Stream Rooms to the picture hide list", added)
+        await self.apply_avatar_settings()
+        return added
+
+    async def apply_avatar_settings(self) -> None:
+        """Follow ``avatars:`` in config (admin save, hand edit). Chatters who just went on the
+        hide list lose their picture everywhere right away."""
+        cfg = (getattr(self.state, "config", None) or self.config).get("avatars") or {}
+        if cfg == self._avatars_cfg:
+            return
+        before = set(self.avatars.hide_list)
+        self.avatars.configure(cfg)
+        self._avatars_cfg = copy.deepcopy(cfg)
+        if set(self.avatars.hide_list) - before:
+            for u in self.avatars.known_users():
+                if self.avatars.is_hidden(u["platform"], u["login"], u["name"]):
+                    await self._send_user_update({"platform": u["platform"], "id": u["id"], "hidden": True,
+                                                  "profile_image_url": "", "avatar_local": ""})
 
     async def _on_alert(self, payload: dict) -> None:
         if payload.get("source") == "platform":

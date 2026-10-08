@@ -424,6 +424,16 @@ def create_app(core_state: "CoreState") -> FastAPI:
                     msg = json.loads(data)
                 except ValueError:
                     continue
+                if isinstance(msg, dict) and msg.get("type") == "avatars_hide_import":
+                    # Stream Rooms' "hide pictures for these names" list: merged into Core's
+                    importer = getattr(core_state, "import_avatar_hide", None)
+                    data = msg.get("data") if isinstance(msg.get("data"), dict) else {}
+                    if importer is not None:
+                        try:
+                            await importer(data.get("names") or [])
+                        except Exception:
+                            log.exception("avatar hide import failed")
+                    continue
                 reactions = getattr(core_state, "reactions", None)
                 if reactions is not None and isinstance(msg, dict):
                     try:
@@ -480,6 +490,34 @@ def create_app(core_state: "CoreState") -> FastAPI:
         if path is None:
             raise HTTPException(404, "No such reaction image")
         return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
+
+    # ------------------------------------------------------------------
+    # Chatter profile pictures (core/avatar_store.py)
+    # ------------------------------------------------------------------
+
+    @app.get("/avatars/{platform}/{file_name}")
+    async def avatar_file(platform: str, file_name: str):
+        store = getattr(core_state, "avatars", None)
+        path = store.file_path(platform, file_name) if store else None
+        if path is None:
+            raise HTTPException(404, "No such picture")
+        # the URL carries ?v=<time>, so a new picture gets a new URL
+        return FileResponse(path, headers={"Cache-Control": "public, max-age=604800"})
+
+    @app.get("/api/chatters/avatar")
+    async def chatter_avatar(name: str = "", platform: str = "", redirect: int = 0):
+        """A chatter's picture by login or display name, for overlays that only know a name
+        (reactions, polls, credits). ``redirect=1`` answers with the picture itself."""
+        store = getattr(core_state, "avatars", None)
+        found = store.find(name, platform) if store else None
+        if not found:
+            raise HTTPException(404, "No picture for that chatter")
+        if redirect:
+            target = found["avatar_local"] or found["profile_image_url"]
+            if not target:
+                raise HTTPException(404, "No picture for that chatter")
+            return RedirectResponse(target, status_code=302)
+        return found
 
     @app.get("/api/credits/theme")
     async def credits_theme():
@@ -557,3 +595,6 @@ class CoreState:
         self.core = None
         self.reactions = None
         self.chat_games = None
+        self.avatars = None
+        self.apply_avatar_settings = None
+        self.import_avatar_hide = None

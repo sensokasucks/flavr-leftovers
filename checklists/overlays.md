@@ -19,6 +19,7 @@ Core (:3850):
 | `/overlay/openttd-ticker.html` | OpenTTD ticker |
 | `/overlay/replies.html` | Command replies (Core's API-free reply path; `?force=1` ignores `overlay.replies_enabled`) |
 | `/overlay/reactions.html` | Chat reactions fallback (see [reactions.md](reactions.md)) |
+| `/avatars/<platform>/<file>` | Chatter pictures Core saved (not a source; overlays and Stream Rooms load them). By name: `/api/chatters/avatar?name=` |
 
 - [ ] Stats widgets are selectable: Admin → Config → Overlay (`overlay.modules`) **and** URL query `?show=` / `?hide=` (query wins).
 - [ ] Default modules: health, food, xp, deaths, armor, viewers, cpm, power, effects, inventory.

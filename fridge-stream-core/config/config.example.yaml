@@ -52,6 +52,12 @@ youtube:
   video_id: ""                   # current live video id (required for innertube; recommended for official)
   # live_chat_id: ""             # optional override for official mode
 
+# Chatter profile pictures, saved by Core and served to every overlay + Stream Rooms
+# (data/avatars/, http://127.0.0.1:3850/avatars/...). Also in Admin -> Settings -> Core + chat platforms.
+avatars:
+  save_local: true               # false = overlays load pictures from the platforms directly
+  hide: []                       # names whose picture is never shown, e.g. ["nightbot", "kick:someone"]
+
 # --- Games ---------------------------------------------------------------
 
 minecraft:
