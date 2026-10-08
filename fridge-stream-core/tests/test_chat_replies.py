@@ -82,6 +82,20 @@ class TwitchReplies(unittest.TestCase):
         run(rig.adapter._on_line(None, plain))
         self.assertIsNone(rig.chat[1].reply_to)
 
+    def test_emotes_move_with_dropped_mention(self):
+        rig = Rig(TwitchAdapter, {"twitch": {"channel": "fridge", "third_party_emotes": False}})
+        # "@daxtcrowleyvt " is 15 characters; Twitch counts emote positions from the "@"
+        text = "@daxtcrowleyvt grimmi14Clap grimmi14Clap"
+        line = ("@display-name=Hes;user-id=4;emotes=123:15-26,28-39;reply-parent-msg-id=abc;"
+                "reply-parent-display-name=daxtcrowleyvt;reply-parent-user-login=daxtcrowleyvt;"
+                "reply-parent-msg-body=Pippa :hes!hes@hes.tmi.twitch.tv PRIVMSG #fridge :" + text)
+        run(rig.adapter._on_line(None, line))
+        e = rig.chat[0]
+        self.assertEqual(e.message, "grimmi14Clap grimmi14Clap")
+        self.assertEqual([(m["start"], m["end"]) for m in e.emotes], [(0, 11), (13, 24)])
+        for m in e.emotes:
+            self.assertEqual(e.message[m["start"]:m["end"] + 1], "grimmi14Clap")
+
 
 if __name__ == "__main__":
     unittest.main()
