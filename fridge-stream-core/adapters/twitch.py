@@ -83,6 +83,22 @@ def strip_reply_mention(msg: str, reply_to: Optional[dict]) -> str:
     return msg
 
 
+def shift_emotes(emotes: list[dict], original: str, stripped: str) -> list[dict]:
+    """Emote positions point into the message as sent. Once the "@Name " reply prefix is
+    dropped they must move left by its length, or the picture lands mid-word."""
+    if stripped == original:
+        return emotes
+    cut = original.find(stripped, original.find(" ") + 1)
+    if cut < 0:
+        return []
+    out = []
+    for e in emotes:
+        start, end = e.get("start", 0) - cut, e.get("end", 0) - cut
+        if start >= 0 and end < len(stripped):
+            out.append({**e, "start": start, "end": end})
+    return out
+
+
 def _int(raw: Any, default: int = 1) -> int:
     try:
         return max(1, int(raw))
@@ -246,8 +262,9 @@ class TwitchAdapter(BaseAdapter):
         display = tags.get("display-name") or nick
         reply_to = twitch_reply_to(tags)
         if reply_to:
-            msg = strip_reply_mention(msg, reply_to)
-            emotes = [e for e in emotes if e.get("start", 0) < len(msg)]
+            stripped = strip_reply_mention(msg, reply_to)
+            emotes = shift_emotes(emotes, msg, stripped)
+            msg = stripped
         badges = (tags.get("badges") or "").split(",")
         badge_names = [b.split("/")[0] for b in badges if b]
         user = ChatUser(
