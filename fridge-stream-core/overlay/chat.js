@@ -204,6 +204,8 @@
     row.dataset.sender = login;
     if (user.id != null) row.dataset.userId = String(user.id);
     if (data.is_paid) row.classList.add("paid");
+    // Twitch channel-point styles: .highlighted (Highlight My Message), .gigantified, .animated
+    if (["highlighted", "gigantified", "animated"].includes(data.highlight)) row.classList.add(data.highlight);
     if (data.is_system) row.classList.add("system");
     // a reply made with the platform's reply button: "Replying to Name: what they said"
     let replyHtml = "";
@@ -269,6 +271,7 @@
       { platform: "twitch", user: { username: "pixelpirate", display_name: "PixelPirate", color: "#bf94ff", is_mod: true }, message: "the curtain reveal was clean" },
       { platform: "youtube", user: { username: "marblemoth", display_name: "MarbleMoth", color: "#ff4e45" }, message: "love the podium lights" },
       { platform: "twitch", user: { username: "velvet_vole", display_name: "velvet_vole", color: "#e0a040", is_vip: true }, message: "this is what the chat overlay looks like", reply_to: { user: "MarbleMoth", message: "love the podium lights" } },
+      { platform: "twitch", user: { username: "oat_otter", display_name: "oat_otter", color: "#7fd1ff" }, message: "this one was highlighted with channel points", highlight: "highlighted" },
     ];
     historyLoading = true;
     rows.forEach(appendMessage);

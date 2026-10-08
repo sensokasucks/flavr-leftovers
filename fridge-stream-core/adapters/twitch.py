@@ -73,6 +73,19 @@ def twitch_reply_to(tags: dict[str, str]) -> Optional[dict]:
     return {"user": who, "message": (tags.get("reply-parent-msg-body") or "")[:200], "message_id": parent_id}
 
 
+# PRIVMSG msg-id values for messages bought with channel points
+HIGHLIGHT_KINDS = {
+    "highlighted-message": "highlighted",
+    "gigantified-emote-message": "gigantified",
+    "animated-message": "animated",
+}
+
+
+def twitch_highlight(tags: dict[str, str]) -> Optional[str]:
+    """Channel-point message styles ("Highlight My Message" etc.) → ChatEvent.highlight."""
+    return HIGHLIGHT_KINDS.get(tags.get("msg-id") or "")
+
+
 def strip_reply_mention(msg: str, reply_to: Optional[dict]) -> str:
     """A Twitch reply starts with "@Name ": drop it, the "Replying to" line says who."""
     if not reply_to or not msg.startswith("@"):
@@ -306,5 +319,6 @@ class TwitchAdapter(BaseAdapter):
                 paid_currency="bits" if bits else None,
                 is_paid=bits > 0,
                 reply_to=reply_to,
+                highlight=twitch_highlight(tags),
             )
         )

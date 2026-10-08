@@ -565,6 +565,12 @@ class StreamCore:
                 },
                 # a reply made with the platform's reply button: who it answers and a short quote
                 "reply_to": event.reply_to,
+                # Super Chat / Kicks / Bits: the overlay and Stream Rooms mark these
+                "is_paid": event.is_paid,
+                "paid_amount": event.paid_amount,
+                "paid_currency": event.paid_currency,
+                # Twitch channel-point styles: "highlighted" / "gigantified" / "animated" / None
+                "highlight": event.highlight,
             },
         }
         self.recent_chat.append(payload["data"])

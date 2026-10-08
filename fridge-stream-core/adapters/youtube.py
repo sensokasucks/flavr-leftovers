@@ -25,6 +25,7 @@ import httpx
 
 from adapters.base import BaseAdapter
 from adapters.youtube_avatar import best_photo
+from adapters.youtube_capture import FieldScout
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
@@ -115,6 +116,8 @@ class YouTubeAdapter(BaseAdapter):
         self._page_token = ""
         self._seen_ids: set[str] = set()
         self._seen_max = 500
+        # notes chat data YouTube added that Core doesn't read yet (data/youtube_new_fields.jsonl)
+        self.scout = FieldScout()
 
     async def start(self) -> None:
         if not self.video_id and not self.live_chat_id:
@@ -469,15 +472,18 @@ class YouTubeAdapter(BaseAdapter):
         return next_cont, interval
 
     async def _on_innertube_action(self, action: dict) -> None:
+        self.scout.check_action(action)
         item = (action.get("addChatItemAction") or {}).get("item")
         if not item:
             replay = action.get("replayChatItemAction") or {}
             for sub in replay.get("actions") or []:
+                self.scout.check_action(sub)
                 item = (sub.get("addChatItemAction") or {}).get("item")
                 if item:
                     break
         if not isinstance(item, dict):
             return
+        self.scout.check_item(item)
 
         gift = item.get("liveChatSponsorshipsGiftPurchaseAnnouncementRenderer")
         if isinstance(gift, dict):
