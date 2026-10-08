@@ -31,7 +31,7 @@ Claude Code: open this folder and it will load **[CLAUDE.md](CLAUDE.md)** (point
 
 | Folder | What it is | Default port |
 |--------|------------|--------------|
-| [fridge-stream-core](fridge-stream-core/) | Chat backbone (Kick / Twitch / YouTube opt-in adapters) → event bus → commands / points / admin → games | 3850 |
+| [fridge-stream-core](fridge-stream-core/) | Chat backbone (Kick / Twitch / YouTube opt-in adapters) → event bus → commands / points / admin → game plugins (`plugins/`) | 3850 |
 | [fridge-minecraft](fridge-minecraft/) | Fabric client + server mods that Stream Core talks to | 3852 / 3853 |
 | [fridge-chat-credits](fridge-chat-credits/) | Unique-chatter credits roll + control desk | 3854 |
 | [fridge-factorio-stats](fridge-factorio-stats/) | Factorio overlays + Chat Dynamo (stream power) | 3847 |

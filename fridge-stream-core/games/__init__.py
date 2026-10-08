@@ -1,9 +1,4 @@
-"""Game integrations registered with Stream Core.
+"""Old home of the game integrations. They are plugins now: see plugins/ and docs/PLUGINS.md.
 
-Add a new game by:
-  1. Implementing BaseGameIntegration in games/<id>.py
-  2. Listing the id here
-  3. Starting it from main.py when config.<id>.enabled is true
+Kept for one release so outside code importing games.base keeps working.
 """
-
-KNOWN_GAMES = ("minecraft", "factorio", "granvir", "openttd")

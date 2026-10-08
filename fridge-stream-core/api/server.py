@@ -16,7 +16,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Set
 
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -194,21 +194,12 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return out
 
     # ------------------------------------------------------------------
-    # Minecraft / game-facing helpers (kept for compatibility)
+    # Overlay "update" payload (metrics overlay + game plugins' extras)
     # ------------------------------------------------------------------
 
     async def build_state() -> dict:
-        """Combined payload the overlay expects."""
-        stats = {}
-        inventory = None
-        show_inv = False
-        mc = (core_state.games or {}).get("minecraft")
-        if mc and hasattr(mc, "fetch_client_stats"):
-            stats = await mc.fetch_client_stats() or {}
-            if stats.get("inventory"):
-                inventory = stats["inventory"]
-                show_inv = True
-
+        """Combined payload the overlays expect. Game plugins add their keys
+        (Minecraft: stats / inventory, OpenTTD: openttd) through state_fragment()."""
         metrics = {}
         if core_state.metrics:
             snap = core_state.metrics.snapshot()
@@ -219,50 +210,45 @@ def create_app(core_state: "CoreState") -> FastAPI:
                 "command_rate": snap.command_rate,
             }
 
-        ottd = {}
-        ot = (core_state.games or {}).get("openttd")
-        if ot and hasattr(ot, "snapshot"):
-            try:
-                ottd = ot.snapshot() or {}
-            except Exception:
-                ottd = {}
-
         ov = (getattr(core_state, "config", None) or {}).get("overlay") or {}
         modules = dict((ov.get("modules") or {}))
-        return {
+        payload = {
             "type": "update",
-            "stats": stats,
+            "stats": {},
             "metrics": metrics,
-            "showInventory": show_inv,
-            "inventory": inventory,
-            "openttd": ottd,
+            "showInventory": False,
+            "inventory": None,
             "overlay": {
                 "modules": modules,
                 "show_inventory_seconds": ov.get("show_inventory_seconds", 12),
             },
         }
+        plugins = getattr(core_state, "plugins", None)
+        if plugins is not None:
+            extra = await plugins.state_fragments()
+            extra.pop("type", None)
+            extra.pop("metrics", None)
+            extra.pop("overlay", None)
+            payload.update(extra)
+        return payload
 
     # expose helper so main.py can push rich updates
     core_state.build_state = build_state
-
-    @app.get("/api/stats")
-    async def proxy_stats():
-        """Proxy live player stats from the Minecraft client mod when available."""
-        mc = (core_state.games or {}).get("minecraft")
-        if mc and hasattr(mc, "fetch_client_stats"):
-            return await mc.fetch_client_stats()
-        return {}
 
     @app.get("/api/state")
     async def full_state():
         return await build_state()
 
-    @app.get("/api/openttd/state")
-    async def openttd_state():
-        ot = (core_state.games or {}).get("openttd")
-        if ot and hasattr(ot, "snapshot"):
-            return ot.snapshot()
-        return {"connected": False, "companies": [], "error": "openttd integration not running"}
+    # Game plugins' own routes (/api/stats for Minecraft, /api/openttd/state ...): registered for
+    # every installed plugin, so they answer "not running" while the game is off.
+    plugins = getattr(core_state, "plugins", None)
+    if plugins is not None:
+        plugin_router = APIRouter()
+        plugins.register_routes(
+            plugin_router,
+            lambda pid: (lambda: (core_state.games or {}).get(pid)),
+        )
+        app.include_router(plugin_router)
 
     def _market():
         tape = getattr(core_state, "market", None)
@@ -334,18 +320,22 @@ def create_app(core_state: "CoreState") -> FastAPI:
         cfg = (getattr(core_state, "config", None) or {}).get("market") or {}
         body = payload or {}
         symbol = str(body.get("symbol") or "").upper().strip()
+        # Older Factorio bridges send no game name; the plugin that owns the book fills the gaps
         game = str(body.get("game") or body.get("book") or "factorio").strip()
+        if game.startswith("game:"):
+            game = game[5:]
+        plugins = getattr(core_state, "plugins", None)
+        hints = plugins.dividend_defaults(game, body, cfg) if plugins is not None else {}
         if not symbol:
-            if game == "factorio":
-                symbol = "FACT" if str(body.get("unit") or "") == "items" else "PWR"
-            else:
+            symbol = str(hints.get("symbol") or "").upper().strip()
+            if not symbol:
                 raise HTTPException(400, "symbol required")
         work = float(body.get("work") or 0)
         unit = str(body.get("unit") or "mj").lower()
         reason = str(body.get("reason") or "vault")
         rates = (cfg.get("points_per_unit") or {})
-        if game == "factorio":
-            rates = (cfg.get("factorio") or rates) if isinstance(cfg.get("factorio"), dict) else rates
+        if isinstance(hints.get("rates"), dict):
+            rates = hints["rates"]
         per = body.get("points")
         if per is None:
             default_rate = 0.02 if unit in ("mj", "joule", "j") else 1.0
@@ -549,7 +539,14 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     overlay_dir = Path(__file__).resolve().parent.parent / "overlay"
     if overlay_dir.is_dir():
-        app.mount("/overlay", StaticFiles(directory=str(overlay_dir), html=True), name="overlay")
+        overlay_files = StaticFiles(directory=str(overlay_dir), html=True)
+        # Game plugins' pages answer at /overlay/<file> too (Core's own files win on a name clash),
+        # so OBS sources like /overlay/openttd.html keep working after the move into plugins/.
+        from core import plugin_manifest
+
+        for extra in plugin_manifest.overlay_dirs():
+            overlay_files.all_directories.append(str(extra))
+        app.mount("/overlay", overlay_files, name="overlay")
 
         @app.get("/", response_class=HTMLResponse)
         async def root():
@@ -581,6 +578,7 @@ class CoreState:
         self.router = None
         self.adapters: Dict[str, Any] = {}
         self.games: Dict[str, Any] = {}
+        self.plugins = None      # core.plugins.PluginManager (game plugins)
         self.ws_manager: Optional[ConnectionManager] = None
         self.config: dict = {}
         self.build_state = None  # set by create_app

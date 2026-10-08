@@ -9,7 +9,8 @@ Tabs, in order:
 - [ ] **Status** — adapters, games, credits on/off + unique count, points on/off
 - [ ] **Sources & overlays** — copyable Webpage URLs + descriptions, including sibling Fridge apps
 - [ ] **Integrations** — command tester (dry-run / live), per-game sub-panels, health recheck, metrics test, overlay preview
-- [ ] **Market** — tape + per-game vault/dynamo knobs (see [market.md](market.md))
+- [ ] **Market** — tape + per-game vault/dynamo knobs (see [market.md](market.md)); one sub-page per game plugin with `market` fields, drawn from its `plugin.json`
+- [ ] **Settings → Game plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
 - [ ] **Credits** — enable, roll/loop/once/hold/once-then-clear, pause, restart, CSV download, live list over `/ws`, style editor, pins, preview (see [credits-core.md](credits-core.md))
 - [ ] **Alert test** — fire kinds + skin + custom CSS (see [alerts.md](alerts.md))
 - [ ] **Users & Points** — search, adjust, link identities, CSV
@@ -22,6 +23,7 @@ APIs that the tabs depend on must not disappear:
 - [ ] `POST /api/admin/commands/test`
 - [ ] `POST /api/admin/games/{id}/metrics-test`
 - [ ] `GET /api/admin/games/{id}/health`
+- [ ] `GET /api/admin/plugins`, `PUT /api/admin/plugins/{id}/settings` (manifest fields only, merged), `PUT /api/admin/market/settings`
 - [ ] `GET/PUT /api/admin/command-groups` + `POST .../reload`
 - [ ] `GET /api/admin/credits` including `cast` + the Credits write routes
 - [ ] Market admin routes used by the Market tab
@@ -48,7 +50,7 @@ Save rules:
 ## After-change verify
 
 - [ ] Every tab button in `index.html` has a matching panel and loader in `admin.js`.
-- [ ] Status still mentions each enabled game slot: Minecraft, Factorio, Granvir, OpenTTD.
+- [ ] Status still lists each installed game plugin (Minecraft, Factorio, Granvir, OpenTTD when installed) with running / config / error.
 - [ ] Sources list still includes chat, stats overlay, alerts, credits, market, OpenTTD, plus sibling ports 3847 / 3851 / 3854 / 3855.
 
 ## Navigation (2026-09 rebuild)
@@ -57,7 +59,7 @@ Save rules:
 - [ ] Flat sidebar, no collapsible groups. Settings sub-pages are sidebar items (`data-tab="config" data-sub="…"`); the config pill bar is hidden.
 - [ ] Pages with `.acc-stack[data-acc]` show one sub-page at a time (`showSub`); `data-aside` sections (Credits / Alerts preview) stay visible beside every sub-page.
 - [ ] Save config.yaml bar shows only on the yaml sub-pages (core, games, points, advanced); Reactions / groups / commands keep their own save buttons — and those stay **visible** (hide `.config-savebar` there, never every `.config-actions`).
-- [ ] Every page with settings has the **page save bar** (`.page-savebar`, admin.js "Page save bar"): Chat games, Credits, Alerts, Market, and Config → Reactions / Command groups / Chat commands. A new block of settings is added to its `sections` list (scope or fields + its own Save button or save function) — otherwise its edits are never flagged or saved by the bar / Ctrl+S.
+- [ ] Every page with settings has the **page save bar** (`.page-savebar`, admin.js "Page save bar"): Chat games, Credits, Alerts, Market, and Config → Reactions / Command groups / Chat commands. A new block of settings is added to its `sections` list (scope or fields + its own Save button or save function), or with `PAGE_SAVER.add(...)` when it is drawn later (game plugins' Market sub-pages) — otherwise its edits are never flagged or saved by the bar / Ctrl+S.
 - [ ] Unsaved edits: orange dot on the sidebar item and sub-page pill; leaving that page (sidebar, Back) asks first; closing the tab asks (`beforeunload`). Action / test fields are not sections.
 - [ ] Each block's own Save button keeps working; the bar clicks it (or calls its save function), and only clears a block when a write call succeeded (`apiWrites` / `apiFails` counters in `api()`).
 - [ ] Routes are `#page/sub`; Back works; last page + last sub per page remembered in localStorage.

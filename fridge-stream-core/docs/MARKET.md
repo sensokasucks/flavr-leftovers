@@ -31,7 +31,7 @@ adapters ── ChatEvent ──► Stream Core
                             ├─ command group `market`
                             └─ EventBus
                                  │
-                    games/* ─────┴── MarketBroker
+                  plugins/* ─────┴── MarketBroker
                                  │
                     game mods ── POST /api/market/signal
                                  POST /api/market/dividend
@@ -64,7 +64,7 @@ They coexist:
 
 - Keep `!invest` / `!quote` / `!companies` on group `openttd`.
 - Market uses **different tokens** so the router does not fight (`!buy`, `!sell`, `!tickers`, `!ticker`, `!portfolio`).
-- `games/openttd.py` may list the host company *and* AI companies on the market. That listing is a price feed + death/bankruptcy signals, not a second Chat Fund.
+- The OpenTTD plugin (`plugins/openttd/`) may list the host company *and* AI companies on the market. That listing is a price feed + death/bankruptcy signals, not a second Chat Fund.
 
 ## Currency and units
 

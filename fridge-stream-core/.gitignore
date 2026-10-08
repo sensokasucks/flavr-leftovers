@@ -14,3 +14,5 @@ data/
 overlay/assets/alerts/
 overlay/assets/chat/
 overlay/chat-settings.json
+.pytest_cache/
+dist/

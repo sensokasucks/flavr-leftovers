@@ -15,7 +15,7 @@ Core (:3850):
 | `/overlay/market.html` | Ticker tape |
 | `/overlay/market-board.html` | Board |
 | `/overlay/market-chart.html` | Chart |
-| `/overlay/openttd.html` | OpenTTD companies |
+| `/overlay/openttd.html` | OpenTTD companies (file in `plugins/openttd/overlay/`; plugin `overlay/` folders are served at `/overlay/` after Core's own) |
 | `/overlay/openttd-ticker.html` | OpenTTD ticker |
 | `/overlay/replies.html` | Command replies (Core's API-free reply path; `?force=1` ignores `overlay.replies_enabled`) |
 | `/overlay/reactions.html` | Chat reactions fallback (see [reactions.md](reactions.md)) |

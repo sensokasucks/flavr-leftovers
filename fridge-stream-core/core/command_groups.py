@@ -9,7 +9,7 @@ A group is active when:
   - `enabled` is true AND its optional `bind` is satisfied.
 
 `bind` ties a group to an integration / config section:
-  - bind: minecraft  → minecraft.enabled AND the game integration is running
+  - bind: <game>     → <game>.enabled AND that game plugin is running
   - bind: points     → points.enabled
   - bind: <section>  → that section's `enabled` flag
 
@@ -20,6 +20,8 @@ enabled + unbound, so they stay on until you add a catalog entry.
 from __future__ import annotations
 
 from typing import Any, Dict, Iterable, Optional, Set
+
+from core import plugin_manifest as _plugin_manifest
 
 DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
     "core": {
@@ -34,35 +36,11 @@ DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
         "bind": "points",
         "description": "Chat points (!points / !balance)",
     },
-    "minecraft": {
-        "enabled": True,
-        "always": False,
-        "bind": "minecraft",
-        "description": "Minecraft integration (!spawn, !give, …)",
-    },
-    "factorio": {
-        "enabled": True,
-        "always": False,
-        "bind": "factorio",
-        "description": "Factorio stats overlay (Fridge Factorio Stats bridge)",
-    },
     "credits": {
         "enabled": True,
         "always": False,
         "bind": "credits",
         "description": "End credits (!credit / !credits)",
-    },
-    "granvir": {
-        "enabled": True,
-        "always": False,
-        "bind": "granvir",
-        "description": "Granvir stats overlay (BepInEx bridge on :3855)",
-    },
-    "openttd": {
-        "enabled": True,
-        "always": False,
-        "bind": "openttd",
-        "description": "OpenTTD Admin Port + Chat Fund (!invest, !companies)",
     },
     "market": {
         "enabled": True,
@@ -84,8 +62,14 @@ DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
     },
 }
 
-# Game ids that must be running, not just enabled in config.
-GAME_BINDS = {"minecraft", "factorio", "granvir", "openttd"}
+# Game plugins add one group each (bound to the game running): plugins/<id>/plugin.json
+for _pid, _group in _plugin_manifest.group_defaults().items():
+    DEFAULT_GROUPS.setdefault(_pid, _group)
+
+
+def game_binds() -> Set[str]:
+    """Binds that need the game running, not just enabled in config (installed plugins + old game ids)."""
+    return _plugin_manifest.game_ids()
 
 
 def _norm_name(name: Any) -> str:
@@ -152,7 +136,7 @@ def bind_satisfied(
     if isinstance(section, dict) and "enabled" in section:
         enabled_flag = bool(section.get("enabled"))
 
-    if bind in GAME_BINDS or bind in running_games:
+    if bind in game_binds() or bind in running_games:
         if enabled_flag is False:
             return False, f"{bind}.enabled=false"
         if bind not in running_games:

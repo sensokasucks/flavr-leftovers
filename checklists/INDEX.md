@@ -13,6 +13,7 @@
 | Fridge Market | [market.md](market.md) | Tape, vaults, dividends, Market tab, game pricing |
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |
 | Overlays (shared) | [overlays.md](overlays.md) | Webpage sources, ports, query filters |
+| Game plugins | [plugins.md](plugins.md) | `plugins/`, `core/plugins.py`, `core/plugin_api.py`, `core/plugin_manifest.py`, Settings → Game plugins |
 | Minecraft | [minecraft.md](minecraft.md) | Fabric mods, NeoForge, dynamo/vault/chest, :3852/:3853 |
 | Factorio | [factorio.md](factorio.md) | Stats bridge :3847, Chat Dynamo, vaults |
 | Granvir | [granvir.md](granvir.md) | BepInEx plugin, mock :3855, host-only writes |
@@ -27,5 +28,5 @@
 | `core/config.py` or Config tab save | workshop-conventions, commands-permissions-groups, admin-hub, plus every feature whose YAML block you touch |
 | `admin/index.html` / `admin.js` | admin-hub + the tab’s feature file |
 | Overlay HTML/JS | overlays + that feature |
-| A game integration | that game + market (if it prices or pays) + commands-permissions-groups |
+| A game plugin | plugins + that game + market (if it prices or pays) + commands-permissions-groups |
 | New command token | commands-permissions-groups (conflicts / groups) |

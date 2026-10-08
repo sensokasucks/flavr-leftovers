@@ -7,6 +7,7 @@ Protected by a simple shared token from config (points.admin_token).
 
 from __future__ import annotations
 
+import copy
 import logging
 import time
 from pathlib import Path
@@ -24,6 +25,7 @@ from core.config import (
     save_commands,
     save_config,
 )
+from core import plugin_manifest
 from core.command_groups import catalog_status
 from core.local_guard import resolve_admin_token, token_matches
 from core.models import ChatEvent, ChatUser, Platform
@@ -153,6 +155,89 @@ class CreditsEnableBody(BaseModel):
     enabled: bool
 
 
+_SKIP = object()
+
+
+def coerce_plugin_field(field: dict, raw: Any) -> Any:
+    """A dashboard value -> what goes in config.yaml, by the manifest field type."""
+    kind = str(field.get("type") or "text")
+    if kind == "checkbox":
+        return bool(raw)
+    if kind == "number":
+        if raw is None or (isinstance(raw, str) and not raw.strip()):
+            return None if field.get("nullable") else _SKIP
+        try:
+            num = float(raw)
+        except (TypeError, ValueError):
+            raise ValueError("needs a number")
+        if "min" in field and num < float(field["min"]):
+            raise ValueError(f"must be at least {field['min']}")
+        return int(num) if num.is_integer() and float(field.get("step") or 1) >= 1 else num
+    if kind in ("list", "lines"):
+        if isinstance(raw, str):
+            sep = "\n" if kind == "lines" else None
+            parts = raw.split("\n") if sep else raw.replace("\n", ",").split(",")
+        else:
+            parts = list(raw or [])
+        out = [str(x).strip() for x in parts if str(x).strip()]
+        return [x.upper() for x in out] if field.get("upper") else out
+    if kind == "map":
+        if isinstance(raw, dict):
+            items = list(raw.items())
+        else:
+            items = []
+            for line in str(raw or "").replace(",", "\n").split("\n"):
+                line = line.strip()
+                if not line:
+                    continue
+                sep = "=" if "=" in line else ":"
+                if sep not in line:
+                    continue
+                key, val = line.rsplit(sep, 1)      # keys may hold ':' (minecraft:diamond:2)
+                items.append((key.strip(), val.strip()))
+        out = {}
+        for key, val in items:
+            try:
+                out[str(key)] = float(val)
+            except (TypeError, ValueError):
+                continue
+        return out
+    text = "" if raw is None else str(raw)
+    if kind != "password":
+        text = text.strip()
+    if field.get("upper"):
+        text = text.upper()
+    if kind == "select" and field.get("options") and text not in [str(o) for o in field["options"]]:
+        raise ValueError("not one of the choices")
+    return text
+
+
+def _get_path(data: dict, key: str) -> Any:
+    cur: Any = data
+    for part in key.split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _set_path(data: dict, key: str, value: Any) -> None:
+    parts = key.split(".")
+    cur = data
+    for part in parts[:-1]:
+        nxt = cur.get(part)
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    cur[parts[-1]] = value
+
+
+def _core_base(cfg: dict) -> str:
+    core = cfg.get("core") or {}
+    return f"http://{core.get('host', '127.0.0.1')}:{int(core.get('port', 3850))}"
+
+
 def create_admin_router(core_state) -> APIRouter:
     router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -161,6 +246,15 @@ def create_admin_router(core_state) -> APIRouter:
         if not store:
             raise HTTPException(503, "Store not ready")
         return store
+
+    def _plugin_rows(cfg: dict, base: str) -> list:
+        mgr = getattr(core_state, "plugins", None)
+        return mgr.info(cfg, base) if mgr is not None else []
+
+    def _plugins_follow(cfg: dict) -> None:
+        mgr = getattr(core_state, "plugins", None)
+        if mgr is not None:
+            mgr.apply_config(cfg)
 
     def _auth(token: Optional[str]):
         # Placeholder tokens ("change-me") are never accepted; Core falls back
@@ -218,35 +312,24 @@ def create_admin_router(core_state) -> APIRouter:
                 or section.get("video_id")
                 or "",
             }
-        games_cfg = {
-            "minecraft": {
-                "configured_enabled": bool((cfg.get("minecraft") or {}).get("enabled")),
-                "running": "minecraft" in games_live,
-                "player_name": (cfg.get("minecraft") or {}).get("player_name", ""),
-            },
-            "factorio": {
-                "configured_enabled": bool((cfg.get("factorio") or {}).get("enabled")),
-                "running": "factorio" in games_live,
-                "player_name": "",
-                "bridge_url": (cfg.get("factorio") or {}).get("bridge_url", "http://127.0.0.1:3847"),
-            },
-            "granvir": {
-                "configured_enabled": bool((cfg.get("granvir") or {}).get("enabled")),
-                "running": "granvir" in games_live,
-                "player_name": "",
-                "bridge_url": (cfg.get("granvir") or {}).get("bridge_url", "http://127.0.0.1:3855"),
-            },
-            "openttd": {
-                "configured_enabled": bool((cfg.get("openttd") or {}).get("enabled")),
-                "running": "openttd" in games_live,
-                "player_name": "",
-                "bridge_url": f"{(cfg.get('openttd') or {}).get('host', '127.0.0.1')}:{(cfg.get('openttd') or {}).get('admin_port', 3977)}",
-            },
-        }
-
         port = int((cfg.get("core") or {}).get("port", 3850))
         host = (cfg.get("core") or {}).get("host", "127.0.0.1")
         base = f"http://{host}:{port}"
+
+        # Game plugins: config intent vs live (plugins/<id>/; none installed = empty)
+        plugin_rows = _plugin_rows(cfg, base)
+        games_cfg = {
+            row["id"]: {
+                "name": row["name"],
+                "configured_enabled": row["configured_enabled"],
+                "running": row["running"],
+                "player_name": str(row["values"].get("player_name") or ""),
+                "bridge_url": str(row["status"].get("bridge_url") or row["values"].get("bridge_url") or ""),
+                "detail": str(row["status"].get("detail") or ""),
+                "error": row["error"] or str(row["status"].get("error") or ""),
+            }
+            for row in plugin_rows
+        }
 
         sources = [
             {
@@ -260,9 +343,9 @@ def create_admin_router(core_state) -> APIRouter:
                 "notes": "Transparent Webpage source — chat with emotes",
             },
             {
-                "name": "Minecraft / metrics overlay",
+                "name": "Metrics overlay",
                 "url": f"{base}/overlay/overlay.html",
-                "notes": "HP, CPM, power level, inventory flash",
+                "notes": "Viewers, CPM, power level (+ Minecraft HP / inventory with the Minecraft plugin)",
             },
             {
                 "name": "Stream alerts overlay",
@@ -278,21 +361,6 @@ def create_admin_router(core_state) -> APIRouter:
                 "name": "Chat Credits (standalone app)",
                 "url": "http://127.0.0.1:3854/",
                 "notes": "Optional separate process if you don't want credits inside Core",
-            },
-            {
-                "name": "Factorio stats overlay",
-                "url": "http://127.0.0.1:3847/overlay.html",
-                "notes": "Fridge Factorio Stats bridge",
-            },
-            {
-                "name": "OpenTTD companies",
-                "url": f"{base}/overlay/openttd.html",
-                "notes": "Admin Port companies + Chat Fund",
-            },
-            {
-                "name": "OpenTTD ticker",
-                "url": f"{base}/overlay/openttd-ticker.html",
-                "notes": "Thin company tape",
             },
             {
                 "name": "Fridge Market ticker",
@@ -325,6 +393,13 @@ def create_admin_router(core_state) -> APIRouter:
                 "notes": "Audio-reactive avatar control API",
             },
         ]
+        # Each installed game plugin's overlays (its own pages on 3850 + its bridge's pages)
+        for row in plugin_rows:
+            for o in row["overlays"]:
+                name = str(o.get("name") or "")
+                if not name.lower().startswith(str(row["name"]).lower()):
+                    name = f'{row["name"]}: {name}'
+                sources.append({**o, "name": name, "plugin": row["id"]})
 
         cmd_count = 0
         if router:
@@ -502,6 +577,18 @@ def create_admin_router(core_state) -> APIRouter:
         for owned in ("reactions", "chat_games", "avatars"):
             if isinstance(live.get(owned), dict):
                 incoming[owned] = live[owned]
+        # Game plugins' market fields are owned by the Market page (saved there, applied live)
+        for m in plugin_manifest.installed():
+            section = incoming.get(m.id)
+            if not isinstance(section, dict):
+                continue
+            section = copy.deepcopy(section)
+            for field in (m.get("market") or {}).get("fields") or []:
+                key = str(field.get("key") or "")
+                current = _get_path(live.get(m.id) or {}, key)
+                if key and current is not None:
+                    _set_path(section, key, copy.deepcopy(current))
+            incoming[m.id] = section
         try:
             path = save_config(incoming)
         except Exception as e:
@@ -612,6 +699,11 @@ def create_admin_router(core_state) -> APIRouter:
     async def get_commands(x_admin_token: Optional[str] = Header(None)):
         _auth(x_admin_token)
         cmds = load_commands()
+        # Game plugins' default commands show too (marked with "plugin"); editing one and saving
+        # writes it into commands.json, which then wins over the plugin's copy
+        for name, data in plugin_manifest.default_commands().items():
+            if name not in cmds:
+                cmds[name] = {**data, "plugin": str(data.get("group") or "")}
         _, cmd_path = config_file_info()
         router = getattr(core_state, "router", None)
         return {
@@ -634,8 +726,16 @@ def create_admin_router(core_state) -> APIRouter:
         for name, defn in body.commands.items():
             if not isinstance(defn, dict):
                 raise HTTPException(400, f"Command '{name}' must be an object")
+        # Unchanged game-plugin commands stay with their plugin (not copied into commands.json)
+        plugin_defaults = plugin_manifest.default_commands()
+        to_save = {}
+        for name, defn in body.commands.items():
+            clean = {k: v for k, v in defn.items() if k != "plugin"}
+            if name in plugin_defaults and clean == plugin_defaults[name]:
+                continue
+            to_save[name] = clean
         try:
-            path = save_commands(body.commands)
+            path = save_commands(to_save)
         except Exception as e:
             log.exception("save_commands failed")
             raise HTTPException(500, f"Failed to save commands: {e}") from e
@@ -670,7 +770,7 @@ def create_admin_router(core_state) -> APIRouter:
             "groups": catalog_status(cfg, games, extra),
             "active": sorted(getattr(router, "enabled_groups", {"core"})),
             "conflicts": list(getattr(router, "conflicts", []) or []),
-            "bind_options": ["", "points", "minecraft"],
+            "bind_options": ["", "points"] + plugin_manifest.installed_ids(),
         }
 
     @router.put("/command-groups")
@@ -1302,10 +1402,9 @@ def create_admin_router(core_state) -> APIRouter:
             for g in by_group:
                 by_group[g].sort(key=lambda c: c["name"])
 
-        # Known game slots (configured even if not running) + any live extras
-        from games import KNOWN_GAMES
-
-        known = list(KNOWN_GAMES)
+        # Installed game plugins (configured even if not running) + any live extras
+        rows = {row["id"]: row for row in _plugin_rows(cfg, base)}
+        known = list(rows)
         for g in games_live:
             if g not in known:
                 known.append(g)
@@ -1313,9 +1412,10 @@ def create_admin_router(core_state) -> APIRouter:
         game_panels = []
         for name in known:
             section = cfg.get(name) or {}
+            row = rows.get(name) or {}
             running = name in games_live
             health = False
-            health_detail = "not running"
+            health_detail = row.get("error") or "not running"
             game_obj = (core_state.games or {}).get(name)
             if game_obj:
                 try:
@@ -1325,80 +1425,9 @@ def create_admin_router(core_state) -> APIRouter:
                     health = False
                     health_detail = str(e)
 
-            overlays = []
-            if name == "minecraft":
-                overlays = [
-                    {
-                        "name": "Minecraft / metrics overlay",
-                        "url": f"{base}/overlay/overlay.html",
-                        "notes": "HP, CPM, power level, inventory flash",
-                    },
-                ]
-            elif name == "factorio":
-                if game_obj and hasattr(game_obj, "overlay_catalog"):
-                    overlays = game_obj.overlay_catalog()
-                else:
-                    bridge = str(section.get("bridge_url") or "http://127.0.0.1:3847").rstrip("/")
-                    overlays = [
-                        {
-                            "name": "Factorio stats overlay",
-                            "url": f"{bridge}/overlay.html",
-                            "notes": "Fridge Factorio Stats bridge — start that app separately",
-                        },
-                        {
-                            "name": "Power",
-                            "url": f"{bridge}/power.html",
-                            "notes": "Production / consumption",
-                        },
-                        {
-                            "name": "Research",
-                            "url": f"{bridge}/research.html",
-                            "notes": "Current tech + progress",
-                        },
-                    ]
-            elif name == "granvir":
-                if game_obj and hasattr(game_obj, "overlay_catalog"):
-                    overlays = game_obj.overlay_catalog()
-                else:
-                    bridge = str(section.get("bridge_url") or "http://127.0.0.1:3855").rstrip("/")
-                    overlays = [
-                        {
-                            "name": "Granvir stats overlay",
-                            "url": f"{bridge}/overlay.html",
-                            "notes": "Fridge Granvir Stats — BepInEx plugin or mock/mock_server.py",
-                        },
-                        {
-                            "name": "Health",
-                            "url": f"{bridge}/health.html",
-                            "notes": "Pilot / mech durability",
-                        },
-                        {
-                            "name": "Heat",
-                            "url": f"{bridge}/heat.html",
-                            "notes": "Generator heat",
-                        },
-                    ]
-            elif name == "openttd":
-                if game_obj and hasattr(game_obj, "overlay_catalog"):
-                    overlays = game_obj.overlay_catalog()
-                else:
-                    overlays = [
-                        {
-                            "name": "OpenTTD companies",
-                            "url": f"{base}/overlay/openttd.html",
-                            "notes": "Date, companies, Chat Fund",
-                        },
-                        {
-                            "name": "OpenTTD ticker",
-                            "url": f"{base}/overlay/openttd-ticker.html",
-                            "notes": "Thin tape",
-                        },
-                    ]
-
-            labels = {"factorio": "Factorio", "granvir": "Granvir", "minecraft": "Minecraft", "openttd": "OpenTTD"}
             game_panels.append({
                 "id": name,
-                "label": labels.get(name, name.replace("_", " ").title()),
+                "label": row.get("name") or name.replace("_", " ").title(),
                 "configured_enabled": bool(section.get("enabled")),
                 "running": running,
                 "health": health,
@@ -1409,7 +1438,7 @@ def create_admin_router(core_state) -> APIRouter:
                 "server_mod_url": section.get("server_mod_url", ""),
                 "command_group": name,
                 "commands": by_group.get(name, []),
-                "overlays": overlays,
+                "overlays": row.get("overlays") or [],
             })
 
         core_commands = by_group.get("core", []) + by_group.get("points", [])
@@ -1739,140 +1768,114 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         tape = getattr(core_state, "market", None)
         cfg = getattr(core_state, "config", None) or {}
-        mc = ((cfg.get("minecraft") or {}).get("market") or {})
-        fx = ((cfg.get("factorio") or {}).get("market") or {})
         snap = tape.snapshot(include_hidden=True) if tape else {"instruments": [], "enabled": False}
-        boost = tape.stock_factor(
-            mc.get("dynamo_symbols") or ["STEVE", "FRG"],
-            lo=float(mc.get("dynamo_min_factor", 0.25) or 0.25),
-            hi=float(mc.get("dynamo_max_factor", 3.0) or 3.0),
-        ) if tape else {"factor": 1.0, "symbols": []}
-        fx_boost = tape.stock_factor(
-            fx.get("dynamo_symbols") or ["FACTORIO"],
-            lo=float(fx.get("dynamo_min_factor", 0.25) or 0.25),
-            hi=float(fx.get("dynamo_max_factor", 3.0) or 3.0),
-        ) if tape else {"factor": 1.0, "symbols": []}
         holdings = []
         store = _store()
         if store and hasattr(store, "list_holdings"):
             holdings = await store.list_holdings()
-        mc_game = (core_state.games or {}).get("minecraft")
-        vault = getattr(mc_game, "last_vault", {}) if mc_game else {}
-        devices = getattr(mc_game, "last_devices", {}) if mc_game else {}
+        base = _core_base(cfg)
+        # Game plugins with market settings get their own sub-page (fields from plugin.json)
+        plugins = [
+            {k: row[k] for k in ("id", "name", "market", "market_status", "values", "running")}
+            for row in _plugin_rows(cfg, base) if row.get("market")
+        ]
         return {
             "tape": snap,
-            "boost": boost,
-            "minecraft": mc,
-            "factorio": fx,
-            "factorio_boost": fx_boost,
             "market": cfg.get("market") or {},
+            "plugins": plugins,
+            "books": ["core"] + [f"game:{pid}" for pid in plugin_manifest.installed_ids()],
             "holdings": holdings,
-            "vault": vault,
-            "devices": devices,
             "last_dividend": getattr(tape, "last_dividend", None) if tape else None,
             "last_event": getattr(tape, "last_event", None) if tape else None,
         }
 
-    @router.put("/market/minecraft")
-    async def market_mc_config(
+    @router.put("/market/settings")
+    async def market_settings(
         body: Dict[str, Any] = Body(default={}),
         x_admin_token: Optional[str] = Header(None),
     ):
-        """Hot-save minecraft.market knobs without a full config rewrite."""
+        """Hot-save the market's own switches (on/off, hourly cap, Steam refresh, trade impact)."""
         _auth(x_admin_token)
         cfg = getattr(core_state, "config", None) or load_config()
-        mc = dict(cfg.get("minecraft") or {})
-        section = dict(mc.get("market") or {})
-        for key in (
-            "dynamo_symbols", "dynamo_min_factor", "dynamo_max_factor",
-            "vault_symbol", "vault_rf_per_point", "vault_min_rf",
-            "chest_symbol", "chest_points_per_xp", "chest_min_xp",
-            "chest_default_value", "chest_use_smelt_xp", "chest_item_values",
-            "power_drain", "power_drain_bps",
-            "dynamo_off_below", "max_rf_per_tick",
-        ):
-            if key in body:
-                section[key] = body[key]
-        if isinstance(section.get("dynamo_symbols"), str):
-            section["dynamo_symbols"] = [
-                s.strip().upper() for s in section["dynamo_symbols"].split(",") if s.strip()
-            ]
-        mc["market"] = section
-        cfg["minecraft"] = mc
+        mkt = dict(cfg.get("market") or {})
         if "enabled" in body:
-            mkt = dict(cfg.get("market") or {})
             mkt["enabled"] = bool(body["enabled"])
-            cfg["market"] = mkt
-            if getattr(core_state, "market", None):
-                core_state.market.configure(cfg)
-        if any(k in body for k in ("hourly_cap_points", "steam_poll_sec", "trade_impact", "trade_impact_bps_per_100")):
-            mkt = dict(cfg.get("market") or {})
-            if "hourly_cap_points" in body:
-                mkt["hourly_cap_points"] = int(body["hourly_cap_points"])
-            if "steam_poll_sec" in body:
-                mkt["steam_poll_sec"] = max(60, int(body["steam_poll_sec"]))
-            if "trade_impact" in body:
-                mkt["trade_impact"] = bool(body["trade_impact"])
-            if "trade_impact_bps_per_100" in body:
-                mkt["trade_impact_bps_per_100"] = float(body["trade_impact_bps_per_100"])
-            cfg["market"] = mkt
-            if getattr(core_state, "market", None):
-                core_state.market.configure(cfg)
-        if isinstance(section.get("chest_item_values"), str):
-            parsed = {}
-            for part in section["chest_item_values"].replace("\n", ",").split(","):
-                if ":" not in part and "=" not in part:
-                    continue
-                sep = ":" if ":" in part else "="
-                key, val = part.split(sep, 1)
-                try:
-                    parsed[key.strip()] = float(val.strip())
-                except ValueError:
-                    continue
-            section["chest_item_values"] = parsed
-            mc["market"] = section
-            cfg["minecraft"] = mc
+        if "hourly_cap_points" in body:
+            mkt["hourly_cap_points"] = max(0, int(body["hourly_cap_points"]))
+        if "steam_poll_sec" in body:
+            mkt["steam_poll_sec"] = max(60, int(body["steam_poll_sec"]))
+        if "trade_impact" in body:
+            mkt["trade_impact"] = bool(body["trade_impact"])
+        if "trade_impact_bps_per_100" in body:
+            mkt["trade_impact_bps_per_100"] = float(body["trade_impact_bps_per_100"])
+        cfg["market"] = mkt
+        if getattr(core_state, "market", None):
+            core_state.market.configure(cfg)
         core_state.config = cfg
         save_config(cfg)
-        mc_game = (core_state.games or {}).get("minecraft")
-        if mc_game:
-            mc_game.config = cfg
-        return {"ok": True, "minecraft": section, "market": cfg.get("market")}
+        _plugins_follow(cfg)
+        return {"ok": True, "market": mkt}
 
-    @router.put("/market/factorio")
-    async def market_fx_config(
+    # ------------------------------------------------------------------
+    # Game plugins (plugins/<id>/plugin.json)
+    # ------------------------------------------------------------------
+
+    @router.get("/plugins")
+    async def list_plugins(x_admin_token: Optional[str] = Header(None)):
+        """Installed game plugins: manifest, settings fields, current values, running, errors."""
+        _auth(x_admin_token)
+        cfg = getattr(core_state, "config", None) or load_config()
+        return {
+            "plugins": _plugin_rows(cfg, _core_base(cfg)),
+            "folder": str(plugin_manifest.plugins_dir()),
+            "api_version": plugin_manifest.PLUGIN_API_VERSION,
+        }
+
+    @router.put("/plugins/{plugin_id}/settings")
+    async def save_plugin_settings(
+        plugin_id: str,
         body: Dict[str, Any] = Body(default={}),
         x_admin_token: Optional[str] = Header(None),
     ):
-        """Hot-save factorio.market ticker mappings."""
+        """
+        Save one plugin's settings into config.yaml (merged, nothing else touched).
+        Body: {"values": {"<key or dotted.key>": value, ...}}. Keys must be fields from the
+        plugin's manifest (settings / market) or "enabled". Market fields apply live; the rest
+        (addresses, passwords, on/off) need a Core restart, which the answer says.
+        """
         _auth(x_admin_token)
+        m = plugin_manifest.find(plugin_id)
+        if m is None:
+            raise HTTPException(404, f"No game plugin '{plugin_id}' installed")
+        values = body.get("values")
+        if not isinstance(values, dict):
+            raise HTTPException(400, "values object required")
+        fields = {str(f["key"]): ("settings", f) for f in m.get("settings") or []}
+        fields.update({str(f["key"]): ("market", f) for f in (m.get("market") or {}).get("fields") or []})
+        fields.setdefault("enabled", ("settings", {"key": "enabled", "type": "checkbox"}))
         cfg = getattr(core_state, "config", None) or load_config()
-        fx = dict(cfg.get("factorio") or {})
-        section = dict(fx.get("market") or {})
-        for key in (
-            "dynamo_symbols", "dynamo_min_factor", "dynamo_max_factor",
-            "vault_symbol", "chest_symbol",
-            "vault_flush_mj", "chest_flush_items",
-            "power_drain", "power_drain_bps",
-        ):
-            if key in body:
-                section[key] = body[key]
-        if isinstance(section.get("dynamo_symbols"), str):
-            section["dynamo_symbols"] = [
-                s.strip().upper() for s in section["dynamo_symbols"].split(",") if s.strip()
-            ]
-        if isinstance(section.get("vault_symbol"), str):
-            section["vault_symbol"] = section["vault_symbol"].strip().upper()
-        if isinstance(section.get("chest_symbol"), str):
-            section["chest_symbol"] = section["chest_symbol"].strip().upper()
-        fx["market"] = section
-        cfg["factorio"] = fx
+        section = copy.deepcopy(dict(cfg.get(plugin_id) or {}))
+        restart = False
+        for key, raw in values.items():
+            spec = fields.get(str(key))
+            if spec is None:
+                raise HTTPException(400, f"'{key}' is not a setting of {m.name}")
+            where, field = spec
+            try:
+                value = coerce_plugin_field(field, raw)
+            except ValueError as exc:
+                raise HTTPException(400, f"{field.get('label') or key}: {exc}") from exc
+            if value is _SKIP:
+                continue
+            if _get_path(section, str(key)) != value and where == "settings":
+                restart = True
+            _set_path(section, str(key), value)
+        cfg = dict(cfg)
+        cfg[plugin_id] = section
         core_state.config = cfg
         save_config(cfg)
-        fx_game = (core_state.games or {}).get("factorio")
-        if fx_game:
-            fx_game.config = cfg
-        return {"ok": True, "factorio": section}
+        _plugins_follow(cfg)
+        return {"ok": True, "values": section, "restart_needed": restart}
 
     @router.post("/market/holding")
     async def market_grant_holding(
@@ -1882,7 +1885,7 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         store = _store()
         uid = int(body.get("user_id") or 0)
-        symbol = str(body.get("symbol") or "STEVE").upper()
+        symbol = str(body.get("symbol") or "FRG").upper()
         shares = float(body.get("shares") or 0)
         milli = int(round(shares * 1000))
         nxt = await store.adjust_holding(uid, symbol, milli)
@@ -1896,7 +1899,7 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         tape = getattr(core_state, "market", None)
         store = _store()
-        symbol = str(body.get("symbol") or "STEVE").upper()
+        symbol = str(body.get("symbol") or "FRG").upper()
         points = int(body.get("points") or 10)
         paid = await store.pay_dividend(symbol, points, "admin-test")
         if tape:

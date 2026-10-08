@@ -60,7 +60,7 @@
     <div class="nav-group">
       <div class="nav-heading">Settings</div>
       <button class="tab" data-tab="config" data-sub="core">Core + chat platforms</button>
-      <button class="tab" data-tab="config" data-sub="games">Games</button>
+      <button class="tab" data-tab="config" data-sub="games" data-keywords="plugins minecraft factorio openttd granvir">Game plugins</button>
       <button class="tab" data-tab="config" data-sub="points">Points, permissions + chat</button>
       <button class="tab" data-tab="config" data-sub="reactions">Reactions</button>
       <button class="tab" data-tab="config" data-sub="groups">Command groups</button>
@@ -416,11 +416,11 @@
     </div>
   </section>
 
-  <!-- Fridge Market + Minecraft vaults -->
+  <!-- Fridge Market + game plugins' market hooks -->
   <section id="tab-market" class="panel">
     <p class="tab-intro">
-      Fridge Market tape plus in-game hooks. Pick which tickers each machine
-      reads or pays — Minecraft and Factorio are configured separately.
+      Fridge Market tape plus in-game hooks. Each game plugin with market hooks
+      (Minecraft, Factorio ...) gets its own sub-page for the tickers its machines read or pay.
       Grant shares below if nobody is invested yet.
     </p>
     <div class="toolbar">
@@ -429,8 +429,7 @@
     </div>
     <div class="subtabs" data-subtabs="market">
       <button type="button" class="subtab active" data-sub="listings">Listings</button>
-      <button type="button" class="subtab" data-sub="minecraft">Minecraft</button>
-      <button type="button" class="subtab" data-sub="factorio">Factorio</button>
+      <!-- game plugins' sub-pages go here (admin.js renderMarketPlugins) -->
       <button type="button" class="subtab" data-sub="investors">Investors</button>
       <button type="button" class="subtab" data-sub="preview">Tape preview</button>
     </div>
@@ -438,6 +437,17 @@
       <details class="acc" open data-sub="listings">
       <summary>Listings</summary>
       <div class="acc-body">
+      <fieldset class="cfg-card" id="mkt-switches">
+        <legend>Market</legend>
+        <label class="check"><input id="mkt-enabled" type="checkbox" /> Market enabled (tape + overlays)</label>
+        <label class="check"><input id="mkt-trade-impact" type="checkbox" /> Buying / selling moves the price</label>
+        <label>Trade impact (bps per 100 points)
+          <input id="mkt-trade-bps" type="number" min="0" step="1" />
+        </label>
+        <div class="form-row" style="gap:8px;flex-wrap:wrap">
+          <button type="button" class="primary" id="mkt-save">Save market settings</button>
+        </div>
+      </fieldset>
       <fieldset class="cfg-card">
         <legend>Listings</legend>
         <p class="hint">Add any game as a ticker. Steam App ID is typed by hand (Factorio is 427520). Steam CCU refresh is configurable below (default 30 min).</p>
@@ -459,10 +469,6 @@
           <label>Book
             <select id="mkt-new-book">
               <option value="core">core</option>
-              <option value="game:factorio">game:factorio</option>
-              <option value="game:minecraft">game:minecraft</option>
-              <option value="game:openttd">game:openttd</option>
-              <option value="game:granvir">game:granvir</option>
             </select>
           </label>
           <label>Steam App ID
@@ -510,130 +516,7 @@
       </fieldset>
       </div>
       </details>
-      <details class="acc" data-sub="minecraft">
-      <summary>Minecraft dynamo + vaults</summary>
-      <div class="acc-body market-mc-grid">
-      <fieldset class="cfg-card">
-        <legend>Tape + Dynamo boost</legend>
-        <label class="check"><input id="mkt-enabled" type="checkbox" /> Market enabled (tape + overlays)</label>
-        <label>Dynamo symbols (comma)
-          <input id="mkt-dyn-sym" type="text" placeholder="MINECRAF" />
-        </label>
-        <div class="row2">
-          <label>Min factor
-            <input id="mkt-dyn-min" type="number" step="0.05" min="0.05" />
-          </label>
-          <label>Max factor
-            <input id="mkt-dyn-max" type="number" step="0.05" min="0.25" />
-          </label>
-        </div>
-        <p id="mkt-boost" class="hint">Boost: —</p>
-        <label class="check"><input id="mkt-drain" type="checkbox" /> Drain tickers when Chat Dynamo / Kinetic output</label>
-        <label>Drain rate (bps / drain-level tick)
-          <input id="mkt-drain-bps" type="number" min="0" step="1" />
-        </label>
-        <div class="row2">
-          <label>Off below factor
-            <input id="mkt-off-below" type="number" step="0.05" min="0" />
-          </label>
-          <label>Max FE/t
-            <input id="mkt-max-rf" type="number" min="0" />
-          </label>
-        </div>
-        <pre id="mkt-devices" class="integ-result"></pre>
-        <label class="check"><input id="mkt-trade-impact" type="checkbox" /> Buying / selling moves the price</label>
-        <label>Trade impact (bps per 100 points)
-          <input id="mkt-trade-bps" type="number" min="0" step="1" />
-        </label>
-        <div class="form-row" style="gap:8px;flex-wrap:wrap">
-          <button type="button" class="primary" id="mkt-save">Save Minecraft market</button>
-        </div>
-      </fieldset>
-      <fieldset class="cfg-card">
-        <legend>Dividend Dynamo (eats RF)</legend>
-        <label>Pays ticker
-          <input id="mkt-vault-sym" type="text" />
-        </label>
-        <div class="row2">
-          <label>RF per point
-            <input id="mkt-vault-rate" type="number" min="1" />
-          </label>
-          <label>Flush at RF
-            <input id="mkt-vault-min" type="number" min="1" />
-          </label>
-        </div>
-        <p id="mkt-vault-live" class="hint">Pending RF: —</p>
-      </fieldset>
-      <fieldset class="cfg-card">
-        <legend>Dividend Chest (any item)</legend>
-        <label>Pays ticker
-          <input id="mkt-chest-sym" type="text" />
-        </label>
-        <div class="row2">
-          <label>Points per work unit
-            <input id="mkt-chest-rate" type="number" step="0.1" min="0" />
-          </label>
-          <label>Flush at units
-            <input id="mkt-chest-min" type="number" step="0.1" min="0" />
-          </label>
-        </div>
-        <div class="row2">
-          <label>Default item value
-            <input id="mkt-chest-def" type="number" step="0.01" min="0" />
-          </label>
-          <label class="check"><input id="mkt-chest-smelt" type="checkbox" /> Use furnace XP when not listed</label>
-        </div>
-        <label>Item values (id:value per line)
-          <textarea id="mkt-chest-vals" rows="6" placeholder="minecraft:diamond:2&#10;minecraft:dirt:0.02"></textarea>
-        </label>
-        <p id="mkt-chest-live" class="hint">Pending units: —</p>
-      </fieldset>
-      </div>
-      </details>
-      <details class="acc" data-sub="factorio">
-      <summary>Factorio tickers</summary>
-      <div class="acc-body">
-      <fieldset class="cfg-card">
-        <legend>Factorio tickers</legend>
-        <p class="hint">Chat Dynamo uses the average price/base of these symbols. Vaults pay the listed ticker(s); comma = split the payout.</p>
-        <label>Dynamo symbols (comma)
-          <input id="mkt-fx-dyn-sym" type="text" placeholder="FACTORIO" />
-        </label>
-        <div class="row2">
-          <label>Min factor
-            <input id="mkt-fx-dyn-min" type="number" step="0.05" min="0.05" />
-          </label>
-          <label>Max factor
-            <input id="mkt-fx-dyn-max" type="number" step="0.05" min="0.25" />
-          </label>
-        </div>
-        <p id="mkt-fx-boost" class="hint">Boost: —</p>
-        <label>Power Vault pays
-          <input id="mkt-fx-vault-sym" type="text" placeholder="FACTORIO" />
-        </label>
-        <label>Item Vault pays
-          <input id="mkt-fx-chest-sym" type="text" placeholder="FACTORIO" />
-        </label>
-        <div class="row2">
-          <label>Flush at MJ
-            <input id="mkt-fx-flush-mj" type="number" min="1" />
-          </label>
-          <label>Flush at items
-            <input id="mkt-fx-flush-items" type="number" min="1" />
-          </label>
-        </div>
-        <div class="form-row" style="gap:8px;flex-wrap:wrap">
-        <label class="check"><input id="mkt-fx-drain" type="checkbox" /> Drain FACTORIO when Chat Dynamo outputs</label>
-        <label>Drain rate (bps / full power tick)
-          <input id="mkt-fx-drain-bps" type="number" min="0" step="1" />
-        </label>
-        </div>
-        <div class="form-row" style="gap:8px;flex-wrap:wrap">
-          <button type="button" class="primary" id="mkt-fx-save">Save Factorio market</button>
-        </div>
-      </fieldset>
-      </div>
-      </details>
+      <!-- game plugins' market sub-pages are drawn here from plugin.json (admin.js renderMarketPlugins) -->
       <details class="acc" data-sub="investors">
       <summary>Investors + test payout</summary>
       <div class="acc-body">
@@ -645,7 +528,7 @@
             <input id="mkt-hold-uid" type="number" min="1" />
           </label>
           <label>Symbol
-            <input id="mkt-hold-sym" type="text" value="MINECRAF" />
+            <input id="mkt-hold-sym" type="text" value="FRG" />
           </label>
         </div>
         <div class="row2">
@@ -660,7 +543,7 @@
           </label>
         </div>
         <div class="form-row" style="gap:8px;flex-wrap:wrap;margin-top:8px">
-          <button type="button" class="primary" id="mkt-inv-save" title="Saves the hourly cap and Steam refresh (with the Minecraft market settings)">Save cap + refresh</button>
+          <button type="button" class="primary" id="mkt-inv-save" title="Saves the hourly cap and Steam refresh (with the market settings)">Save cap + refresh</button>
           <button type="button" id="mkt-hold-grant">Grant shares</button>
           <button type="button" id="mkt-div-test">Test 10-pt dividend</button>
         </div>
@@ -1137,7 +1020,7 @@
 
     <div class="subtabs" data-subtabs="config">
       <button type="button" class="subtab active" data-sub="core">Core + platforms</button>
-      <button type="button" class="subtab" data-sub="games">Games</button>
+      <button type="button" class="subtab" data-sub="games">Game plugins</button>
       <button type="button" class="subtab" data-sub="points">Points + chat</button>
       <button type="button" class="subtab" data-sub="advanced">Advanced</button>
       <button type="button" class="subtab" data-sub="reactions">Reactions</button>
@@ -1253,73 +1136,15 @@
     </details>
 
     <details class="acc" data-sub="games">
-      <summary>Games</summary>
+      <summary>Game plugins</summary>
       <div class="acc-body">
-    <div class="config-grid">
-      <fieldset class="cfg-card">
-        <legend>Minecraft</legend>
-        <p class="hint">Talks to the Fabric client/server mods. Turning this off also disables the <code>minecraft</code> command group (!spawn, !give, …).</p>
-        <label class="check"><input id="cfg-mc-enabled" type="checkbox" /> Enabled (opt-in)</label>
-        <label>In-game player name <span class="field-help">Exact name commands target</span>
-          <input id="cfg-mc-player" type="text" />
-        </label>
-        <label>Client mod URL
-          <input id="cfg-mc-client" type="text" />
-        </label>
-        <label>Server mod URL
-          <input id="cfg-mc-server" type="text" />
-        </label>
-        <p class="hint">Stock / vault rates live on the <strong>Market</strong> tab so they stay together.</p>
-      </fieldset>
-
-      <fieldset class="cfg-card">
-        <legend>Factorio</legend>
-        <p class="hint">
-          Talks to the Fridge Factorio Stats bridge (RCON + overlay on port 3847).
-          Enable this so Factorio shows on Status and Integrations. The Node bridge
-          is still a separate process.
-        </p>
-        <label class="check"><input id="cfg-fx-enabled" type="checkbox" /> Enabled (opt-in)</label>
-        <label>Bridge URL
-          <input id="cfg-fx-bridge" type="text" placeholder="http://127.0.0.1:3847" />
-        </label>
-      </fieldset>
-
-      <fieldset class="cfg-card">
-        <legend>Granvir</legend>
-        <p class="hint">
-          Talks to Fridge Granvir Stats (BepInEx plugin or mock server on port 3855).
-          Enable this so Granvir shows on Status and Integrations. Co-op writes stay
-          host-only inside the plugin.
-        </p>
-        <label class="check"><input id="cfg-gv-enabled" type="checkbox" /> Enabled (opt-in)</label>
-        <label>Bridge URL
-          <input id="cfg-gv-bridge" type="text" placeholder="http://127.0.0.1:3855" />
-        </label>
-      </fieldset>
-
-      <fieldset class="cfg-card">
-        <legend>OpenTTD</legend>
-        <p class="hint">
-          Admin Port (default 3977) on a vanilla or JGRPP server.
-          Chat funds companies with <code>!invest</code>. Copy
-          <code>gamescripts/FridgeChatFund</code> into OpenTTD’s game folder
-          so investments become in-game cash.
-        </p>
-        <label class="check"><input id="cfg-ot-enabled" type="checkbox" /> Enabled (opt-in)</label>
-        <label>Host
-          <input id="cfg-ot-host" type="text" placeholder="127.0.0.1" />
-        </label>
-        <label>Admin port
-          <input id="cfg-ot-port" type="number" placeholder="3977" />
-        </label>
-        <label>Admin password
-          <input id="cfg-ot-pass" type="password" autocomplete="off" />
-        </label>
-        <label>£ per point
-          <input id="cfg-ot-rate" type="number" placeholder="1000" />
-        </label>
-      </fieldset>
+    <p class="hint" id="plugin-intro">
+      Games are plugins: each folder in <code id="plugin-folder">plugins\</code> adds a card here.
+      Stream Core runs fine with none. Turning a game on or off, or changing its address,
+      needs a Core restart after <strong>Save &amp; apply</strong>.
+    </p>
+    <div class="config-grid" id="plugin-cards">
+      <p class="muted">Loading game plugins…</p>
     </div>
       </div>
     </details>
@@ -1577,7 +1402,7 @@
       </div>
       <p class="hint" style="margin:0 0 10px">
         Disable a whole set of commands at once. Optional <code>bind</code> ties a group to an integration
-        (<code>minecraft</code> = game enabled <em>and</em> running; <code>points</code> = points.enabled).
+        (a game plugin's id, e.g. <code>minecraft</code> = game enabled <em>and</em> running; <code>points</code> = points.enabled).
         <code>core</code> is always on. Changes apply without restarting Core.
       </p>
       <div id="grp-conflicts" class="conflict-banner" hidden></div>

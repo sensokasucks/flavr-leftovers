@@ -5,7 +5,7 @@ Home: repo root. Map: [README.md](../README.md).
 ## Must keep
 
 - [ ] Project prefix is `fridge-`. No new `xsplit-*` folders.
-- [ ] One concern per folder. Platforms = adapters. Games = integrations. Overlays = dumb HTML.
+- [ ] One concern per folder. Platforms = adapters. Games = plugins (`fridge-stream-core/plugins/<id>/`). Overlays = dumb HTML.
 - [ ] Bind loopback (`127.0.0.1`) by default. Do not expose ports to the internet in examples or start scripts.
 - [ ] Loopback is not enough: browsers can reach it. HTTP apps keep the local guard — Python apps via `core/local_guard.py` (Core + Chat Credits copies stay in sync), game bridges via Core's `X-Fridge-Core: 1` header + no `Origin` + loopback `Host`. No `Access-Control-Allow-Origin: *` on write endpoints.
 - [ ] Ports stay put:

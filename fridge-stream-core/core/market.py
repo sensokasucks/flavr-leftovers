@@ -16,6 +16,8 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from core import plugin_manifest
+
 log = logging.getLogger("core.market")
 
 
@@ -126,13 +128,14 @@ class MarketTape:
 
     def _seed_preview(self) -> None:
         """Always-on preview listings so OBS sources are not empty."""
-        seeds = (
-            ("FRG", "Fridge", "core", "streamer", 10.0, None),
-            ("FACTORIO", "Factorio", "game:factorio", "streamer", 12.0, 427520),
-            ("MINECRAF", "Minecraft", "game:minecraft", "streamer", 8.5, None),
-            ("STEVE", "Streamer", "game:minecraft", "plain", 8.5, None),
-            ("HOST", "OpenTTD", "game:openttd", "streamer", 15.0, None),
-        )
+        seeds = [("FRG", "Fridge", "core", "streamer", 10.0, None)]
+        # Game books come from the installed game plugins (plugin.json "market_books")
+        for row in plugin_manifest.market_books():
+            price = float(row.get("price") or 10.0)
+            seeds.append((
+                str(row["symbol"]), str(row.get("name") or row["symbol"]), str(row.get("book")),
+                str(row.get("role") or "plain"), price, row.get("steam_appid"),
+            ))
         for sym, name, book, role, price, appid in seeds:
             self.upsert(
                 symbol=sym,

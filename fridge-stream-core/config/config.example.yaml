@@ -59,6 +59,9 @@ avatars:
   hide: []                       # names whose picture is never shown, e.g. ["nightbot", "kick:someone"]
 
 # --- Games ---------------------------------------------------------------
+# Each game is a plugin (folder plugins/<id>/, also shipped as the "games pack" zip; see
+# docs/PLUGINS.md). A section here only does something while that plugin is installed;
+# installed plugins without a section get their defaults, switched off.
 
 minecraft:
   enabled: false             # opt-in: set true when the Fabric mods are running
@@ -212,7 +215,7 @@ credits:
   # ignore_usernames: [nightbot, streamelements]   # replaces the built-in bot list
 
 # Command groups. Toggle in Admin → Config without restarting Core.
-# bind: minecraft → on only when minecraft.enabled AND the integration is running
+# bind: minecraft → on only when that game plugin is enabled AND running (each game plugin adds its group)
 # bind: points    → on only when points.enabled
 # always: true    → cannot be disabled (core)
 command_groups:
