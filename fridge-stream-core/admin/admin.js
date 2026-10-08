@@ -1,6 +1,8 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";
+  // Game plugins' Market sub-pages are drawn after the page loads: remember which one the link asked for
+  let marketPluginSub = (/^#market\/(plg-[\w-]+)/.exec(location.hash) || [])[1] || "";
 
   function token() {
     return localStorage.getItem(tokenKey) || $("token").value.trim();
@@ -383,6 +385,10 @@
     });
   });
   window.addEventListener("popstate", routeFromHash);
+  window.addEventListener("hashchange", () => {
+    const m = /^#market\/(plg-[\w-]+)/.exec(location.hash);
+    if (m && !document.querySelector(`#tab-market .acc[data-sub="${m[1]}"]`)) marketPluginSub = m[1];
+  });
   window.addEventListener("hashchange", routeFromHash);
 
   // ------------------------------------------------------------------
@@ -719,14 +725,17 @@
       }
       html += `</ul></div>`;
 
-      html += `<div class="cfg-card"><legend>Game integrations</legend><ul class="status-list">`;
-      for (const [name, g] of Object.entries(s.games || {})) {
-        html += `<li><strong>${name}</strong> ${g.running ? pill(true, "running") : pill(false, "stopped")}
+      html += `<div class="cfg-card"><legend>Game plugins</legend><ul class="status-list">`;
+      const gameRows = Object.entries(s.games || {});
+      for (const [name, g] of gameRows) {
+        html += `<li><strong>${escapeHtml(g.name || name)}</strong> ${g.running ? pill(true, "running") : pill(false, "stopped")}
           ${g.configured_enabled ? pill(true, "config on") : pill(false, "config off")}
-          ${g.player_name ? `<span class="muted">player ${g.player_name}</span>` : ""}</li>`;
+          ${g.detail ? `<span class="muted">${escapeHtml(g.detail)}</span>` : g.player_name ? `<span class="muted">player ${escapeHtml(g.player_name)}</span>` : ""}
+          ${g.error ? `<span class="muted" style="color:var(--danger)">${escapeHtml(g.error)}</span>` : ""}</li>`;
       }
+      if (!gameRows.length) html += `<li class="muted">No game plugins installed (games pack: folders in plugins\\)</li>`;
       html += `</ul>
-        <p class="hint">Commands are grouped by integration. Stopped games hide their command group. Factorio and Granvir start as stats/overlay only; Granvir chat commands stay host-only in the BepInEx plugin.</p>
+        <p class="hint">Commands are grouped by game. Stopped games hide their command group. Factorio and Granvir start as stats/overlay only; Granvir chat commands stay host-only in the BepInEx plugin.</p>
       </div>`;
 
       html += `<div class="cfg-card"><legend>Live metrics</legend>
@@ -1351,7 +1360,7 @@
       const prefix = integData.prefix || "!";
       const games = integData.games || [];
       if (!games.length) {
-        host.innerHTML = `<p class="integ-empty">No game integrations registered. Enable Minecraft in Config and restart Core.</p>`;
+        host.innerHTML = `<p class="integ-empty">No game plugins installed. Add the games pack to the plugins folder, switch a game on under Settings → Game plugins and restart Core.</p>`;
       } else {
         host.innerHTML = games.map((g) => renderGamePanel(g, prefix)).join("");
       }
@@ -1688,6 +1697,152 @@
   }
 
   // ------------------------------------------------------------------
+  // Game plugins (plugins/<id>/plugin.json): Settings cards + Market sub-pages, drawn from
+  // each manifest's "settings" and "market.fields". Card fields save with config.yaml;
+  // market fields save on the Market page (PUT /api/admin/plugins/<id>/settings).
+  // ------------------------------------------------------------------
+  let pluginsInfo = [];
+
+  async function loadPlugins() {
+    try {
+      const data = await api("/api/admin/plugins");
+      pluginsInfo = data.plugins || [];
+      if ($("plugin-folder") && data.folder) $("plugin-folder").textContent = data.folder;
+    } catch (e) {
+      pluginsInfo = [];
+    }
+    return pluginsInfo;
+  }
+
+  function pathGet(obj, key) {
+    return String(key).split(".").reduce((cur, part) => (cur && typeof cur === "object" ? cur[part] : undefined), obj);
+  }
+
+  function pathSet(obj, key, value) {
+    const parts = String(key).split(".");
+    let cur = obj;
+    parts.slice(0, -1).forEach((part) => {
+      if (!cur[part] || typeof cur[part] !== "object") cur[part] = {};
+      cur = cur[part];
+    });
+    cur[parts[parts.length - 1]] = value;
+  }
+
+  function slug(text) {
+    return String(text).replace(/[^a-z0-9_]+/gi, "-");
+  }
+
+  /** One manifest field as a form control. prefix: "cfg" (Settings card) or "mkt" (Market page). */
+  function pluginFieldHtml(prefix, pid, f, value) {
+    const type = f.type || "text";
+    const id = `${prefix}-plg-${slug(pid)}-${slug(f.key)}`;
+    const attrs = `id="${id}" class="plg-field" data-key="${escapeHtml(f.key)}" data-type="${escapeHtml(type)}"` +
+      (f.upper ? ' data-upper="1"' : "");
+    const label = escapeHtml(f.label || f.key);
+    const help = f.help ? ` <span class="field-help">${escapeHtml(f.help)}</span>` : "";
+    const ph = f.placeholder != null ? ` placeholder="${escapeHtml(String(f.placeholder))}"` : "";
+    if (type === "checkbox") {
+      return `<label class="check"><input type="checkbox" ${attrs} ${value ? "checked" : ""} /> ${label}${help}</label>`;
+    }
+    if (type === "map") {
+      const text = Object.entries(value || {}).map(([k, v]) => k + ":" + v).join("\n");
+      return `<label>${label}${help}<textarea ${attrs} rows="6"${ph}>${escapeHtml(text)}</textarea></label>`;
+    }
+    if (type === "lines") {
+      return `<label>${label}${help}<textarea ${attrs} rows="4"${ph}>${escapeHtml((value || []).join("\n"))}</textarea></label>`;
+    }
+    if (type === "select") {
+      const opts = (f.options || []).map((o) =>
+        `<option value="${escapeHtml(String(o))}" ${String(o) === String(value ?? "") ? "selected" : ""}>${escapeHtml(String(o))}</option>`).join("");
+      return `<label>${label}${help}<select ${attrs}>${opts}</select></label>`;
+    }
+    let shown = value ?? "";
+    if (type === "list") shown = Array.isArray(value) ? value.join(", ") : String(value ?? "");
+    const inputType = type === "number" ? "number" : type === "password" ? "password" : "text";
+    const extra = (type === "number" ? ["min", "max", "step"].filter((k) => f[k] != null).map((k) => ` ${k}="${escapeHtml(String(f[k]))}"`).join("") : "") +
+      (type === "password" ? ' autocomplete="off"' : "");
+    return `<label>${label}${help}<input type="${inputType}" ${attrs} value="${escapeHtml(String(shown))}"${ph}${extra} /></label>`;
+  }
+
+  /** A form control back to a config value (Settings cards; the server coerces Market fields itself). */
+  function readPluginField(el, prev) {
+    const type = el.dataset.type || "text";
+    const upper = (t) => (el.dataset.upper ? t.toUpperCase() : t);
+    if (type === "checkbox") return el.checked;
+    if (type === "number") {
+      if (String(el.value).trim() === "") return prev;
+      const n = Number(el.value);
+      return Number.isFinite(n) ? n : prev;
+    }
+    if (type === "list") return el.value.split(/[,\n]/).map((x) => upper(x.trim())).filter(Boolean);
+    if (type === "lines") return el.value.split(/\n/).map((x) => upper(x.trim())).filter(Boolean);
+    if (type === "map") {
+      const out = {};
+      el.value.split(/[\n,]/).forEach((line) => {
+        line = line.trim();
+        const sep = line.includes("=") ? "=" : ":";
+        const at = line.lastIndexOf(sep);
+        if (at <= 0) return;
+        const v = Number(line.slice(at + 1).trim());
+        if (Number.isFinite(v)) out[line.slice(0, at).trim()] = v;
+      });
+      return out;
+    }
+    return type === "password" ? el.value : upper(el.value.trim());
+  }
+
+  function pluginLinks(p) {
+    const links = (p.links || []).filter((l) => l && l.url);
+    if (!links.length) return "";
+    return `<p class="hint">Needs: ${links.map((l) =>
+      `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.name || l.url)}</a>`).join(" · ")}</p>`;
+  }
+
+  function renderPluginCards(cfg) {
+    const host = $("plugin-cards");
+    if (!host) return;
+    if (!pluginsInfo.length) {
+      host.innerHTML = `<p class="integ-empty">No game plugins installed. Stream Core works without them.
+        To add Minecraft, Factorio, Granvir or OpenTTD, download the <strong>games pack</strong> from the
+        Releases page, unzip it into the <code>fridge-stream-core</code> folder (it fills <code>plugins\\</code>) and restart Core.</p>`;
+      return;
+    }
+    host.innerHTML = pluginsInfo.map((p) => {
+      const section = (cfg || {})[p.id] || {};
+      const state = p.error
+        ? pill(false, "error")
+        : p.running ? pill(true, "running") : pill(false, section.enabled ? "restart to start" : "off");
+      const err = p.error ? `<p class="hint" style="color:var(--danger)">${escapeHtml(p.error)}</p>` : "";
+      if (p.error && !(p.settings || []).length) {
+        return `<fieldset class="cfg-card plugin-card" data-plugin="${escapeHtml(p.id)}"><legend>${escapeHtml(p.name)} ${state}</legend>${err}</fieldset>`;
+      }
+      const fields = [{ key: "enabled", label: "Enabled (opt-in)", type: "checkbox" }].concat(p.settings || []);
+      return `<fieldset class="cfg-card plugin-card" data-plugin="${escapeHtml(p.id)}">
+        <legend>${escapeHtml(p.name)} ${state}</legend>
+        ${p.description ? `<p class="hint">${escapeHtml(p.description)}</p>` : ""}
+        ${err}
+        ${fields.map((f) => pluginFieldHtml("cfg", p.id, f, pathGet(section, f.key))).join("")}
+        ${p.market ? `<p class="hint">Stock / vault rates live on the <strong>Market</strong> page.</p>` : ""}
+        ${pluginLinks(p)}
+      </fieldset>`;
+    }).join("");
+  }
+
+  /** {plugin id: section} for the config.yaml save (sections merged over the loaded ones). */
+  function collectPluginSections() {
+    const out = {};
+    document.querySelectorAll("#plugin-cards .plugin-card[data-plugin]").forEach((card) => {
+      const pid = card.dataset.plugin;
+      const fields = card.querySelectorAll(".plg-field");
+      if (!fields.length) return;
+      const section = JSON.parse(JSON.stringify(((lastLoadedConfig || {})[pid]) || {}));
+      fields.forEach((el) => pathSet(section, el.dataset.key, readPluginField(el, pathGet(section, el.dataset.key))));
+      out[pid] = section;
+    });
+    return out;
+  }
+
+  // ------------------------------------------------------------------
   // Config form
   // ------------------------------------------------------------------
 
@@ -1715,7 +1870,6 @@
     const c = cfg.core || {};
     const k = cfg.kick || {};
     const tw = cfg.twitch || {};
-    const m = cfg.minecraft || {};
     const p = cfg.permissions || {};
     const pts = cfg.points || {};
     const yt = cfg.youtube || {};
@@ -1744,25 +1898,7 @@
     loadTwitchAuth();
     loadAvatarSettings();
 
-    $("cfg-mc-enabled").checked = !!m.enabled;
-    $("cfg-mc-player").value = m.player_name ?? "";
-    $("cfg-mc-client").value = m.client_mod_url ?? "";
-    $("cfg-mc-server").value = m.server_mod_url ?? "";
-
-    const fx = cfg.factorio || {};
-    if ($("cfg-fx-enabled")) $("cfg-fx-enabled").checked = !!fx.enabled;
-    if ($("cfg-fx-bridge")) $("cfg-fx-bridge").value = fx.bridge_url ?? "http://127.0.0.1:3847";
-
-    const gv = cfg.granvir || {};
-    if ($("cfg-gv-enabled")) $("cfg-gv-enabled").checked = !!gv.enabled;
-    if ($("cfg-gv-bridge")) $("cfg-gv-bridge").value = gv.bridge_url ?? "http://127.0.0.1:3855";
-
-    const ot = cfg.openttd || {};
-    if ($("cfg-ot-enabled")) $("cfg-ot-enabled").checked = !!ot.enabled;
-    if ($("cfg-ot-host")) $("cfg-ot-host").value = ot.host ?? "127.0.0.1";
-    if ($("cfg-ot-port")) $("cfg-ot-port").value = ot.admin_port ?? 3977;
-    if ($("cfg-ot-pass")) $("cfg-ot-pass").value = ot.admin_password ?? "";
-    if ($("cfg-ot-rate")) $("cfg-ot-rate").value = ot.pounds_per_point ?? 1000;
+    renderPluginCards(cfg);
 
     $("cfg-perm-admin").value = listToLines(p.admin);
     $("cfg-perm-mod").value = listToLines(p.mod);
@@ -1943,33 +2079,7 @@
         video_id: $("cfg-yt-video").value.trim(),
         live_chat_id: $("cfg-yt-livechat").value.trim(),
       },
-      minecraft: {
-        ...((lastLoadedConfig || {}).minecraft || {}),
-        enabled: $("cfg-mc-enabled").checked,
-        player_name: $("cfg-mc-player").value.trim(),
-        client_mod_url: $("cfg-mc-client").value.trim(),
-        server_mod_url: $("cfg-mc-server").value.trim(),
-      },
-      factorio: {
-        enabled: $("cfg-fx-enabled") ? $("cfg-fx-enabled").checked : false,
-        bridge_url: $("cfg-fx-bridge")
-          ? $("cfg-fx-bridge").value.trim() || "http://127.0.0.1:3847"
-          : "http://127.0.0.1:3847",
-      },
-      granvir: {
-        enabled: $("cfg-gv-enabled") ? $("cfg-gv-enabled").checked : false,
-        bridge_url: $("cfg-gv-bridge")
-          ? $("cfg-gv-bridge").value.trim() || "http://127.0.0.1:3855"
-          : "http://127.0.0.1:3855",
-      },
-      openttd: {
-        ...((lastLoadedConfig || {}).openttd || {}),
-        enabled: $("cfg-ot-enabled") ? $("cfg-ot-enabled").checked : false,
-        host: $("cfg-ot-host") ? $("cfg-ot-host").value.trim() || "127.0.0.1" : "127.0.0.1",
-        admin_port: $("cfg-ot-port") ? num($("cfg-ot-port").value, 3977) : 3977,
-        admin_password: $("cfg-ot-pass") ? $("cfg-ot-pass").value : "",
-        pounds_per_point: $("cfg-ot-rate") ? num($("cfg-ot-rate").value, 1000) : 1000,
-      },
+      ...collectPluginSections(),
       permissions: {
         admin: linesToList($("cfg-perm-admin").value),
         mod: linesToList($("cfg-perm-mod").value),
@@ -2032,6 +2142,7 @@
 
   async function loadConfigForm() {
     try {
+      await loadPlugins();
       const data = await api("/api/admin/config");
       fillConfigForm(data.config, data.defaults);
       const paths = $("config-paths");
@@ -2870,7 +2981,6 @@
     const ids = new Set((groupsState || []).map((g) => g.id));
     ids.add("core");
     ids.add("points");
-    ids.add("minecraft");
     if (selected) ids.add(selected);
     return [...ids]
       .sort()
@@ -2954,7 +3064,7 @@
         <label>Args (comma-separated, optional ones end with ?)
           <input id="cmd-args" type="text" value="${escapeHtml(args)}" placeholder="entity, qty?" />
         </label>
-        <label>Minecraft template
+        <label>Game template (Minecraft: console command)
           <textarea id="cmd-template" rows="2">${escapeHtml(d.template || "")}</textarea>
         </label>
         <label>Qty template (optional)
@@ -3416,69 +3526,19 @@
   }
 
   function fillMarketForm(data) {
-    const mc = data.minecraft || {};
     const mkt = data.market || {};
     if ($("mkt-enabled")) $("mkt-enabled").checked = !!mkt.enabled;
-    if ($("mkt-dyn-sym")) $("mkt-dyn-sym").value = (mc.dynamo_symbols || ["MINECRAF"]).join(", ");
-    if ($("mkt-dyn-min")) $("mkt-dyn-min").value = mc.dynamo_min_factor ?? 0.25;
-    if ($("mkt-dyn-max")) $("mkt-dyn-max").value = mc.dynamo_max_factor ?? 3;
-    if ($("mkt-vault-sym")) $("mkt-vault-sym").value = mc.vault_symbol || "MINECRAF";
-    if ($("mkt-vault-rate")) $("mkt-vault-rate").value = mc.vault_rf_per_point ?? 200;
-    if ($("mkt-vault-min")) $("mkt-vault-min").value = mc.vault_min_rf ?? 1000;
-    if ($("mkt-chest-sym")) $("mkt-chest-sym").value = mc.chest_symbol || "MINECRAF";
-    if ($("mkt-chest-rate")) $("mkt-chest-rate").value = mc.chest_points_per_xp ?? 1;
-    if ($("mkt-chest-min")) $("mkt-chest-min").value = mc.chest_min_xp ?? 1;
-    if ($("mkt-chest-def")) $("mkt-chest-def").value = mc.chest_default_value ?? 0.05;
-    if ($("mkt-chest-smelt")) $("mkt-chest-smelt").checked = mc.chest_use_smelt_xp !== false;
-    if ($("mkt-chest-vals")) {
-      const vals = mc.chest_item_values || {};
-      $("mkt-chest-vals").value = Object.entries(vals).map(([k, v]) => k + ":" + v).join("\n");
-    }
     if ($("mkt-hour-cap")) $("mkt-hour-cap").value = mkt.hourly_cap_points ?? 500;
     if ($("mkt-steam-sec")) $("mkt-steam-sec").value = mkt.steam_poll_sec ?? 1800;
-    if ($("mkt-drain")) $("mkt-drain").checked = mc.power_drain !== false;
-    if ($("mkt-drain-bps")) $("mkt-drain-bps").value = mc.power_drain_bps ?? 80;
-    if ($("mkt-off-below")) $("mkt-off-below").value = mc.dynamo_off_below ?? 0.5;
-    if ($("mkt-max-rf")) $("mkt-max-rf").value = mc.max_rf_per_tick ?? 2400;
-    if ($("mkt-devices")) {
-      const list = ((data.devices || {}).devices) || [];
-      $("mkt-devices").hidden = false;
-      $("mkt-devices").textContent = list.length
-        ? list.map((d) => `${d.kind}  drain ${d.drainRate || 0}/15  FE ${d.orderedRf || 0}/t  ${d.id}`).join("\n")
-        : "(no Fridge blocks reported — enable Minecraft + place a Dynamo / Chest)";
-    }
     if ($("mkt-trade-impact")) $("mkt-trade-impact").checked = mkt.trade_impact !== false;
     if ($("mkt-trade-bps")) $("mkt-trade-bps").value = mkt.trade_impact_bps_per_100 ?? 40;
-    const fx = data.factorio || {};
-    const fxList = Array.isArray(fx.dynamo_symbols) ? fx.dynamo_symbols : String(fx.dynamo_symbols || "FACTORIO").split(",");
-    if ($("mkt-fx-dyn-sym")) $("mkt-fx-dyn-sym").value = fxList.map((s) => String(s).trim()).filter(Boolean).join(", ");
-    if ($("mkt-fx-dyn-min")) $("mkt-fx-dyn-min").value = fx.dynamo_min_factor ?? 0.25;
-    if ($("mkt-fx-dyn-max")) $("mkt-fx-dyn-max").value = fx.dynamo_max_factor ?? 3;
-    if ($("mkt-fx-vault-sym")) $("mkt-fx-vault-sym").value = fx.vault_symbol || "FACTORIO";
-    if ($("mkt-fx-chest-sym")) $("mkt-fx-chest-sym").value = fx.chest_symbol || "FACTORIO";
-    if ($("mkt-fx-flush-mj")) $("mkt-fx-flush-mj").value = fx.vault_flush_mj ?? 25;
-    if ($("mkt-fx-flush-items")) $("mkt-fx-flush-items").value = fx.chest_flush_items ?? 20;
-    if ($("mkt-fx-drain")) $("mkt-fx-drain").checked = !!fx.power_drain;
-    if ($("mkt-fx-drain-bps")) $("mkt-fx-drain-bps").value = fx.power_drain_bps ?? 12;
-    const fxBoost = data.factorio_boost || {};
-    if ($("mkt-fx-boost")) {
-      const bits = (fxBoost.symbols || []).map((s) => `${s.symbol} ${Number(s.factor).toFixed(2)}×`).join(" · ") || "no quotes";
-      $("mkt-fx-boost").textContent = `Boost now: ${Number(fxBoost.factor || 1).toFixed(2)}×  (${bits})`;
+    const bookSel = $("mkt-new-book");
+    if (bookSel && Array.isArray(data.books)) {
+      const keep = bookSel.value;
+      bookSel.innerHTML = data.books.map((b) => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join("");
+      if (data.books.includes(keep)) bookSel.value = keep;
     }
-    const boost = data.boost || {};
-    if ($("mkt-boost")) {
-      const bits = (boost.symbols || []).map((s) => `${s.symbol} ${Number(s.factor).toFixed(2)}×`).join(" · ") || "no quotes";
-      $("mkt-boost").textContent = `Boost now: ${Number(boost.factor || 1).toFixed(2)}×  (${bits})`;
-    }
-    const vault = data.vault || {};
-    if ($("mkt-vault-live")) {
-      $("mkt-vault-live").textContent =
-        `Pending RF: ${vault.pendingRf ?? "—"}  lifetime ${vault.lifetimeRf ?? "—"}`;
-    }
-    if ($("mkt-chest-live")) {
-      $("mkt-chest-live").textContent =
-        `Pending XP: ${vault.pendingXp ?? "—"}  lifetime ${vault.lifetimeXp ?? "—"}`;
-    }
+    renderMarketPlugins(data.plugins || []);
     const holds = data.holdings || [];
     if ($("mkt-holdings")) {
       $("mkt-holdings").hidden = false;
@@ -3516,6 +3576,98 @@
     }
   }
 
+  /** One Market sub-page per game plugin with "market" fields in its plugin.json. */
+  function renderMarketPlugins(plugins) {
+    const panel = $("tab-market");
+    const stack = panel && panel.querySelector('.acc-stack[data-acc="market"]');
+    const bar = panel && panel.querySelector('.subtabs[data-subtabs="market"]');
+    if (!stack || !bar) return;
+    let added = false;
+    plugins.forEach((p) => {
+      const sub = "plg-" + p.id;
+      const m = p.market || {};
+      let acc = stack.querySelector(`:scope > .acc[data-sub="${sub}"]`);
+      if (!acc) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "subtab";
+        btn.dataset.sub = sub;
+        btn.textContent = p.name;
+        bar.insertBefore(btn, bar.querySelector('.subtab[data-sub="investors"]'));
+        acc = document.createElement("details");
+        acc.className = "acc";
+        acc.dataset.sub = sub;
+        acc.open = true;
+        stack.insertBefore(acc, stack.querySelector(':scope > .acc[data-sub="investors"]'));
+        added = true;
+      }
+      const groups = [];
+      (m.fields || []).forEach((f) => {
+        const g = f.group || m.title || p.name;
+        let row = groups.find((x) => x.name === g);
+        if (!row) groups.push((row = { name: g, fields: [] }));
+        row.fields.push(f);
+      });
+      const saveId = "plg-mkt-save-" + slug(p.id);
+      const statusId = "plg-mkt-status-" + slug(p.id);
+      if (PAGE_SAVER && PAGE_SAVER.isDirty && PAGE_SAVER.isDirty("mkt-" + sub) && $(saveId)) {
+        // unsaved edits here: only refresh the live numbers, keep what was typed
+        const pre = acc.querySelector(".integ-result");
+        if (pre) pre.textContent = (p.market_status || []).join("\n") || pre.textContent;
+        return;
+      }
+      acc.innerHTML =
+        `<summary>${escapeHtml(m.title || p.name)}</summary>` +
+        `<div class="acc-body market-mc-grid">` +
+        (m.hint ? `<p class="hint">${escapeHtml(m.hint)}</p>` : "") +
+        groups.map((g, i) =>
+          `<fieldset class="cfg-card"><legend>${escapeHtml(g.name)}</legend>` +
+          g.fields.map((f) => pluginFieldHtml("mkt", p.id, f, pathGet(p.values || {}, f.key))).join("") +
+          (i === 0
+            ? `<pre class="integ-result">${escapeHtml((p.market_status || []).join("\n") ||
+                (p.running ? "(no live numbers yet)" : p.name + " is not running: live numbers show while it runs"))}</pre>` +
+              `<div class="form-row" style="gap:8px;flex-wrap:wrap">` +
+              `<button type="button" class="primary" id="${saveId}">Save ${escapeHtml(p.name)} market</button>` +
+              `<span class="muted" id="${statusId}"></span></div>`
+            : "") +
+          `</fieldset>`).join("") +
+        `</div>`;
+      const sum = acc.querySelector(":scope > summary");
+      if (sum) sum.addEventListener("click", (ev) => ev.preventDefault());
+      $(saveId).onclick = async () => {
+        const values = {};
+        acc.querySelectorAll(".plg-field").forEach((el) => {
+          values[el.dataset.key] = el.dataset.type === "checkbox" ? el.checked : el.value;
+        });
+        try {
+          const res = await api("/api/admin/plugins/" + encodeURIComponent(p.id) + "/settings", {
+            method: "PUT",
+            body: JSON.stringify({ values }),
+          });
+          if (lastLoadedConfig) lastLoadedConfig[p.id] = res.values;   // a later config.yaml save keeps these
+          await initMarketTab(true);
+          if ($(statusId)) $(statusId).textContent = "Saved";
+          if ($("mkt-status")) $("mkt-status").textContent = p.name + " market saved";
+        } catch (e) {
+          if ($(statusId)) $(statusId).textContent = String(e.message || e);
+        }
+      };
+      if (PAGE_SAVER && PAGE_SAVER.add) {
+        PAGE_SAVER.add({ key: "mkt-" + sub, page: "market", sub, name: p.name + " market",
+          scope: `#tab-market .acc[data-sub="${sub}"]`, button: saveId });
+      }
+    });
+    if (added && panel.classList.contains("active")) {
+      const want = marketPluginSub || (location.hash.split("/")[1] || "").trim();
+      marketPluginSub = "";
+      if (want.startsWith("plg-") && stack.querySelector(`:scope > .acc[data-sub="${want}"]`)) {
+        showSub("market", want);
+        markNav("market", want);
+        if (location.hash !== "#market/" + want) history.replaceState(null, "", "#market/" + want);
+      } else showSub("market", panel.dataset.sub || "");
+    }
+  }
+
   async function initMarketTab(force) {
     if (!$("tab-market")) return;
     if ($("tab-market").dataset.ready && !force) return;
@@ -3532,57 +3684,17 @@
   if ($("mkt-save")) {
     $("mkt-save").onclick = async () => {
       try {
-        await api("/api/admin/market/minecraft", {
+        await api("/api/admin/market/settings", {
           method: "PUT",
           body: JSON.stringify({
             enabled: $("mkt-enabled") ? $("mkt-enabled").checked : false,
-            dynamo_symbols: $("mkt-dyn-sym").value,
-            dynamo_min_factor: Number($("mkt-dyn-min").value),
-            dynamo_max_factor: Number($("mkt-dyn-max").value),
-            vault_symbol: $("mkt-vault-sym").value.trim().toUpperCase(),
-            vault_rf_per_point: Number($("mkt-vault-rate").value),
-            vault_min_rf: Number($("mkt-vault-min").value),
-            chest_symbol: $("mkt-chest-sym").value.trim().toUpperCase(),
-            chest_points_per_xp: Number($("mkt-chest-rate").value),
-            chest_min_xp: Number($("mkt-chest-min").value),
-            chest_default_value: Number($("mkt-chest-def") ? $("mkt-chest-def").value : 0.05),
-            chest_use_smelt_xp: $("mkt-chest-smelt") ? $("mkt-chest-smelt").checked : true,
-            chest_item_values: $("mkt-chest-vals") ? $("mkt-chest-vals").value : "",
             hourly_cap_points: Number($("mkt-hour-cap").value),
             steam_poll_sec: Number($("mkt-steam-sec") ? $("mkt-steam-sec").value : 1800),
-            power_drain: $("mkt-drain") ? $("mkt-drain").checked : true,
-            power_drain_bps: Number($("mkt-drain-bps") ? $("mkt-drain-bps").value : 12),
-            dynamo_off_below: Number($("mkt-off-below") ? $("mkt-off-below").value : 0.5),
-            max_rf_per_tick: Number($("mkt-max-rf") ? $("mkt-max-rf").value : 2400),
             trade_impact: $("mkt-trade-impact") ? $("mkt-trade-impact").checked : true,
             trade_impact_bps_per_100: Number($("mkt-trade-bps") ? $("mkt-trade-bps").value : 40),
           }),
         });
         if ($("mkt-status")) $("mkt-status").textContent = "Saved";
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
-  if ($("mkt-fx-save")) {
-    $("mkt-fx-save").onclick = async () => {
-      try {
-        await api("/api/admin/market/factorio", {
-          method: "PUT",
-          body: JSON.stringify({
-            dynamo_symbols: $("mkt-fx-dyn-sym").value,
-            dynamo_min_factor: Number($("mkt-fx-dyn-min").value),
-            dynamo_max_factor: Number($("mkt-fx-dyn-max").value),
-            vault_symbol: $("mkt-fx-vault-sym").value.trim().toUpperCase(),
-            chest_symbol: $("mkt-fx-chest-sym").value.trim().toUpperCase(),
-            vault_flush_mj: Number($("mkt-fx-flush-mj").value),
-            chest_flush_items: Number($("mkt-fx-flush-items").value),
-            power_drain: $("mkt-fx-drain") ? $("mkt-fx-drain").checked : false,
-            power_drain_bps: Number($("mkt-fx-drain-bps") ? $("mkt-fx-drain-bps").value : 12),
-          }),
-        });
-        if ($("mkt-status")) $("mkt-status").textContent = "Factorio market saved";
         initMarketTab(true);
       } catch (e) {
         if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
@@ -3714,7 +3826,7 @@
         const r = await api("/api/admin/market/dividend", {
           method: "POST",
           body: JSON.stringify({
-            symbol: ($("mkt-chest-sym") && $("mkt-chest-sym").value) || "MINECRAF",
+            symbol: ($("mkt-hold-sym") && $("mkt-hold-sym").value.trim().toUpperCase()) || "FRG",
             points: 10,
           }),
         });
@@ -4170,12 +4282,11 @@
       { key: "chat-opts", page: "chatlook", sub: "look", name: "Chat overlay behaviour",
         fields: ["chat-opt-hide", "chat-opt-max", "chat-opt-top", "chat-opt-avatars", "chat-opt-volume", "chat-opt-gap"],
         button: "chat-opt-save" },
-      { key: "mkt-mc", page: "market", sub: "minecraft", name: "Minecraft market", group: "mkt-mc",
-        scope: '#tab-market .acc[data-sub="minecraft"]', button: "mkt-save" },
-      { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-mc",
+      { key: "mkt-set", page: "market", sub: "listings", name: "Market settings", group: "mkt-set",
+        scope: "#mkt-switches", button: "mkt-save" },
+      { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-set",
         fields: ["mkt-hour-cap", "mkt-steam-sec"], button: "mkt-save", also: ["mkt-inv-save"] },
-      { key: "mkt-fx", page: "market", sub: "factorio", name: "Factorio market",
-        scope: '#tab-market .acc[data-sub="factorio"]', button: "mkt-fx-save" },
+      // game plugins' market sub-pages add themselves with PAGE_SAVER.add (renderMarketPlugins)
       { key: "rx", page: "config", sub: "reactions", name: "Reactions",
         scope: "#rx-wrap", ignore: '[id^="rx-test"], #rx-img-name, #rx-img-file',
         clicks: "#rx-add, #rx-del-btn", button: "rx-save", reload: "rx-reload" },
@@ -4267,7 +4378,7 @@
     }
 
     // A section's own Save button: clear its "unsaved" mark once that save went through.
-    sections.forEach((s) => {
+    function wire(s) {
       [s.button].concat(s.also || []).forEach((id) => {
         const btn = $(id);
         if (!btn) {
@@ -4314,7 +4425,19 @@
           render();
         });
       }
-    });
+    }
+    sections.forEach(wire);
+
+    // Sections drawn later (game plugins' Market sub-pages): added, or re-wired after a redraw.
+    PAGE_SAVER.add = (sec) => {
+      if (!$("tab-" + sec.page)) return;
+      const i = sections.findIndex((s) => s.key === sec.key);
+      if (i >= 0) sections.splice(i, 1);
+      sections.push(sec);
+      wire(sec);
+      render();
+    };
+    PAGE_SAVER.isDirty = (key) => sections.some((s) => s.key === key && s.dirty);
 
     async function savePage(page) {
       const panel = $("tab-" + page);

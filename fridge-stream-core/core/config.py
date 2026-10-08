@@ -19,6 +19,7 @@ from typing import Any, Dict, Optional, Tuple
 
 import yaml
 
+from core import plugin_manifest as _plugin_manifest
 from core.credits_theme import LOOK_DEFAULTS
 
 from core.reactions import DEFAULT_REACTIONS as _REACTIONS_DEFAULTS
@@ -69,80 +70,6 @@ DEFAULTS: Dict[str, Any] = {
         "channel_id": "",
         "video_id": "",
         "live_chat_id": "",
-    },
-    "minecraft": {
-        "enabled": False,
-        "player_name": "YourInGameName",
-        "client_mod_url": "http://127.0.0.1:3852",
-        "server_mod_url": "http://127.0.0.1:3853",
-        # Fridge Market hook — all tunable from Admin → Market
-        "market": {
-            "dynamo_symbols": ["MINECRAF"],
-            "dynamo_min_factor": 0.25,
-            "dynamo_max_factor": 3.0,
-            "vault_symbol": "MINECRAF",
-            "vault_rf_per_point": 200,
-            "vault_min_rf": 1000,
-            "chest_symbol": "MINECRAF",
-            "chest_points_per_xp": 1.0,
-            "chest_min_xp": 1.0,
-            "power_drain": True,
-            "power_drain_bps": 80,
-            "dynamo_off_below": 0.5,
-            "max_rf_per_tick": 2400,
-            "chest_default_value": 0.05,
-            "chest_use_smelt_xp": True,
-            "chest_item_values": {
-                "minecraft:ancient_debris": 2.0,
-                "minecraft:netherite_ingot": 4.0,
-                "minecraft:diamond": 2.0,
-                "minecraft:emerald": 1.5,
-                "minecraft:raw_gold": 1.0,
-                "minecraft:gold_ingot": 1.0,
-                "minecraft:raw_iron": 0.7,
-                "minecraft:iron_ingot": 0.7,
-                "minecraft:raw_copper": 0.4,
-                "minecraft:coal": 0.1,
-                "minecraft:oak_log": 0.15,
-                "minecraft:cobblestone": 0.05,
-                "minecraft:dirt": 0.02,
-                "minecraft:netherrack": 0.02,
-                "minecraft:blaze_rod": 1.0,
-                "minecraft:ender_pearl": 1.2,
-            },
-        },
-    },
-    "factorio": {
-        "enabled": False,
-        "bridge_url": "http://127.0.0.1:3847",
-        "market": {
-            "dynamo_symbols": ["FACTORIO"],
-            "dynamo_min_factor": 0.25,
-            "dynamo_max_factor": 3.0,
-            "vault_symbol": "FACTORIO",
-            "chest_symbol": "FACTORIO",
-            "vault_flush_mj": 25,
-            "chest_flush_items": 20,
-            "power_drain": False,
-            "power_drain_bps": 12,
-        },
-    },
-    "granvir": {
-        "enabled": False,
-        "bridge_url": "http://127.0.0.1:3855",
-    },
-    "openttd": {
-        "enabled": False,
-        "host": "127.0.0.1",
-        "admin_port": 3977,
-        "admin_password": "",
-        "name": "FridgeStreamCore",
-        "pounds_per_point": 1000,
-        "min_invest_points": 10,
-        "max_invest_points": 5000,
-        "use_gamescript": True,
-        "allow_host_invest": True,
-        "host_company_id": None,
     },
     "permissions": {
         "admin": ["YOUR_USERNAME"],
@@ -274,35 +201,11 @@ DEFAULTS: Dict[str, Any] = {
             "bind": "points",
             "description": "Chat points (!points / !balance)",
         },
-        "minecraft": {
-            "enabled": True,
-            "always": False,
-            "bind": "minecraft",
-            "description": "Minecraft integration (!spawn, !give, …)",
-        },
-        "factorio": {
-            "enabled": True,
-            "always": False,
-            "bind": "factorio",
-            "description": "Factorio stats overlay (Fridge Factorio Stats bridge)",
-        },
         "credits": {
             "enabled": True,
             "always": False,
             "bind": "credits",
             "description": "End credits (!credit / !credits)",
-        },
-        "granvir": {
-            "enabled": True,
-            "always": False,
-            "bind": "granvir",
-            "description": "Granvir stats overlay (BepInEx bridge on :3855)",
-        },
-        "openttd": {
-            "enabled": True,
-            "always": False,
-            "bind": "openttd",
-            "description": "OpenTTD Admin Port + Chat Fund (!invest, !companies)",
         },
         "market": {
             "enabled": True,
@@ -329,6 +232,13 @@ DEFAULTS["credits"].update(LOOK_DEFAULTS)
 DEFAULTS["reactions"] = copy.deepcopy(_REACTIONS_DEFAULTS)
 # Chat games (Admin → Chat games). Off by default; core/chat_games/config.py fills the rest.
 DEFAULTS["chat_games"] = {"enabled": False}
+
+# Game plugins (plugins/<id>/plugin.json) add their own section, switched off, and command group.
+_plugin_manifest.set_reserved_ids(DEFAULTS)
+for _pid, _section in _plugin_manifest.config_defaults().items():
+    DEFAULTS[_pid] = _section
+for _pid, _group in _plugin_manifest.group_defaults().items():
+    DEFAULTS["command_groups"].setdefault(_pid, _group)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

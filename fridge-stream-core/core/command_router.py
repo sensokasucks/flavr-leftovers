@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .models import (
     ChatEvent,
@@ -32,8 +32,11 @@ class CommandRouter:
         command_prefix: str = "!",
         default_player: str = "Player",
         enabled_groups: Optional[set] = None,
+        default_commands: Optional[Callable[[], dict]] = None,
     ):
         self.prefix = command_prefix
+        # Game plugins' own commands.json; the commands file wins on a name clash
+        self.default_commands = default_commands
         self.player = default_player
         self.perms = permission_manager
         self.commands_path = Path(commands_path)
@@ -116,18 +119,26 @@ class CommandRouter:
         self.commands = {}
         self.definitions = {}
         self.conflicts = []
+        raw: dict = {}
         if not path.exists():
             log.warning("commands file not found: %s", path)
-            return
-
-        try:
-            raw = json.loads(path.read_text(encoding="utf-8-sig"))
-        except json.JSONDecodeError as exc:
-            log.error("Invalid commands JSON in %s: %s", path, exc)
-            return
-        if not isinstance(raw, dict):
-            log.error("commands file %s must be a JSON object", path)
-            return
+        else:
+            try:
+                raw = json.loads(path.read_text(encoding="utf-8-sig"))
+            except json.JSONDecodeError as exc:
+                log.error("Invalid commands JSON in %s: %s", path, exc)
+                return
+            if not isinstance(raw, dict):
+                log.error("commands file %s must be a JSON object", path)
+                return
+        if self.default_commands is not None:
+            try:
+                extra = self.default_commands() or {}
+            except Exception:
+                log.exception("plugin default commands failed")
+                extra = {}
+            # after the file's own, so on a shared alias the file's command wins (first definition)
+            raw = {**raw, **{k: v for k, v in extra.items() if k not in raw}}
         for name, data in raw.items():
             if not isinstance(data, dict):
                 log.warning("Skipping command %r — expected an object", name)

@@ -71,7 +71,7 @@ python main.py
 | **Minecraft stats** | `http://127.0.0.1:3850/overlay/overlay.html` | HP, CPM, power, inventory |
 | **Stream alerts** | `http://127.0.0.1:3850/overlay/alerts.html` | Follow / sub / raid / Super Chat — Streamlabs/SE CSS compatible; pictures and sounds per kind uploaded in Admin → Alerts |
 | **Chat credits** | `http://127.0.0.1:3850/overlay/credits.html` | Unique-chatter end credits (enable in Admin → Credits). Style editor + keys: [overlay/CREDITS.md](overlay/CREDITS.md), motions: [overlay/MOTIONS.md](overlay/MOTIONS.md) |
-| **OpenTTD companies** | `http://127.0.0.1:3850/overlay/openttd.html` | Companies + Chat Fund (`openttd.enabled`) |
+| **OpenTTD companies** | `http://127.0.0.1:3850/overlay/openttd.html` | Companies + Chat Fund (OpenTTD plugin, `openttd.enabled`) |
 | **OpenTTD ticker** | `http://127.0.0.1:3850/overlay/openttd-ticker.html` | Thin company tape |
 | **Market ticker** | `http://127.0.0.1:3850/overlay/market.html` | Scrolling Fridge Market tape |
 | **Market board** | `http://127.0.0.1:3850/overlay/market-board.html` | Quote cards + sparklines |
@@ -158,11 +158,11 @@ fridge-stream-core/
 │   ├── kick.py             # Kick Pusher listener
 │   ├── twitch.py           # Twitch anonymous IRC
 │   └── youtube.py          # YouTube official API + InnerTube
-├── games/
-│   ├── base.py             # abstract game integration
-│   ├── minecraft.py        # talks to existing Fabric mods
-│   ├── factorio.py         # Fridge Factorio Stats :3847
-│   └── granvir.py          # Fridge Granvir Stats :3855
+├── plugins/                # game plugins, one folder each (Core runs with none)
+│   ├── minecraft/          # talks to the Fridge Minecraft mods :3852 / :3853
+│   ├── factorio/           # Fridge Factorio Stats :3847
+│   ├── granvir/            # Fridge Granvir Stats :3855 (plugin.json only)
+│   └── openttd/            # Admin Port + Chat Fund + FridgeChatFund game script
 ├── api/
 │   ├── server.py           # FastAPI + WebSocket
 │   └── admin_routes.py     # points, chat export, config/commands, alert + integrations test
@@ -170,14 +170,16 @@ fridge-stream-core/
 └── overlay/                # HTML/CSS/JS Webpage sources (XSplit / OBS)
 ```
 
-## Adding a new game later
+## Game plugins
 
-1. Create `games/yourgame.py` that subclasses `BaseGameIntegration`
-2. Implement `execute(self, req: ExecuteRequest) -> dict`
-3. Optionally implement `on_metrics`
-4. Register it in `main.py` the same way Minecraft is registered
+Minecraft, Factorio, Granvir and OpenTTD are plugins: folders in `plugins/`. Each one adds a
+card under **Settings → Game plugins** (switch it on there, then restart Core), its command
+group, its overlays and its Market listings. Core runs fine with the folder empty; the games
+are also released on their own as the **games pack** zip (`python tools/pack_games.py`).
 
-Core will automatically route approved chat commands to every registered game.
+Adding a game: a new `plugins/<id>/` folder. If the game already has a bridge program that
+speaks HTTP, a `plugin.json` is all it takes; otherwise a small Python class. See
+[docs/PLUGINS.md](docs/PLUGINS.md).
 
 ## Chat platforms
 

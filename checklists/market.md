@@ -10,11 +10,11 @@ Home: `core/market.py`. Spec: `fridge-stream-core/docs/MARKET.md`. Admin tab **M
 - [ ] Public API: `GET /api/market/state`, `GET /api/market/history`, `POST /api/market/signal`, `POST /api/market/dividend`.
 - [ ] Holdings table `market_holdings`. Dividends go through `store.pay_dividend` (dust burned if nobody is invested).
 - [ ] Preview tape ticks seed listings even while `enabled` is false so overlays can be designed.
-- [ ] Overlays: `/overlay/market.html`, `/overlay/market-board.html`, `/overlay/market-chart.html`, plus per-game tapes (`market-minecraft.html`, `market-factorio.html`, `market-openttd.html`, dynamo helper pages).
+- [ ] Overlays: `/overlay/market.html`, `/overlay/market-board.html`, `/overlay/market-chart.html`, plus per-game tapes (`market-minecraft.html`, `market-factorio.html`, `market-openttd.html`, dynamo helper pages) that live in each plugin's `overlay/` and answer at the same `/overlay/` URLs.
 - [ ] Per-trigger cooldowns: `cooldown_sec` + `cooldown_scope` (`symbol` / `book` / `global`). Death dip must not be spawn-campable when cooldown > 0.
 - [ ] Steam CCU via `GetNumberOfCurrentPlayers` only — **no steamcharts scrape**. Interval: `market.steam_poll_sec` (default 1800).
 - [ ] Chat-member tickers (`feed: chatter`): base price from channel points, optional live link, consecutive-stream bonus (`chatter_points_scale`, `chatter_streak_bonus`).
-- [ ] Admin → Market can edit ticker CRUD / personalities, grant shares, test payout, and per-game dynamo / vault / chest knobs.
+- [ ] Admin → Market can edit ticker CRUD / personalities, grant shares, test payout, and per-game dynamo / vault / chest knobs (sub-pages from each plugin's `plugin.json` `market` fields, saved with `PUT /api/admin/plugins/{id}/settings`, applied live). Game listings are seeded from plugins' `market_books`; Core itself only seeds `FRG`.
 - [ ] Config tab save **must not wipe** `minecraft.market.*`, `factorio.market.*`, or `market.*`.
 - [ ] Default Minecraft ticker is `MINECRAF` only. Default Factorio ticker is `FACTORIO` only. Do not silently resurrect `STEVE` / `FRG` / `PWR` / `FACT` as defaults unless the checklist and example config are updated together.
 - [ ] Chat Dynamo / Chat Kinetic use the same power level × stock factor (clamped). No extra RPM→FE conversion layer.

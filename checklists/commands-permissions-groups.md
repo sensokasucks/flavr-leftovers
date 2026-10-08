@@ -12,11 +12,12 @@ Home: `core/command_router.py`, `core/command_groups.py`, `core/permissions.py`,
 - [ ] `command_groups` in `config.yaml`: each group has `enabled`, optional `bind`, optional `always`, `description`.
 - [ ] `core` is always on (`always: true`).
 - [ ] Bind semantics:
-  - `minecraft` / `factorio` / `openttd` / `granvir` → config enabled **and** integration running
+  - a game plugin's id (`minecraft` / `factorio` / `openttd` / `granvir` / any installed plugin) → config enabled **and** plugin running. The four old ids keep needing "running" even with no plugin installed
   - `points` → `points.enabled`
   - `credits` → `credits.enabled`
   - `market` → `market.enabled`
   - `reactions` → `reactions.enabled` (reaction commands live in `config.yaml` → `reactions.entries`, not `commands.json`; a `commands.json` name wins)
+- [ ] Game plugins' `commands.json` are merged in as defaults **under** `config/commands.json`: the file wins on a name, plugin commands fill in the rest; dashboard saves don't write untouched plugin defaults into the file. `commands.example.json` has no game commands.
 - [ ] Groups and `commands.json` hot-reload from Admin (Save groups / Hot-reload / Save + hot-reload).
 - [ ] Name/alias conflicts: higher `priority` wins; equal priority keeps the first definition. Admin banner lists token, winner, loser, reason.
 - [ ] `core.command_groups` exports `resolve_active_groups` **and** `catalog_status` plus the `CommandGroups` wrapper.

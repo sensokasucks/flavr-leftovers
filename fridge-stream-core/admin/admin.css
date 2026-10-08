@@ -545,6 +545,7 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
 }
 .cfg-card input[type="text"],
 .cfg-card input[type="number"],
+.cfg-card input[type="password"],
 .cfg-card select,
 .cfg-card textarea {
   display: block;
@@ -562,6 +563,8 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   margin: 0;
 }
 .cfg-card textarea { resize: vertical; font-family: ui-monospace, monospace; font-size: 0.85rem; }
+.cfg-card .hint a, .integ-empty a { color: var(--accent); }
+#plugin-cards > .integ-empty { grid-column: 1 / -1; max-width: 75ch; }
 .cfg-card .hint {
   margin: 8px 0 0;
   font-size: 0.75rem;

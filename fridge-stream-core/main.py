@@ -2,9 +2,9 @@
 """
 Fridge Stream Core – entry point.
 
-Starts (all chat platforms and Minecraft are opt-in via config):
+Starts (all chat platforms and games are opt-in via config):
   - Platform adapters: Kick / Twitch / YouTube
-  - Minecraft game integration
+  - Game plugins found in plugins/ (Minecraft, Factorio, Granvir, OpenTTD from the games pack)
   - Command router + metrics aggregator
   - FastAPI HTTP/WS server on the configured port (default 3850)
 """
@@ -61,10 +61,8 @@ try:
     from adapters.kick import KickAdapter
     from adapters.twitch import TwitchAdapter
     from adapters.youtube import YouTubeAdapter
-    from games.minecraft import MinecraftIntegration
-    from games.factorio import FactorioIntegration
-    from games.granvir import GranvirIntegration
-    from games.openttd import OpenTTDIntegration
+    from core import plugin_manifest
+    from core.plugins import PluginManager
     from api.server import create_app, CoreState
 except ImportError as exc:
     sys.stderr.write(
@@ -84,6 +82,18 @@ PLATFORM_ADAPTERS = {
 }
 
 
+def default_player(config: dict) -> str:
+    """{player} in command templates: core.player_name, else a game plugin's player_name."""
+    name = str((config.get("core") or {}).get("player_name") or "").strip()
+    if name:
+        return name
+    for pid in plugin_manifest.installed_ids():
+        name = str((config.get(pid) or {}).get("player_name") or "").strip()
+        if name:
+            return name
+    return "Player"
+
+
 class StreamCore:
     def __init__(self, config: dict):
         self.config = config
@@ -95,13 +105,14 @@ class StreamCore:
         if not commands_path.exists():
             commands_path = ROOT / "config" / "commands.example.json"
 
-        player = config.get("minecraft", {}).get("player_name", "Player")
+        player = default_player(config)
         prefix = config.get("core", {}).get("command_prefix", "!")
         self.router = CommandRouter(
             commands_path=commands_path,
             permission_manager=self.perms,
             command_prefix=prefix,
             default_player=player,
+            default_commands=plugin_manifest.default_commands,
         )
 
         self.adapters = {}
@@ -126,6 +137,18 @@ class StreamCore:
         self.state.credits = self.credits
         self.market = MarketTape(config, listings_path=ROOT / "data" / "market_tickers.json")
         self.state.market = self.market
+        # Game plugins (plugins/<id>/): loaded now so their routes exist, started in start()
+        self.plugins = PluginManager(
+            get_config=lambda: self.state.config or self.config,
+            games=self.games,
+            market=self.market,
+            store=self.store,
+            bus=self.bus,
+            broadcast=self._ws_broadcast,
+            root=ROOT,
+        )
+        self.plugins.load_all()
+        self.state.plugins = self.plugins
         # Chat reactions (emoji / commands → Stream Rooms or fallback overlay)
         self.reactions = ReactionEngine(
             get_config=lambda: self.state.config or self.config,
@@ -188,44 +211,8 @@ class StreamCore:
         # Wire metrics → game integrations + WS broadcast
         self.bus.on_metrics(self._on_metrics)
 
-        # Start game integrations (all opt-in; more games register the same way)
-        mc_cfg = self.config.get("minecraft", {})
-        if mc_cfg.get("enabled", False):
-            mc = MinecraftIntegration(self.config)
-            if hasattr(mc, "attach_market"):
-                mc.attach_market(self.market)
-            if hasattr(mc, "attach_store"):
-                mc.attach_store(self.store)
-            await mc.start()
-            self.games["minecraft"] = mc
-        else:
-            log.info("Minecraft integration disabled (minecraft.enabled=false)")
-
-        fx_cfg = self.config.get("factorio", {})
-        if fx_cfg.get("enabled", False):
-            fx = FactorioIntegration(self.config)
-            if hasattr(fx, "attach_market"):
-                fx.attach_market(self.market)
-            await fx.start()
-            self.games["factorio"] = fx
-        else:
-            log.info("Factorio integration disabled (factorio.enabled=false)")
-
-        gv_cfg = self.config.get("granvir", {})
-        if gv_cfg.get("enabled", False):
-            gv = GranvirIntegration(self.config)
-            await gv.start()
-            self.games["granvir"] = gv
-        else:
-            log.info("Granvir integration disabled (granvir.enabled=false)")
-
-        ot_cfg = self.config.get("openttd", {})
-        if ot_cfg.get("enabled", False):
-            ot = OpenTTDIntegration(self.config, store=self.store)
-            await ot.start()
-            self.games["openttd"] = ot
-        else:
-            log.info("OpenTTD integration disabled (openttd.enabled=false)")
+        # Start the enabled game plugins (all opt-in; a broken one is logged and skipped)
+        await self.plugins.start_enabled()
 
         # Start chat adapters (all opt-in — default enabled=false)
         for name in PLATFORM_ADAPTERS:
@@ -354,6 +341,7 @@ class StreamCore:
         """Hot-apply the parts of config that do not need a restart."""
         self.refresh_command_groups()
         self.apply_credits_config()
+        self.plugins.apply_config(self.config)
 
     async def _config_watch_loop(self) -> None:
         """Pick up hand edits to config.yaml (Notepad, wizard.py) without a restart."""
@@ -402,7 +390,7 @@ class StreamCore:
         """Hot-reload commands.json + prefix/player + group enablement."""
         path = resolve_commands_path()
         prefix = (self.config.get("core") or {}).get("command_prefix", "!")
-        player = (self.config.get("minecraft") or {}).get("player_name", "Player")
+        player = default_player(self.config)
         info = self.router.reload(path, command_prefix=prefix, default_player=player)
         groups = self.refresh_command_groups()
         info["groups_active"] = groups
