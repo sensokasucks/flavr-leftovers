@@ -158,6 +158,12 @@ DEFAULTS: Dict[str, Any] = {
         "maxCpmForFull": 30,
         "maxCommandsForFull": 10,
     },
+    # Chatter profile pictures, saved by Core for every overlay and Stream Rooms
+    # (core/avatar_store.py, files in data/avatars/, served at /avatars/...)
+    "avatars": {
+        "save_local": True,   # download each picture once and serve it from Core
+        "hide": [],           # names whose picture is never shown ("kick:name" = one platform)
+    },
     "overlay": {
         "show_inventory_seconds": 12,
         "alert_duration_ms": 6000,

@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Body, Header, HTTPException, Query
 from fastapi.responses import Response
@@ -498,8 +498,8 @@ def create_admin_router(core_state) -> APIRouter:
         if "command_groups" not in incoming:
             if isinstance(live.get("command_groups"), dict):
                 incoming["command_groups"] = live["command_groups"]
-        # Reactions / chat games are owned by their own pages; a stale form copy must not undo them
-        for owned in ("reactions", "chat_games"):
+        # Reactions / chat games / picture settings are owned by their own pages; a stale form copy must not undo them
+        for owned in ("reactions", "chat_games", "avatars"):
             if isinstance(live.get(owned), dict):
                 incoming[owned] = live[owned]
         try:
@@ -1108,6 +1108,56 @@ def create_admin_router(core_state) -> APIRouter:
     # ------------------------------------------------------------------
     # Chat overlay look (same idea as the alerts: skin + custom CSS + options)
     # ------------------------------------------------------------------
+
+    # ------------------------------------------------------------------
+    # Chatter profile pictures (core/avatar_store.py): save on/off + hide list
+    # ------------------------------------------------------------------
+
+    def _avatars_info() -> Dict[str, Any]:
+        cfg = (getattr(core_state, "config", None) or {}).get("avatars") or {}
+        store = getattr(core_state, "avatars", None)
+        try:
+            import PIL  # noqa: F401
+            pillow = True
+        except ImportError:
+            pillow = False
+        return {
+            "save_local": bool(cfg.get("save_local", True)),
+            "hide": [str(x) for x in (cfg.get("hide") or [])],
+            "saved": len(store.known_users()) if store else 0,
+            "png": pillow,
+        }
+
+    @router.get("/avatars")
+    async def get_avatars(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        return _avatars_info()
+
+    @router.put("/avatars")
+    async def put_avatars(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Save ``avatars.save_local`` and/or ``avatars.hide`` (one name per entry). Merges config."""
+        _auth(x_admin_token)
+        cfg = load_config()
+        section = dict(cfg.get("avatars") or {})
+        if "save_local" in body:
+            section["save_local"] = bool(body.get("save_local"))
+        if "hide" in body:
+            raw = body.get("hide")
+            items = raw.splitlines() if isinstance(raw, str) else list(raw or [])
+            out: List[str] = []
+            for item in items:
+                for part in str(item).split(","):
+                    name = part.strip()[:80]
+                    if name and name.lower() not in [o.lower() for o in out]:
+                        out.append(name)
+            section["hide"] = out[:1000]
+        cfg["avatars"] = section
+        save_config(cfg)
+        core_state.config = cfg
+        apply = getattr(core_state, "apply_avatar_settings", None)
+        if apply is not None:
+            await apply()
+        return {"ok": True, **_avatars_info()}
 
     @router.get("/chat/style")
     async def get_chat_style(x_admin_token: Optional[str] = Header(None)):

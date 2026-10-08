@@ -55,6 +55,8 @@ The same rules can go into OBS **Custom CSS** on the browser source instead.
 .avatar                   chatter picture
 ```
 
+Chatter pictures come from Core itself (`/avatars/<platform>/<file>`, saved once per chatter) as soon as Core has a copy, and from the platform's own link until then. Names on **Never show a picture for** (Settings → Core + chat platforms) never get one, and lose it at once when added.
+
 ## CSS variables
 
 ```css

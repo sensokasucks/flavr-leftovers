@@ -1742,6 +1742,7 @@
     $("cfg-tw-client-secret").value = tw.client_secret ?? "";
     if (tw.client_id || tw.client_secret) document.querySelector(".tw-advanced").open = true;
     loadTwitchAuth();
+    loadAvatarSettings();
 
     $("cfg-mc-enabled").checked = !!m.enabled;
     $("cfg-mc-player").value = m.player_name ?? "";
@@ -1845,6 +1846,35 @@
     if (s.error) state.textContent += ` — ${s.error}`;
     clearTimeout(twAuthTimer);
     if (pending) twAuthTimer = setTimeout(loadTwitchAuth, 3000);
+  }
+
+  // ── Chatter profile pictures (save in Core + hide list): own endpoint, saved with this page ──
+  let avLoaded = false;
+  function fillAvatarSettings(d) {
+    if (!$("cfg-av-save-local") || !d) return;
+    $("cfg-av-save-local").checked = d.save_local !== false;
+    $("cfg-av-hide").value = (d.hide || []).join("\n");
+    const n = Number(d.saved) || 0;
+    $("av-info").textContent = n + (n === 1 ? " picture" : " pictures") + " saved." +
+      (d.png ? "" : " Pictures are kept as the platform sends them; run install.bat once so Core can turn them into tidy PNGs.");
+    avLoaded = true;
+  }
+
+  async function loadAvatarSettings() {
+    if (!$("cfg-av-save-local")) return;
+    try {
+      fillAvatarSettings(await api("/api/admin/avatars"));
+    } catch (e) {
+      $("av-info").textContent = String(e.message || e);
+    }
+  }
+
+  async function saveAvatarSettings() {
+    if (!avLoaded || !$("cfg-av-save-local")) return;
+    fillAvatarSettings(await api("/api/admin/avatars", {
+      method: "PUT",
+      body: JSON.stringify({ save_local: $("cfg-av-save-local").checked, hide: $("cfg-av-hide").value }),
+    }));
   }
 
   async function loadTwitchAuth() {
@@ -2043,6 +2073,7 @@
         method: "PUT",
         body: JSON.stringify({ config }),
       });
+      await saveAvatarSettings();     // its own endpoint; the config.yaml save leaves it alone
       // points.admin_token applies as soon as it's saved: switch this page to it too, or every
       // call from here on would be refused with the old one
       if (newToken && newToken !== "change-me" && newToken !== token()) {
