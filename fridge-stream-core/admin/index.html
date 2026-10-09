@@ -991,7 +991,22 @@
       </label>
       <div class="config-actions">
         <button type="button" id="rf-save" class="primary">Save red flags</button>
+        <button type="button" id="rf-past" title="Save the phrases, then look through the saved chat history for chatters who already said one. Nobody is flagged until you say so.">Check past chat</button>
         <span class="muted" id="rf-status"></span>
+      </div>
+      <div id="rf-past-box" class="rf-past" hidden>
+        <h4>Found in past chat <span class="muted" id="rf-past-count"></span></h4>
+        <p class="hint" id="rf-past-hint"></p>
+        <table id="rf-past-table">
+          <thead>
+            <tr><th><input type="checkbox" id="rf-past-all" checked title="Tick or untick everyone" /></th><th>Name</th><th>Platform</th><th>Said</th><th>Lines</th><th>First time</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="config-actions">
+          <button type="button" id="rf-past-apply" class="primary">Red-flag ticked chatters</button>
+          <button type="button" id="rf-past-close">Close</button>
+        </div>
       </div>
       <h4>Red-flagged chatters <span class="muted" id="rf-count"></span></h4>
       <table id="rf-table">

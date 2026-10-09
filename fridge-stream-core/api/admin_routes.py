@@ -1261,6 +1261,45 @@ def create_admin_router(core_state) -> APIRouter:
             await hide(platform, "", name.lower(), name)
         return {"ok": True, **(await _red_flags_info())}
 
+    @router.post("/red-flags/check-past")
+    async def check_past_chat(x_admin_token: Optional[str] = Header(None)):
+        """Run the saved phrases over the saved chat log. Flags nobody: returns who would be
+        flagged (``people``), how many lines were read (``scanned``) and ``more`` when the
+        list was cut short."""
+        _auth(x_admin_token)
+        rf = _red_flags()
+        if not rf.phrases:
+            raise HTTPException(400, "Add some red flag phrases first")
+        return {"ok": True, **(await rf.scan_past())}
+
+    @router.post("/red-flags/apply-past")
+    async def apply_past_chat(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Red-flag the chatters the streamer ticked after **Check past chat**:
+        ``{"people": [{platform, platform_user_id, username, display_name, phrase, message}]}``."""
+        _auth(x_admin_token)
+        rf = _red_flags()
+        people = body.get("people")
+        if not isinstance(people, list) or not people:
+            raise HTTPException(400, "people required")
+        hide = getattr(core_state, "red_flag_hide", None)
+        flagged = 0
+        for p in people[:1000]:
+            if not isinstance(p, dict):
+                continue
+            platform = str(p.get("platform") or "").strip().lower()
+            uid = str(p.get("platform_user_id") or "").strip()[:120]
+            username = str(p.get("username") or "").strip()[:80]
+            display = str(p.get("display_name") or username).strip()[:80]
+            if platform not in ("kick", "twitch", "youtube") or not (uid or username):
+                continue
+            await rf.flag(platform, uid, username or display, display,
+                          phrase=str(p.get("phrase") or ""), message=str(p.get("message") or ""),
+                          source="past")
+            if hide is not None:
+                await hide(platform, uid, username.lower(), display)
+            flagged += 1
+        return {"ok": True, "flagged_now": flagged, **(await _red_flags_info())}
+
     @router.delete("/red-flags/{flag_id}")
     async def unflag(flag_id: int, x_admin_token: Optional[str] = Header(None)):
         """Take someone off the list: their new chat shows again (lines already hidden stay hidden)."""

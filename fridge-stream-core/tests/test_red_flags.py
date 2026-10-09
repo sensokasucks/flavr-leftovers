@@ -144,6 +144,75 @@ class FlagList(unittest.TestCase):
         self.assertEqual(len(matching_recent(items, "twitch", "", "a")), 0)
 
 
+class CheckPastChat(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(Path(self.tmp.name) / "t.db", None, {"enabled": True})
+        self.rf = RedFlags(self.store, {})
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def log(self, *events):
+        for ev in events:
+            run(self.store.process_chat(ev))
+
+    def test_finds_earlier_lines_and_groups_them(self):
+        self.log(chat("amy", "hello"), chat("spammer", "buy viewers here", uid="42"),
+                 chat("spammer", "BUY   VIEWERS cheap", uid="42"), chat("spammer", "hi", uid="42"),
+                 chat("bob", "total scammer", platform=Platform.TWITCH))
+        self.rf.configure({"phrases": ["buy viewers", "scam*"]})
+        res = run(self.rf.scan_past())
+        self.assertEqual(res["scanned"], 5)
+        self.assertFalse(res["more"])
+        found = {p["username"]: p for p in res["people"]}
+        self.assertEqual(set(found), {"spammer", "bob"})
+        self.assertEqual(found["spammer"]["count"], 2)
+        self.assertEqual(found["spammer"]["message"], "buy viewers here")
+        self.assertEqual(found["spammer"]["phrase"], "buy viewers")
+        self.assertEqual(len(found["spammer"]["examples"]), 2)
+        self.assertEqual((found["bob"]["platform"], found["bob"]["phrase"]), ("twitch", "scam*"))
+        # nobody is flagged by looking
+        self.assertEqual(run(self.rf.list()), [])
+
+    def test_no_phrases_reads_nothing(self):
+        self.log(chat("amy", "hello"))
+        self.assertEqual(run(self.rf.scan_past()), {"scanned": 0, "people": [], "more": False})
+
+    def test_skips_flagged_mods_and_staff(self):
+        self.log(chat("spammer", "buy viewers", uid="42"), chat("modo", "don't buy viewers", uid="7"),
+                 chat("me", "never buy viewers", uid="1"), chat("other", "buy viewers", uid="9"))
+        self.rf.configure({"phrases": ["buy viewers"]})
+        run(self.rf.flag("kick", "42", "spammer", "Spammer"))
+        # modo had a mod badge in live chat since Core started; "me" is Core's own staff
+        run(self.rf.check(chat("modo", "hello", uid="7", mod=True)))
+        self.rf.staff = lambda plat, uid, name: name == "me"
+        names = [p["username"] for p in run(self.rf.scan_past())["people"]]
+        self.assertEqual(names, ["other"])
+        self.rf.configure({"phrases": ["buy viewers"], "skip_mods": False})
+        names = {p["username"] for p in run(self.rf.scan_past())["people"]}
+        self.assertEqual(names, {"modo", "me", "other"})
+
+    def test_list_is_capped(self):
+        self.log(*(chat(f"bot{i}", "buy viewers", uid=str(i)) for i in range(5)))
+        self.rf.configure({"phrases": ["buy viewers"]})
+        res = self.rf.scan_past_sync(self.store.iter_chat_sync(batch=2), max_people=3)
+        self.assertEqual(len(res["people"]), 3)
+        self.assertTrue(res["more"])
+        self.assertEqual(res["scanned"], 5)
+
+    def test_core_knows_its_staff(self):
+        from main import StreamCore
+
+        core = StreamCore({"permissions": {"mod": ["twitch:helper"]}})
+        core.state.config = {"kick": {"channel_slug": "MyChannel"}, "twitch": {"channel": "YOUR_TWITCH_CHANNEL"}}
+        self.assertTrue(core._is_staff("kick", "5", "mychannel"))
+        self.assertTrue(core._is_staff("twitch", "6", "helper"))
+        self.assertFalse(core._is_staff("kick", "6", "helper"))
+        self.assertFalse(core._is_staff("twitch", "8", "your_twitch_channel"))
+        self.assertFalse(core._is_staff("myspace", "1", "x"))
+
+
 class CoreHidesFlagged(unittest.TestCase):
     def test_flagged_chat_never_broadcast(self):
         from main import StreamCore
@@ -253,6 +322,22 @@ class AdminRoutes(unittest.TestCase):
                 self.assertEqual(client.delete(f"/api/admin/red-flags/{fid}", headers=hdr).status_code, 404)
                 rows = client.get("/api/admin/chat", headers=hdr, params={"flagged": 1}).json()
                 self.assertEqual(rows, [])
+                # check past chat: lists, flags nobody; then flag the ticked ones
+                for ev in (chat("old", "buy viewers please", uid="77"), chat("nice", "hi", uid="78")):
+                    run(store.process_chat(ev))
+                d = client.post("/api/admin/red-flags/check-past", headers=hdr).json()
+                self.assertEqual(d["scanned"], 2)
+                self.assertEqual([p["username"] for p in d["people"]], ["old"])
+                self.assertEqual(client.get("/api/admin/red-flags", headers=hdr).json()["flagged"], [])
+                d = client.post("/api/admin/red-flags/apply-past", headers=hdr, json={"people": d["people"]}).json()
+                self.assertEqual(d["flagged_now"], 1)
+                self.assertEqual((d["flagged"][0]["source"], d["flagged"][0]["phrase"]), ("past", "Buy Viewers"))
+                self.assertEqual(hidden[-1], ("kick", "old"))
+                self.assertTrue(state.red_flags.hides("kick", "77"))
+                self.assertEqual(client.post("/api/admin/red-flags/check-past", headers=hdr).json()["people"], [])
+                self.assertEqual(client.post("/api/admin/red-flags/apply-past", headers=hdr, json={}).status_code, 400)
+                client.put("/api/admin/red-flags", headers=hdr, json={"phrases": ""})
+                self.assertEqual(client.post("/api/admin/red-flags/check-past", headers=hdr).status_code, 400)
 
 
 if __name__ == "__main__":

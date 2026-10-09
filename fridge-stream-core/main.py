@@ -48,7 +48,7 @@ try:
     from core.metrics import MetricsAggregator
     from core.permissions import PermissionManager
     from core.command_router import CommandRouter
-    from core.models import ChatEvent, ChatReply, ExecuteRequest
+    from core.models import ChatEvent, ChatReply, ChatUser, ExecuteRequest, Platform
     from core.alerts import build_alert
     from core.store import Store
     from core.local_guard import is_placeholder_token, resolve_admin_token
@@ -191,6 +191,7 @@ class StreamCore:
         self.red_flags = RedFlags(self.store, config.get("red_flags"))
         self.state.red_flags = self.red_flags
         self.state.red_flag_hide = self.hide_flagged
+        self.red_flags.staff = self._is_staff
 
         self._metrics_task: asyncio.Task | None = None
         self._market_task: asyncio.Task | None = None
@@ -1110,6 +1111,23 @@ class StreamCore:
         if flagged.get("new"):
             u = event.user
             await self.hide_flagged(event.platform.value, str(u.id or ""), u.username, u.display_name)
+
+    def _is_staff(self, platform: str, user_id: str, username: str) -> bool:
+        """Core's own admins/mods (permissions in config) or the streamer's channel, by
+        account or name: what "Check past chat" can tell without the live chat badges."""
+        try:
+            user = ChatUser(platform=Platform(platform), id=str(user_id or ""), username=str(username or ""))
+        except ValueError:
+            return False
+        if self.perms.is_admin(user) or (self.perms.identity_keys(user) & self.perms.mods):
+            return True
+        live = getattr(self.state, "config", None) or self.config
+        name = str(username or "").lower().strip()
+        for plat, field in (("kick", "channel_slug"), ("twitch", "channel")):
+            own = str((live.get(plat) or {}).get(field) or "").lower().strip()
+            if platform == plat and name and own == name and not own.startswith("your_"):
+                return True
+        return False
 
     async def hide_flagged(self, platform: str, user_id: str, username: str, display_name: str = "") -> int:
         """Someone was just red-flagged: take their lines off the chat overlay and Stream Rooms
