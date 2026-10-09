@@ -6,10 +6,11 @@ credits.enabled. Overlay: /overlay/credits.html
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -64,7 +65,20 @@ class Chatter:
         return f"{self.platform}:{self.username}"
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        # by hand: dataclasses.asdict deep-copies and is slow for 20k chatters
+        return {
+            "platform": self.platform,
+            "username": self.username,
+            "display_name": self.display_name,
+            "first_seen": self.first_seen,
+            "last_seen": self.last_seen,
+            "messages": self.messages,
+            "color": self.color,
+            "is_mod": self.is_mod,
+            "is_vip": self.is_vip,
+            "is_subscriber": self.is_subscriber,
+            "is_paid": self.is_paid,
+        }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Chatter":
@@ -154,20 +168,36 @@ class CreditsEngine:
                 continue
 
     def save(self) -> None:
+        self._dirty = False
+        self._write(self.started_at, list(self.chatters.values()))
+
+    def _write(self, started_at: float, chatters: list) -> None:
+        """Compact JSON (no indent: with indent Python falls back to its slow encoder), written
+        to a temporary file and swapped in so a crash never leaves half a file."""
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
-            "started_at": self.started_at,
+            "started_at": started_at,
             "saved_at": time.time(),
-            "chatters": [c.to_dict() for c in self.chatters.values()],
+            "chatters": [c.to_dict() for c in chatters],
         }
         tmp = self.session_path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        tmp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
         tmp.replace(self.session_path)
-        self._dirty = False
 
     def save_if_dirty(self) -> None:
         if self._dirty:
             self.save()
+
+    async def save_if_dirty_async(self) -> None:
+        """The periodic save, off the event loop: chat keeps flowing while 20k names are written."""
+        if not self._dirty:
+            return
+        self._dirty = False
+        try:
+            await asyncio.to_thread(self._write, self.started_at, list(self.chatters.values()))
+        except Exception:
+            self._dirty = True
+            raise
 
     def ingest(self, event: ChatEvent, *, force: bool = False) -> Optional[Chatter]:
         if not self.enabled and not force:
@@ -211,7 +241,7 @@ class CreditsEngine:
         )
         self.chatters[key] = chatter
         self._dirty = True
-        log.info("Credits new chatter [%s] %s", plat, chatter.display_name)
+        log.debug("Credits new chatter [%s] %s", plat, chatter.display_name)
         return chatter
 
     def forget(self, platform: str, *names: str) -> bool:
