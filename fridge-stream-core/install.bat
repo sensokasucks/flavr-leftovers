@@ -99,7 +99,8 @@ if errorlevel 1 (
 :done
 echo.
 echo ----------------------------------------------------------
-echo  To start Stream Core later:  double-click start.bat
+echo  To start Stream Core later:  double-click "START Stream Core.bat" in the main folder
+echo                               (or start.bat in this folder)
 echo  Admin dashboard:             http://127.0.0.1:3850/admin/
 echo  Chat overlay:                http://127.0.0.1:3850/overlay/chat.html
 echo ----------------------------------------------------------

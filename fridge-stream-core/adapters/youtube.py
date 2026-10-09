@@ -32,6 +32,7 @@ from adapters.youtube_capture import FieldScout
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
+from core.platform_links import youtube_video_id
 
 log = logging.getLogger("adapters.youtube")
 
@@ -158,7 +159,9 @@ class YouTubeAdapter(BaseAdapter):
         super().__init__(config, bus, metrics)
         cfg = config.get("youtube", {}) or {}
         self.api_key = (cfg.get("api_key") or "").strip()
-        self.video_id = (cfg.get("video_id") or "").strip()
+        raw_video = (cfg.get("video_id") or "").strip()
+        # a pasted link works too (watch?v=, youtu.be, /live/, Studio)
+        self.video_id = youtube_video_id(raw_video) or raw_video
         self.live_chat_id = (cfg.get("live_chat_id") or "").strip()
         self.channel_id = (cfg.get("channel_id") or "").strip()
         mode = (cfg.get("mode") or "").strip().lower()

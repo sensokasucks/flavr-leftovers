@@ -47,6 +47,7 @@ def kick_reply_to(data: dict) -> Optional[dict]:
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
+from core.platform_links import kick_slug
 
 log = logging.getLogger("adapters.kick")
 
@@ -171,7 +172,7 @@ class KickAdapter(BaseAdapter):
     def __init__(self, config: dict, bus: EventBus, metrics: MetricsAggregator):
         super().__init__(config, bus, metrics)
         kick_cfg = config.get("kick", {})
-        self.slug: str = (kick_cfg.get("channel_slug") or "").strip().lstrip("@")
+        self.slug: str = kick_slug(kick_cfg.get("channel_slug") or "")
         # Optional manual override if Kick's REST API keeps returning 403
         self.chatroom_id: Optional[int] = _opt_int(kick_cfg.get("chatroom_id"), "kick.chatroom_id")
         # The channel's own id (not the chatroom's): Kicks arrive on its Pusher channel. Found by
