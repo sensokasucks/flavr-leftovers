@@ -41,6 +41,13 @@ class ConnectionManager:
     """
 
     ROSTER_MIN_GAP_SEC = 3.0
+    # Each client gets its own send queue and sender task, so one slow or stuck client (a
+    # hidden OBS source, Stream Rooms loading a room, a background laptop tab) never holds up
+    # chat for the others. A client that falls this many messages behind, or whose single
+    # send takes longer than SEND_TIMEOUT_SEC, is disconnected; overlays reconnect by
+    # themselves and catch up from chat_history.
+    SEND_QUEUE_MAX = 1000
+    SEND_TIMEOUT_SEC = 15.0
 
     def __init__(self):
         self.active: Set[WebSocket] = set()
@@ -48,16 +55,46 @@ class ConnectionManager:
         self._roster_fn = None              # callable -> current roster snapshot
         self._roster_task: Optional[asyncio.Task] = None
         self._roster_sent_at = 0.0
+        self._senders: Dict[WebSocket, "_ClientSender"] = {}
+        self.dropped_slow = 0               # clients cut off for falling behind (Status / tests)
 
     async def connect(self, ws: WebSocket) -> None:
         await ws.accept()
         self.active.add(ws)
+        self._senders[ws] = _ClientSender(self, ws)
         if _wants_credits(ws):
             self.credits_clients.add(ws)
 
     def disconnect(self, ws: WebSocket) -> None:
         self.active.discard(ws)
         self.credits_clients.discard(ws)
+        sender = self._senders.pop(ws, None)
+        if sender is not None:
+            sender.stop()
+
+    def drop_slow(self, ws: WebSocket, why: str) -> None:
+        """Cut off a client that can't keep up; it reconnects and catches up on its own."""
+        if ws not in self.active:
+            return
+        self.dropped_slow += 1
+        log.warning("Disconnected a slow overlay / client (%s); it will reconnect", why)
+        self.disconnect(ws)
+
+        async def _close():
+            try:
+                await asyncio.wait_for(ws.close(code=1013), timeout=2.0)
+            except Exception:
+                pass
+
+        try:
+            asyncio.get_running_loop().create_task(_close())
+        except RuntimeError:
+            pass
+
+    async def flush(self) -> None:
+        """Wait until every queued message went out (tests, shutdown)."""
+        for sender in list(self._senders.values()):
+            await sender.queue.join()
 
     async def broadcast(self, data: dict) -> None:
         if isinstance(data, dict) and data.get("type") == "credits_roster":
@@ -89,17 +126,62 @@ class ConnectionManager:
         await self._send_all(self.credits_clients, {"type": "credits_roster", "data": fn()})
 
     async def _send_all(self, clients: Set[WebSocket], data: dict) -> None:
+        """Queue one message for each client; returns at once (each client's task sends it)."""
         if not clients:
             return
         text = json.dumps(data)         # serialise once, not once per client
-        dead = []
         for ws in list(clients):
+            sender = self._senders.get(ws)
+            if sender is None:
+                continue
+            if not sender.offer(text):
+                self.drop_slow(ws, f"{self.SEND_QUEUE_MAX} messages behind")
+
+
+class _ClientSender:
+    """One WebSocket client's outgoing queue, sent in order by its own task."""
+
+    def __init__(self, manager: ConnectionManager, ws: WebSocket):
+        self.manager = manager
+        self.ws = ws
+        self.queue: asyncio.Queue = asyncio.Queue(maxsize=manager.SEND_QUEUE_MAX)
+        self.task = asyncio.get_running_loop().create_task(self._run(), name="ws-send")
+
+    def offer(self, text: str) -> bool:
+        try:
+            self.queue.put_nowait(text)
+            return True
+        except asyncio.QueueFull:
+            return False
+
+    def stop(self) -> None:
+        if not self.task.done():
+            self.task.cancel()
+        # let flush() waiters go
+        while not self.queue.empty():
             try:
-                await ws.send_text(text)
+                self.queue.get_nowait()
+                self.queue.task_done()
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            self.disconnect(ws)
+                break
+
+    async def _run(self) -> None:
+        while True:
+            text = await self.queue.get()
+            try:
+                await asyncio.wait_for(self.ws.send_text(text), timeout=self.manager.SEND_TIMEOUT_SEC)
+            except asyncio.CancelledError:
+                self.queue.task_done()
+                raise
+            except asyncio.TimeoutError:
+                self.queue.task_done()
+                self.manager.drop_slow(self.ws, "a send took too long")
+                return
+            except Exception:
+                self.queue.task_done()
+                self.manager.disconnect(self.ws)   # gone
+                return
+            self.queue.task_done()
 
 
 def _wants_credits(ws: WebSocket) -> bool:
