@@ -7,14 +7,28 @@
   //   ?hide=12 (seconds, 0 = keep), ?avatars=1, ?sound=0, ?top=1 (newest on top), ?preview=1
   const params = new URLSearchParams(location.search);
   const platformFilter = new Set();
+  // A typo (?platform=twich) used to filter out everything: unknown names are ignored, and
+  // with none left the overlay shows every platform.
+  const PLATFORM_NAMES = { kick: "kick", twitch: "twitch", youtube: "youtube", yt: "youtube", ttv: "twitch", tw: "twitch", k: "kick" };
+  const unknownPlatforms = [];
+  const askedPlatforms = [];
   const single = (params.get("platform") || "").trim().toLowerCase();
-  if (single) platformFilter.add(single);
+  if (single) askedPlatforms.push(single);
   const multi = (params.get("platforms") || "").trim().toLowerCase();
-  if (multi) {
-    multi.split(/[,+\s]+/).forEach((p) => {
-      if (p) platformFilter.add(p);
-    });
+  if (multi) askedPlatforms.push(...multi.split(/[,+\s]+/));
+  askedPlatforms.forEach((p) => {
+    if (!p) return;
+    if (PLATFORM_NAMES[p]) platformFilter.add(PLATFORM_NAMES[p]);
+    else unknownPlatforms.push(p);
+  });
+  if (unknownPlatforms.length) {
+    console.warn("chat overlay: unknown platform name(s) " + unknownPlatforms.join(", ") +
+      " ignored; use kick, twitch or youtube" + (platformFilter.size ? "" : ". Showing every platform."));
   }
+  const hint = window.FridgeHint || { set() {}, count() {} };
+  hint.set("filter",
+    (platformFilter.size ? "showing " + [...platformFilter].join(" + ") + " only" : "showing every platform") +
+    (unknownPlatforms.length ? " (unknown: " + unknownPlatforms.join(", ") + ")" : ""));
   const showPlatformBadge = params.get("badges") !== "0";
   const skinParam = (params.get("skin") || "").trim().toLowerCase();
   const preview = params.get("preview") === "1" || params.get("preview") === "true";
@@ -318,17 +332,22 @@
     ws = new WebSocket(`${proto}://${location.host}/ws`);
     ws.onopen = () => {
       retryMs = 1000;
+      hint.set("core", "Connected to Core");
     };
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
-        if (msg.type === "chat" && msg.data) appendMessage(msg.data);
+        if (msg.type === "chat" && msg.data) {
+          if (allowedPlatform(msg.data.platform)) hint.count("chat messages");
+          appendMessage(msg.data);
+        }
         else if (msg.type === "chat_history" && msg.data) loadHistory(msg.data);
         else if (msg.type === "user_update" && msg.data) userUpdate(msg.data);
         else if (msg.type === "chat_user_hidden" && msg.data) removeUser(msg.data);
       } catch (_) {}
     };
     ws.onclose = () => {
+      hint.set("core", "Can't reach Core at " + location.host + " (is it running?), retrying");
       setTimeout(connect, retryMs);
       retryMs = Math.min(retryMs * 1.5, 10000);
     };
