@@ -1876,7 +1876,7 @@
       const tr = document.createElement("tr");
       const why = f.source === "manual"
         ? '<span class="muted">flagged by hand</span>'
-        : `said <strong>${escapeHtml(f.phrase)}</strong>: <span class="muted">${escapeHtml(f.message)}</span>`;
+        : `said <strong>${escapeHtml(f.phrase)}</strong>${f.source === "past" ? " (found in past chat)" : ""}: <span class="muted">${escapeHtml(f.message)}</span>`;
       const name = f.display_name || f.username;
       tr.innerHTML =
         `<td>${escapeHtml(name)}</td>` +
@@ -1935,8 +1935,82 @@
     }
   }
 
+  // "Check past chat": the saved phrases over the saved chat log; nobody is flagged until confirmed
+  let rfPast = [];
+  function fillPastChat(d) {
+    rfPast = d.people || [];
+    const tb = $("rf-past-table").querySelector("tbody");
+    tb.innerHTML = "";
+    const lines = Number(d.scanned || 0).toLocaleString();
+    $("rf-past-count").textContent = rfPast.length ? `(${rfPast.length}${d.more ? "+" : ""})` : "";
+    const onlyFlagged = $("chat-log-only-flagged") && !$("chat-log-only-flagged").hidden;
+    $("rf-past-hint").textContent = (rfPast.length
+      ? `Read ${lines} saved chat lines. Untick anyone who should not be flagged (a mod quoting a phrase, say), then press Red-flag ticked chatters.`
+      : `Read ${lines} saved chat lines: nobody new said one of these phrases.`) +
+      (d.more ? " The list stops here; flag these, then check again for the rest." : "") +
+      (onlyFlagged ? " Chat history is saved only for red-flagged chatters, so other people's old lines are not there to check." : "") +
+      ($("rf-skip-mods").checked ? " Mods and the streamer are left out when Core knows them (your mod list, your channel, or seen with a mod badge since Core started)." : "");
+    rfPast.forEach((p, i) => {
+      const tr = document.createElement("tr");
+      const more = (p.examples || []).slice(1)
+        .map((x) => `<span class="muted">${escapeHtml(x.message)}</span>`).join("");
+      tr.innerHTML =
+        `<td><input type="checkbox" class="rf-past-pick" data-i="${i}" checked /></td>` +
+        `<td>${escapeHtml(p.display_name || p.username)}</td>` +
+        `<td>${escapeHtml(p.platform)}</td>` +
+        `<td class="rf-msg"><strong>${escapeHtml(p.phrase)}</strong>: ${escapeHtml(p.message)}${more}</td>` +
+        `<td>${p.count}</td>` +
+        `<td>${fmtTime(p.timestamp)}</td>`;
+      tb.appendChild(tr);
+    });
+    $("rf-past-all").checked = true;
+    $("rf-past-apply").disabled = !rfPast.length;
+    $("rf-past-table").hidden = !rfPast.length;
+    $("rf-past-box").hidden = false;
+  }
+
   if ($("rf-card")) {
     $("rf-save").onclick = () => saveRedFlags().catch(() => {});
+    $("rf-past").onclick = async () => {
+      $("rf-past").disabled = true;
+      try {
+        await saveRedFlags();
+        $("rf-status").textContent = "Checking past chat…";
+        fillPastChat(await api("/api/admin/red-flags/check-past", { method: "POST" }));
+        $("rf-status").textContent = "";
+        $("rf-past-box").scrollIntoView({ behavior: "smooth", block: "nearest" });
+      } catch (e) {
+        $("rf-status").textContent = String(e.message || e);
+      } finally {
+        $("rf-past").disabled = false;
+      }
+    };
+    $("rf-past-all").onchange = () => {
+      for (const box of document.querySelectorAll(".rf-past-pick")) box.checked = $("rf-past-all").checked;
+    };
+    $("rf-past-close").onclick = () => {
+      $("rf-past-box").hidden = true;
+      rfPast = [];
+    };
+    $("rf-past-apply").onclick = async () => {
+      const people = [...document.querySelectorAll(".rf-past-pick")]
+        .filter((box) => box.checked)
+        .map((box) => rfPast[Number(box.dataset.i)]);
+      if (!people.length) {
+        $("rf-status").textContent = "Nobody ticked.";
+        return;
+      }
+      try {
+        const d = await api("/api/admin/red-flags/apply-past", { method: "POST", body: JSON.stringify({ people }) });
+        fillRedFlags(d);
+        $("rf-past-box").hidden = true;
+        rfPast = [];
+        $("rf-status").textContent = `${d.flagged_now} red-flagged from past chat.`;
+        loadChat();
+      } catch (e) {
+        $("rf-status").textContent = String(e.message || e);
+      }
+    };
     $("rf-flag").onclick = async () => {
       const name = $("rf-name").value.trim();
       if (!name) return;

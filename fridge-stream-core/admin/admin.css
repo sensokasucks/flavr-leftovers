@@ -1176,5 +1176,8 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 .rf-card td.rf-actions { white-space: nowrap; text-align: right; }
 #chat-table tr.rf-row td { background: rgba(255, 92, 92, 0.08); }
 .rf-mark { color: var(--danger); }
+.rf-card .rf-past { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--border); }
+.rf-card .rf-past td.rf-msg .muted { display: block; font-size: 0.9em; }
+.rf-card .rf-past .config-actions { margin-top: 10px; }
 .toolbar label.check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .toolbar label.check input { min-width: 0; flex: none; }

@@ -824,6 +824,23 @@ class Store:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    def iter_chat_sync(self, batch: int = 5000):
+        """Every saved chat line, oldest first, a batch at a time (for "Check past chat")."""
+        conn = self._connect()
+        try:
+            cur = conn.execute(
+                "SELECT platform, platform_user_id, username, display_name, message, timestamp "
+                "FROM chat_messages ORDER BY timestamp, id"
+            )
+            while True:
+                rows = cur.fetchmany(batch)
+                if not rows:
+                    return
+                for r in rows:
+                    yield dict(r)
+        finally:
+            conn.close()
+
     async def search_chat(
         self,
         user_id: Optional[int] = None,
