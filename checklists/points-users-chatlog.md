@@ -15,7 +15,9 @@ Home: `core/store.py`. DB: `data/stream_core.db`.
 - [ ] Market trades and dividends use this same points ledger (`source=market` / `source=dividend`). Do not add a second cash book.
 - [ ] OpenTTD `!invest` debits this ledger. Do not invent a parallel points file.
 - [ ] Red flags (`core/red_flags.py`, list in table `red_flagged` in this same DB): a flagged chatter's chat is never broadcast, never in `recent_chat`, gets no reactions / commands / games / points / credits / alerts, but **is** still logged. Flagging sends `chat_user_hidden` once. `red_flags` is owned by its card (admin config save keeps it). `enabled: false` hides nobody but keeps the list. Mods/streamer skipped by default. **Check past chat** (`POST /red-flags/check-past`) only lists who would be flagged; nobody is flagged until the streamer confirms (`POST /red-flags/apply-past`, source `past`). It skips people already flagged and, with `skip_mods`, Core's own mods/admins, the streamer's channel and anyone seen with a mod badge since start (the log keeps no badges).
+- [ ] Red-flag phrases are matched with one combined pattern per line (`RedFlags._any`); the phrase is looked up only on a hit.
 - [ ] Chat reactions spend with `Store.spend_points()` (atomic check-and-debit) and refund with `adjust_points`, `source=reaction`.
+- [ ] Chat lines reach the database through one writer (`Store.start_writer`, `submit_chat`): a queue, one transaction per batch (0.25 s / up to 500 lines), WAL + `synchronous=NORMAL`, chatter ids cached in memory. The chat read loop never waits for the disk; chat points land a moment after the line. Link / merge take the same write lock and clear the id cache. A full queue (50,000) drops database lines only, never overlay chat. `stop()` writes what is queued. Tests: `tests/test_busy_chat.py`.
 
 ## Drop risks
 

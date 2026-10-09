@@ -25,6 +25,7 @@ Standalone twin: the [fridge-chat-credits](https://github.com/sensokasucks/fridg
 - [ ] `credits.command_permission`: `mod` (default) / `admin` / `public`.
 - [ ] Job titles capped at **50** characters.
 - [ ] Session list saved to `data/credits_session.json`.
+- [ ] The session file is written compactly (no indent) from a worker thread (`CreditsEngine.save_if_dirty_async`), never on the event loop during a stream.
 - [ ] Admin → Credits API must include `cast` (styles, current style, pins, `command_permission`, job cap) **and** write routes:
   - `PUT /credits/cast/style`
   - `PUT /credits/cast/file`

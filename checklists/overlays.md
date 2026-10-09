@@ -31,6 +31,7 @@ Core (:3850):
   - Granvir `http://127.0.0.1:3855/overlay.html` (+ health/heat/campaign/squad)
 - [ ] Reactive Image is **Window Capture**, not a Webpage source.
 - [ ] Command replies: every `ChatReply` goes out on `/ws` as a system `chat` line **and** `{"type":"reply","data":{id, message, platform, reply_to_user, reply_to_message_id, source, timestamp, posted_to_chat}}` (`source`: command / reaction / game). New sockets get `reply_history` (last 20). `replies.html` and the Stream Rooms reply screen use `reply` only, so nothing shows twice. Keep the recent_* lists trimmed in place (`del lst[:-n]`) — `state.recent_*` points at the same list.
+- [ ] `/ws` fan-out: each client has its own send queue and task (`api/server.py` `_ClientSender`); a broadcast never waits for a client. A client 1,000 messages behind or with one send stuck for 15 s is closed (code 1013) and reconnects. Tests: `tests/test_busy_chat.py`.
 
 ## Drop risks
 
