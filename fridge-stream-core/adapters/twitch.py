@@ -361,7 +361,7 @@ class TwitchAdapter(BaseAdapter):
                 )
 
             self.avatars.request(uid, _found)
-        log.info("[Twitch] %s: %s", user.username, msg)
+        log.debug("[Twitch] %s: %s", user.username, msg)
         bits = cheer_bits(tags)
         await self._emit(
             ChatEvent(

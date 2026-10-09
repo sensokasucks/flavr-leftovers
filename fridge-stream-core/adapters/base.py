@@ -22,6 +22,8 @@ from core.models import ChatEvent, Platform
 
 log = logging.getLogger("adapters.base")
 
+CHAT_SUMMARY_SEC = 60.0
+
 
 class BaseAdapter(abc.ABC):
     platform: Platform
@@ -84,7 +86,18 @@ class BaseAdapter(abc.ABC):
         return False
 
     async def _emit(self, event: ChatEvent) -> None:
-        self.last_message_at = time.time()
+        now = time.time()
+        self.last_message_at = now
+        # Each chat line is logged at DEBUG by the adapter; the console gets one line a minute
+        self._lines_this_minute = getattr(self, "_lines_this_minute", 0) + 1
+        started = getattr(self, "_minute_started", 0.0)
+        if not started:
+            self._minute_started = now
+        elif now - started >= CHAT_SUMMARY_SEC:
+            log.info("[%s] %d chat lines in the last %.0f s", self.platform.value.title(),
+                     self._lines_this_minute, now - started)
+            self._lines_this_minute = 0
+            self._minute_started = now
         if not self.connected:
             self._set_connected()
         self.metrics.record_message()
