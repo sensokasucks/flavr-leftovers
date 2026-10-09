@@ -7,6 +7,9 @@ core:
   port: 3850                  # same port the old Minecraft bridge used
   command_prefix: "!"
   log_level: "INFO"
+  # Open the admin dashboard, already signed in, in your browser each time Core
+  # starts. Either way Core saves a sign-in shortcut: data/Open dashboard.url
+  open_dashboard: false
   # Notice edits to this file while Core runs and reconnect only the chat
   # platforms whose settings changed. Set false to apply only from the admin page.
   watch_config: true
@@ -109,7 +112,8 @@ points:
   follow_points: 250      # first follow only (unfollow + refollow pays nothing)
   gift_points: 1000       # to the gifter, for each sub they gift
   # Header X-Admin-Token for /admin. "change-me" is NOT accepted: leave it and
-  # Core generates a random token in data/admin_token.txt (printed at startup).
+  # Core generates a random token in data/admin_token.txt. The console shows only
+  # its first characters; double-click data/Open dashboard.url to sign in.
   admin_token: "change-me"
 
 # Persist every chat message for the admin Chat History tab / CSV export.

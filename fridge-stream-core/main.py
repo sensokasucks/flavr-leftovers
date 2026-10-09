@@ -1440,6 +1440,59 @@ class StreamCore:
                 pass
 
 
+def mask_token(token: str) -> str:
+    """Enough of the token to tell which one it is, not enough to use it."""
+    token = str(token or "")
+    return (token[:4] + "…") if len(token) > 4 else "…"
+
+
+def dashboard_link(host: str, port: int, token: str) -> str:
+    shown = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
+    return f"http://{shown}:{port}/admin/#token={token}"
+
+
+def announce_dashboard(config: dict, host: str, port: int) -> str:
+    """Log the dashboard address (never the whole token) and save a sign-in shortcut.
+
+    data/Open dashboard.url opens the dashboard already signed in (the page stores the
+    token and drops it from the address bar). Returns that link, or "" without a token.
+    """
+    cfg_token = (config.get("points") or {}).get("admin_token")
+    token = resolve_admin_token(config, ROOT)
+    if not token:
+        log.error("No usable admin token — set points.admin_token in config.yaml")
+        return ""
+    link = dashboard_link(host, port, token)
+    where = "points.admin_token in config.yaml" if not is_placeholder_token(cfg_token) else "data/admin_token.txt"
+    shortcut = ROOT / "data" / "Open dashboard.url"
+    try:
+        shortcut.parent.mkdir(parents=True, exist_ok=True)
+        shortcut.write_text(f"[InternetShortcut]\r\nURL={link}\r\n", encoding="utf-8")
+        saved = f'double-click "{shortcut}" to open it signed in'
+    except OSError:
+        log.warning("Could not write %s", shortcut)
+        saved = "paste the admin token when it asks"
+    log.warning(
+        "Admin dashboard: %s — %s (token %s, full token in %s).",
+        link.split("#", 1)[0], saved, mask_token(token), where,
+    )
+    return link
+
+
+async def _open_when_up(server, link: str) -> None:
+    """core.open_dashboard: open the signed-in dashboard once the server answers."""
+    import webbrowser
+
+    for _ in range(100):
+        if getattr(server, "started", False):
+            break
+        await asyncio.sleep(0.1)
+    try:
+        webbrowser.open(link)
+    except Exception:
+        log.debug("Could not open the browser", exc_info=True)
+
+
 async def _run() -> None:
     ensure_seed_files()
     try:
@@ -1454,23 +1507,12 @@ async def _run() -> None:
         datefmt="%H:%M:%S",
     )
 
-    cfg_token = (config.get("points") or {}).get("admin_token")
-    if is_placeholder_token(cfg_token):
-        generated = resolve_admin_token(config, ROOT)
-        if generated:
-            log.warning(
-                "points.admin_token is unset or a placeholder — the admin dashboard uses the "
-                "generated token in data/admin_token.txt: %s",
-                generated,
-            )
-        else:
-            log.error("No usable admin token — set points.admin_token in config.yaml")
+    host = os.environ.get("STREAM_CORE_HOST") or config.get("core", {}).get("host", "127.0.0.1")
+    port = int(os.environ.get("STREAM_CORE_PORT") or config.get("core", {}).get("port", 3850))
+    signin_link = announce_dashboard(config, host, port)
 
     core = StreamCore(config)
     app = create_app(core.state)
-
-    host = os.environ.get("STREAM_CORE_HOST") or config.get("core", {}).get("host", "127.0.0.1")
-    port = int(os.environ.get("STREAM_CORE_PORT") or config.get("core", {}).get("port", 3850))
 
     # Start Core background work
     await core.start()
@@ -1502,6 +1544,8 @@ async def _run() -> None:
 
     serve_task = asyncio.create_task(server.serve())
     stop_task = asyncio.create_task(stop_event.wait())
+    if signin_link and (config.get("core") or {}).get("open_dashboard"):
+        asyncio.create_task(_open_when_up(server, signin_link))
 
     done, pending = await asyncio.wait(
         [serve_task, stop_task],

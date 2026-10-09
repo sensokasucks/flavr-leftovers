@@ -1233,7 +1233,8 @@
           <input id="cfg-pts-gift" type="number" min="0" />
         </label>
         <label>Admin token <span class="field-help">Unlocks this dashboard</span>
-          <input id="cfg-pts-token" type="text" autocomplete="off" placeholder="change-me = use the generated token" />
+          <span style="display:flex;gap:6px;align-items:center"><input id="cfg-pts-token" type="password" autocomplete="off" placeholder="empty = keep the current token" />
+          <button type="button" id="cfg-pts-token-show" aria-pressed="false">Show</button></span>
         </label>
         <p class="hint" id="cfg-pts-token-hint"></p>
       </fieldset>
