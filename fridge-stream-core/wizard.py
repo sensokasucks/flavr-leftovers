@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core import plugin_manifest  # noqa: E402
 from core.config import ConfigError, DEFAULTS, load_config, save_config  # noqa: E402
 
 
@@ -201,46 +202,52 @@ def main() -> int:
     )
     cfg["chat_log"] = clog
 
+    # --- Game plugins (asked only for the ones installed in plugins/) ---
+    games = set(plugin_manifest.installed_ids())
+
     # --- Minecraft (opt-in) ---
-    mc = dict(cfg.get("minecraft") or {})
-    use_mc = _prompt_yes_no(
-        "Enable Minecraft integration? (needs Fabric mods running)",
-        default=bool(mc.get("enabled")),
-    )
-    mc["enabled"] = use_mc
-    if use_mc:
-        mc["player_name"] = _prompt(
-            "Minecraft player name (exact in-game name)",
-            str(mc.get("player_name") or "YourInGameName"),
+    if "minecraft" in games:
+        mc = dict(cfg.get("minecraft") or {})
+        use_mc = _prompt_yes_no(
+            "Enable Minecraft integration? (needs Fabric mods running)",
+            default=bool(mc.get("enabled")),
         )
-        mc.setdefault("client_mod_url", "http://127.0.0.1:3852")
-        mc.setdefault("server_mod_url", "http://127.0.0.1:3853")
-    cfg["minecraft"] = mc
+        mc["enabled"] = use_mc
+        if use_mc:
+            mc["player_name"] = _prompt(
+                "Minecraft player name (exact in-game name)",
+                str(mc.get("player_name") or "YourInGameName"),
+            )
+            mc.setdefault("client_mod_url", "http://127.0.0.1:3852")
+            mc.setdefault("server_mod_url", "http://127.0.0.1:3853")
+        cfg["minecraft"] = mc
 
     # --- Granvir (opt-in) ---
-    gv = dict(cfg.get("granvir") or {})
-    use_gv = _prompt_yes_no(
-        "Enable Granvir integration? (needs Fridge Granvir Stats on :3855)",
-        default=bool(gv.get("enabled")),
-    )
-    gv["enabled"] = use_gv
-    gv.setdefault("bridge_url", "http://127.0.0.1:3855")
-    cfg["granvir"] = gv
+    if "granvir" in games:
+        gv = dict(cfg.get("granvir") or {})
+        use_gv = _prompt_yes_no(
+            "Enable Granvir integration? (needs Fridge Granvir Stats on :3855)",
+            default=bool(gv.get("enabled")),
+        )
+        gv["enabled"] = use_gv
+        gv.setdefault("bridge_url", "http://127.0.0.1:3855")
+        cfg["granvir"] = gv
 
     # --- OpenTTD (opt-in) ---
-    ot = dict(cfg.get("openttd") or {})
-    use_ot = _prompt_yes_no(
-        "Enable OpenTTD integration? (Admin Port 3977 + optional FridgeChatFund GS)",
-        default=bool(ot.get("enabled")),
-    )
-    ot["enabled"] = use_ot
-    if use_ot:
-        ot["host"] = _prompt("OpenTTD Admin Port host", str(ot.get("host") or "127.0.0.1"))
-        ot["admin_port"] = int(_prompt("Admin port", str(ot.get("admin_port") or 3977)) or 3977)
-        ot["admin_password"] = _prompt("Admin password (server admin_password)", str(ot.get("admin_password") or ""))
-        ot.setdefault("pounds_per_point", 1000)
-        ot.setdefault("use_gamescript", True)
-    cfg["openttd"] = ot
+    if "openttd" in games:
+        ot = dict(cfg.get("openttd") or {})
+        use_ot = _prompt_yes_no(
+            "Enable OpenTTD integration? (Admin Port 3977 + optional FridgeChatFund GS)",
+            default=bool(ot.get("enabled")),
+        )
+        ot["enabled"] = use_ot
+        if use_ot:
+            ot["host"] = _prompt("OpenTTD Admin Port host", str(ot.get("host") or "127.0.0.1"))
+            ot["admin_port"] = int(_prompt("Admin port", str(ot.get("admin_port") or 3977)) or 3977)
+            ot["admin_password"] = _prompt("Admin password (server admin_password)", str(ot.get("admin_password") or ""))
+            ot.setdefault("pounds_per_point", 1000)
+            ot.setdefault("use_gamescript", True)
+        cfg["openttd"] = ot
 
     # --- Core host/port (rarely changed) ---
     core = dict(cfg.get("core") or {})

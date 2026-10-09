@@ -2,7 +2,7 @@
 
 Home: `core/credits.py`, `core/cast.py`, `core/credits_theme.py`, `overlay/credits.*`, Admin Credits tab. Spec: `overlay/CREDITS.md`, motions: `overlay/MOTIONS.md`.
 
-Standalone twin: [chat-credits-standalone.md](chat-credits-standalone.md) — same cast module idea, different process. Core's overlay engine is the merged superset (it also runs under the standalone: `/api/credits/*` first, then `/api/*`). The standalone `cast.py` does not send the movie extras below.
+Standalone twin: the [fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits) repo (its own checklist is there) — same cast module idea, different process. Core's overlay engine is the merged superset (it also runs under the standalone: `/api/credits/*` first, then `/api/*`). The standalone `cast.py` does not send the movie extras below.
 
 ## Must keep
 

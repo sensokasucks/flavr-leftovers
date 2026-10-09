@@ -5,14 +5,17 @@ Core runs fine with none. Each folder that is there adds a card under
 **Settings → Game plugins**, its chat command group, its overlays, its Market listings and
 (if it has market settings) a sub-page on the **Market** page.
 
-Bundled: `minecraft`, `factorio`, `granvir`, `openttd`. They are also shipped on their own
-as the **games pack** zip (`tools/pack_games.py`), for a Core install that came without them.
+Minecraft, Factorio, Granvir and OpenTTD don't ship with Core. They live in their own repository,
+**[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)** (its Releases page has a zip), together with the
+game-side mods and bridges (Fabric / NeoForge mods, Factorio Lua + bridge, Granvir BepInEx plugin).
 
 Plugins are ordinary Python running inside Core with no sandbox. Install only plugins you trust.
 
 ## Installing / removing
 
 - Install: copy the plugin's folder into `plugins/` (so you get `plugins/<id>/plugin.json`), restart Core.
+  Or keep a clone of flavr-game-plugins somewhere and start Core with `STREAM_CORE_PLUGINS_DIR`
+  set to its `plugins` folder; `git pull` there then updates the games.
 - Switch on: Settings → Game plugins → tick **Enabled** → **Save & apply** → restart Core.
 - Remove: switch it off, delete its folder, restart Core. Its settings stay in `config.yaml`
   (harmless) in case you put it back.

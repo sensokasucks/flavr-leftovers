@@ -10,8 +10,6 @@ Streaming tools from Sensoka's Workshop. They started as XSplit Webpage sources 
 |--------------|--------------|
 | **INSTALL Stream Core.bat** | One-time: Python venv + packages + optional setup wizard |
 | **START Stream Core.bat** | Starts the chat backbone (leave the window open while streaming) |
-| **INSTALL Chat Credits.bat** | One-time venv + packages for the standalone credits app |
-| **START Chat Credits.bat** | Starts unique-chatter credits on :3854 (skip if you use Core Credits) |
 
 Admin hub after start: [http://127.0.0.1:3850/admin/](http://127.0.0.1:3850/admin/)
 
@@ -32,12 +30,14 @@ Claude Code: open this folder and it will load **[CLAUDE.md](CLAUDE.md)** (point
 | Folder | What it is | Default port |
 |--------|------------|--------------|
 | [fridge-stream-core](fridge-stream-core/) | Chat backbone (Kick / Twitch / YouTube opt-in adapters) → event bus → commands / points / admin → game plugins (`plugins/`) | 3850 |
-| [fridge-minecraft](fridge-minecraft/) | Fabric client + server mods that Stream Core talks to | 3852 / 3853 |
-| [fridge-chat-credits](fridge-chat-credits/) | Unique-chatter credits roll + control desk | 3854 |
-| [fridge-factorio-stats](fridge-factorio-stats/) | Factorio overlays + Chat Dynamo (stream power) | 3847 |
-| [fridge-granvir-stats](fridge-granvir-stats/) | Granvir BepInEx stats plugin + overlay + mock bridge | 3855 |
-| [fridge-reactive-image](fridge-reactive-image/) | Native audio-reactive avatar (Python) | 3851 |
-| [fridge-reactive-image-legacy](fridge-reactive-image-legacy/) | Archived Node avatar app | — |
+
+Game plugins (Minecraft, Factorio, Granvir, OpenTTD) and their mods / bridges (`fridge-minecraft`,
+`fridge-factorio-stats`, `fridge-granvir-stats`, ports 3847 / 3852 / 3853 / 3855) live in their own
+repository: **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)**. Copy a game's folder into
+`fridge-stream-core/plugins/` to use it.
+
+The audio-reactive avatar app (port 3851) lives in **[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image)**,
+and the standalone Chat Credits app (port 3854, only for people who don't run Core) in **[fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits)**.
 
 ## Ports (leave these alone)
 

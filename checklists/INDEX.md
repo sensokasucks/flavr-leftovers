@@ -14,12 +14,6 @@
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |
 | Overlays (shared) | [overlays.md](overlays.md) | Webpage sources, ports, query filters |
 | Game plugins | [plugins.md](plugins.md) | `plugins/`, `core/plugins.py`, `core/plugin_api.py`, `core/plugin_manifest.py`, Settings → Game plugins |
-| Minecraft | [minecraft.md](minecraft.md) | Fabric mods, NeoForge, dynamo/vault/chest, :3852/:3853 |
-| Factorio | [factorio.md](factorio.md) | Stats bridge :3847, Chat Dynamo, vaults |
-| Granvir | [granvir.md](granvir.md) | BepInEx plugin, mock :3855, host-only writes |
-| OpenTTD | [openttd.md](openttd.md) | Admin Port, Chat Fund, FridgeChatFund GS |
-| Chat Credits (standalone) | [chat-credits-standalone.md](chat-credits-standalone.md) | `:3854` app — only if that package is in play |
-| Reactive Image | [reactive-image.md](reactive-image.md) | Native avatar :3851 |
 
 ## Always-on companions
 

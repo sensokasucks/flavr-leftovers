@@ -59,56 +59,10 @@ avatars:
   hide: []                       # names whose picture is never shown, e.g. ["nightbot", "kick:someone"]
 
 # --- Games ---------------------------------------------------------------
-# Each game is a plugin (folder plugins/<id>/, also shipped as the "games pack" zip; see
-# docs/PLUGINS.md). A section here only does something while that plugin is installed;
-# installed plugins without a section get their defaults, switched off.
-
-minecraft:
-  enabled: false             # opt-in: set true when the Fabric mods are running
-  player_name: "YourInGameName"
-  client_mod_url: "http://127.0.0.1:3852"
-  server_mod_url: "http://127.0.0.1:3853"
-  market:
-    dynamo_symbols: ["MINECRAF"]
-    dynamo_min_factor: 0.25
-    dynamo_max_factor: 3.0
-    vault_symbol: "MINECRAF"
-    vault_rf_per_point: 200
-    vault_min_rf: 1000
-    chest_symbol: "MINECRAF"
-    chest_points_per_xp: 1.0
-    chest_min_xp: 1.0
-    chest_default_value: 0.05
-    chest_use_smelt_xp: true
-    chest_item_values:
-      minecraft:diamond: 2.0
-      minecraft:raw_iron: 0.7
-      minecraft:cobblestone: 0.05
-      minecraft:dirt: 0.02
-
-factorio:
-  enabled: false             # opt-in: set true when Fridge Factorio Stats is running
-  bridge_url: "http://127.0.0.1:3847"
-  market:
-    dynamo_symbols: ["FACTORIO"]
-    dynamo_min_factor: 0.25
-    dynamo_max_factor: 3.0
-    vault_symbol: "FACTORIO"
-    chest_symbol: "FACTORIO"
-    vault_flush_mj: 25
-    chest_flush_items: 20
-
-openttd:
-  enabled: false             # opt-in: Admin Port on the OpenTTD / JGRPP server
-  host: "127.0.0.1"
-  admin_port: 3977
-  admin_password: ""         # must match network.admin_password
-  name: "FridgeStreamCore"
-  pounds_per_point: 1000
-  min_invest_points: 10
-  max_invest_points: 5000
-  use_gamescript: true       # FridgeChatFund injects cash
-  allow_host_invest: true
+# Each game is a plugin: a folder in plugins/<id>/, from the flavr-game-plugins repo
+# (https://github.com/sensokasucks/flavr-game-plugins; see docs/PLUGINS.md). An installed plugin
+# brings its own section here (minecraft:, factorio:, openttd: ...) with its defaults, switched
+# off; edit it under Settings -> Game plugins.
 
 permissions:
   # Case-insensitive. Plain names match Kick + Twitch logins only.
@@ -224,7 +178,7 @@ credits:
   # ignore_usernames: [nightbot, streamelements]   # replaces the built-in bot list
 
 # Command groups. Toggle in Admin → Config without restarting Core.
-# bind: minecraft → on only when that game plugin is enabled AND running (each game plugin adds its group)
+# bind: <game> → on only when that game plugin is enabled AND running (each game plugin adds its own group)
 # bind: points    → on only when points.enabled
 # always: true    → cannot be disabled (core)
 command_groups:
@@ -236,18 +190,6 @@ command_groups:
     enabled: true
     bind: points
     description: "Chat points (!points / !balance)"
-  minecraft:
-    enabled: true
-    bind: minecraft
-    description: "Minecraft integration (!spawn, !give, …)"
-  factorio:
-    enabled: true
-    bind: factorio
-    description: "Factorio stats overlay (Fridge Factorio Stats bridge)"
-  openttd:
-    enabled: true
-    bind: openttd
-    description: "OpenTTD Admin Port + Chat Fund (!invest, !companies)"
   credits:
     enabled: true
     bind: credits

@@ -4,7 +4,7 @@ Fridge Stream Core – entry point.
 
 Starts (all chat platforms and games are opt-in via config):
   - Platform adapters: Kick / Twitch / YouTube
-  - Game plugins found in plugins/ (Minecraft, Factorio, Granvir, OpenTTD from the games pack)
+  - Game plugins found in plugins/ (Minecraft, Factorio, Granvir, OpenTTD live in the flavr-game-plugins repo)
   - Command router + metrics aggregator
   - FastAPI HTTP/WS server on the configured port (default 3850)
 """

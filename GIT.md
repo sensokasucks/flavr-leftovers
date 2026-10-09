@@ -1,40 +1,27 @@
-# Git helpers — FlaVR Leftovers
+# Git — FlaVR Leftovers
 
-Push this workshop folder to **https://github.com/sensokasucks/flavr-leftovers**.
-
-## Windows (recommended)
-
-1. Install [Git for Windows](https://git-scm.com/download/win) if needed.
-2. Sign in once (`gh auth login` or credential manager).
-3. In this folder:
-   - **`git-setup.bat`** (once) — init repo, remote, **and git hooks**
-   - **`git-push.bat`** — stage, commit, push
+Repo: **https://github.com/sensokasucks/flavr-leftovers** (branch `main`). Changes come in as pull
+requests; after one is merged, update your copy with:
 
 ```bat
-git-push.bat Sync Stream Core 0.11 and monorepo
+git pull
 ```
 
-## Linux / macOS
+Then restart Stream Core.
 
-```bash
-chmod +x git-setup.sh git-push.sh git-pull.sh install-hooks.sh
-./git-setup.sh
-./git-push.sh "Your message"
-```
+Related repos (not part of this one):
 
-## Git hooks (automation)
+- **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)** — Minecraft, Factorio, Granvir, OpenTTD plugins and their mods / bridges
+- **[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image)** — the audio-reactive avatar app
+- **[fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits)** — standalone Chat Credits (for streams without Core)
 
-Hooks live in **`githooks/`** (version-controlled) and are enabled via:
+## Git hooks (optional)
+
+Hooks live in **`githooks/`**. Turn them on once per checkout:
 
 ```bat
-install-hooks.bat
+git config core.hooksPath githooks
 ```
-
-```bash
-./install-hooks.sh
-```
-
-`git-setup` also sets `core.hooksPath=githooks` when that folder exists.
 
 | Hook | When | What it does |
 |------|------|----------------|
@@ -42,35 +29,10 @@ install-hooks.bat
 | **commit-msg** | Every commit | Rejects empty / tiny messages |
 | **pre-push** | Every push | Runs `fridge-stream-core` tests if Python is available |
 
-Skip hooks for one command:
-
-```bat
-set SKIP_HOOKS=1
-git commit -m "emergency"
-```
-
-```bash
-SKIP_HOOKS=1 git push
-```
+Skip them for one command with `SKIP_HOOKS=1` (`set SKIP_HOOKS=1` on Windows).
 
 ## What is never committed
 
-Root **`.gitignore`** excludes:
-
-- Live config (`config/config.yaml`)
-- `data/`, databases, `.venv/`, `node_modules/`
-- Built `*.jar` / dist outputs
-- `.grok/`
-
-Keep `*.example.*` files.
-
-## If push is rejected
-
-```bat
-git-pull.bat
-git-push.bat
-```
-
-## Auth note
-
-Scripts run **on your machine**. The Grok sandbox can edit files and use the GitHub API, but does not hold your git credentials for `git push`.
+Root **`.gitignore`** excludes live config (`config/config.yaml`), `data/`, databases, `.venv/`,
+`node_modules/`, built jars / dist output, `.grok/`, and game plugin folders installed into
+`fridge-stream-core/plugins/`. Keep `*.example.*` files.

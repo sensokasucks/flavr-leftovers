@@ -48,3 +48,6 @@ Thumbs.db
 
 # Reactive Image build output
 fridge-reactive-image/dist/
+
+# Game plugins are installed here from the flavr-game-plugins repo; they don't belong in Core's git
+fridge-stream-core/plugins/*/

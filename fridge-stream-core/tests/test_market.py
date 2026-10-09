@@ -18,6 +18,7 @@ def test_cooldown_blocks_same_key():
 
 def test_signal_scope_and_death_dip():
     tape = MarketTape({})
+    tape.upsert(symbol="FACTORIO", name="Factorio", book="game:factorio")   # game listings come from plugins
     first = tape.try_signal(name="player_death", symbol="FACTORIO", cooldown_sec=20, scope="symbol")
     assert first["ok"] is True
     again = tape.try_signal(name="player_death", symbol="FACTORIO", cooldown_sec=20, scope="symbol")

@@ -11,13 +11,13 @@ Style: build streaming plugins based on user needs. Keep everything modular and 
 | Folder | Role | Port |
 |--------|------|------|
 | [fridge-stream-core](fridge-stream-core/) | Chat backbone: adapters → EventBus → commands / points / admin → game plugins (`plugins/`) | 3850 |
-| [fridge-minecraft](fridge-minecraft/) | Fabric client + server mods (+ NeoForge). Mods only; Core is the bridge | 3852 / 3853 |
-| [fridge-chat-credits](fridge-chat-credits/) | Standalone unique-chatter credits (skip if using Core Credits) | 3854 |
-| [fridge-factorio-stats](fridge-factorio-stats/) | Factorio overlay + Chat Dynamo | 3847 |
-| [fridge-granvir-stats](fridge-granvir-stats/) | Granvir BepInEx plugin + mock | 3855 |
-| [fridge-reactive-image](fridge-reactive-image/) | Native audio-reactive avatar | 3851 |
-| [fridge-reactive-image-legacy](fridge-reactive-image-legacy/) | Archived Node avatar | — |
 | [checklists/](checklists/) | Feature contracts (`Must keep`) | — |
+
+The game plugins and game-side mods (Minecraft, Factorio, Granvir, OpenTTD; ports 3847 / 3852 / 3853 / 3855)
+live in their own repo, [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins). Core's `plugins/` folder is empty in git
+(installed game folders are git-ignored). The audio-reactive avatar (port 3851) lives in
+[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image), the standalone Chat Credits app (port 3854) in
+[fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits).
 
 Changelog: [fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md). Map: [README.md](README.md). Git: [GIT.md](GIT.md).
 
@@ -35,11 +35,8 @@ Changelog: [fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md). M
 ## Where to edit
 
 - Chat / commands / points / admin / overlays that are shared → `fridge-stream-core/`
-- Minecraft blocks, HTTP stats, redstone dynamo → `fridge-minecraft/` (then Core `plugins/minecraft/plugin.py` if the API changed)
-- Factorio Lua / overlay → `fridge-factorio-stats/` plus Core `plugins/factorio/plugin.py` if the bridge contract changed
-- Granvir plugin / mock → `fridge-granvir-stats/` plus Core `plugins/granvir/plugin.json` (http plugin, no Python)
-- OpenTTD → Core `plugins/openttd/` (Admin Port client, Chat Fund, game script)
-- A new game → a new `plugins/<id>/` folder; never game-specific code in Core itself
-- Standalone credits movie → `fridge-chat-credits/` only when that app is in play; Core Credits is separate (`checklists/credits-core.md`)
+- Anything game-specific (Minecraft, Factorio, Granvir, OpenTTD, a new game) → the flavr-game-plugins repo; never game-specific code in Core itself
+- A game needs something new from Core → a generic hook in `core/plugin_api.py`, documented in `docs/PLUGINS.md`
+- Standalone credits app → the fridge-chat-credits repo; Core Credits is separate (`checklists/credits-core.md`)
 
 After a change: update the matching checklist if an invariant moved, and note it in `fridge-stream-core/CHANGELOG.md` under Unreleased when the behavior is user-visible.
