@@ -86,6 +86,7 @@ class RedFlags:
         self.skip_mods = True
         self.phrases: list[str] = []
         self._patterns: list[tuple[str, re.Pattern]] = []
+        self._any: Optional[re.Pattern] = None       # every phrase in one pattern
         self._cfg: Any = object()
         self._ids: set[tuple[str, str]] = set()      # (platform, platform user id)
         self._names: set[tuple[str, str]] = set()    # (platform or "", lower-case name)
@@ -114,12 +115,18 @@ class RedFlags:
             pat = compile_phrase(phrase)
             if pat is not None:
                 self._patterns.append((phrase, pat))
+        # one search per chat line, however long the list; which phrase it was is only
+        # worked out on a hit
+        self._any = re.compile("|".join(f"(?:{pat.pattern})" for _, pat in self._patterns)) \
+            if self._patterns else None
 
     def match(self, text: str) -> Optional[str]:
         """The first phrase found in ``text``, else None."""
-        if not self._patterns or not text:
+        if self._any is None or not text:
             return None
         norm = normalize(text)
+        if not self._any.search(norm):
+            return None
         for phrase, pat in self._patterns:
             if pat.search(norm):
                 return phrase
@@ -212,7 +219,7 @@ class RedFlags:
         if not self._patterns:
             return {"scanned": 0, "people": [], "more": False}
         # one pass with every phrase joined; the phrase itself is only looked up on a hit
-        anything = re.compile("|".join(f"(?:{pat.pattern})" for _, pat in self._patterns))
+        anything = self._any
         exempt: dict[tuple[str, str, str], bool] = {}
         for row in rows:
             scanned += 1
