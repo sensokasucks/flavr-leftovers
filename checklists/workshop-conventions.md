@@ -12,13 +12,13 @@ Home: repo root. Map: [README.md](../README.md).
 
   | Port | Owner |
   |------|--------|
-  | 3847 | Factorio bridge |
+  | 3847 | Factorio bridge (flavr-game-plugins repo) |
   | 3850 | Stream Core HTTP / WS / overlays / admin |
-  | 3851 | Reactive Image HTTP |
-  | 3852 | Minecraft client mod |
-  | 3853 | Minecraft server mod / NeoForge bridge |
+  | 3851 | Reactive Image HTTP (flavr-reactive-image repo) |
+  | 3852 | Minecraft client mod (flavr-game-plugins repo) |
+  | 3853 | Minecraft server mod / NeoForge bridge (flavr-game-plugins repo) |
   | 3854 | Standalone Chat Credits |
-  | 3855 | Granvir Stats |
+  | 3855 | Granvir Stats (flavr-game-plugins repo) |
 
 - [ ] Live secrets stay out of git: `config/config.yaml`, `.env`, `data/`, `*.db`, jars, `.venv`, `.grok/`.
 - [ ] Examples stay committed: `*.example.*`, `config.example.yaml`, `commands.example.json`.
@@ -27,7 +27,8 @@ Home: repo root. Map: [README.md](../README.md).
   - `INSTALL Chat Credits.bat` / `START Chat Credits.bat`
 - [ ] Root README table lists every live package + its port.
 - [ ] Stream Core changelog remains the workshop changelog: `fridge-stream-core/CHANGELOG.md`.
-- [ ] Git hooks in `githooks/` still block secrets and built binaries.
+- [ ] Git hooks in `githooks/` still block secrets and built binaries (turned on with `git config core.hooksPath githooks`, see GIT.md).
+- [ ] No backups, tarballs, patch files or one-off scripts committed at the root; old versions live in git history.
 - [ ] Root `CLAUDE.md` stays the Claude Code entry (map + hard rules). It must keep pointing at `AGENTS.md` and `checklists/`.
 
 ## Drop risks

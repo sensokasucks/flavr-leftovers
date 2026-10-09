@@ -12,13 +12,12 @@ Style: build streaming plugins based on user needs. Keep everything modular and 
 |--------|------|------|
 | [fridge-stream-core](fridge-stream-core/) | Chat backbone: adapters → EventBus → commands / points / admin → game plugins (`plugins/`) | 3850 |
 | [fridge-chat-credits](fridge-chat-credits/) | Standalone unique-chatter credits (skip if using Core Credits) | 3854 |
-| [fridge-reactive-image](fridge-reactive-image/) | Native audio-reactive avatar | 3851 |
-| [fridge-reactive-image-legacy](fridge-reactive-image-legacy/) | Archived Node avatar | — |
 | [checklists/](checklists/) | Feature contracts (`Must keep`) | — |
 
 The game plugins and game-side mods (Minecraft, Factorio, Granvir, OpenTTD; ports 3847 / 3852 / 3853 / 3855)
 live in their own repo, [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins). Core's `plugins/` folder is empty in git
-(installed game folders are git-ignored).
+(installed game folders are git-ignored). The audio-reactive avatar (port 3851) lives in
+[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image).
 
 Changelog: [fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md). Map: [README.md](README.md). Git: [GIT.md](GIT.md).
 
