@@ -110,15 +110,15 @@ The menu on the left is in five groups:
 | **On stream** | **Live controls** (everything for mid-stream), **Chat games**, **Status** |
 | **Overlays** | **Sources & overlays** (the addresses for OBS), **Credits**, **Alerts** |
 | **Games** | **Integrations** (command tester, Minecraft panel), **Market** |
-| **People** | **Users & points**, **Chat history** |
-| **Settings** | **Core + chat platforms**, **Games**, **Points, permissions + chat**, **Reactions**, **Command groups**, **Chat commands**, **Advanced** |
+| **People** | **Users & points**, **Chat history**, **Red flags** |
+| **Settings** | **Core + chat platforms**, **Game plugins**, **Points, permissions + chat**, **Reactions**, **Command groups**, **Chat commands**, **Advanced** |
 
 Things that help everywhere:
 
 - **Search** (press `/`) finds pages and single settings and jumps to them.
 - Every page has its own address (for example `/admin/#credits/style`), so the browser's Back button works and you can bookmark a page.
 - A **Save changes** bar sits at the bottom of every settings page. It names what you changed and haven't saved, saves it all in one go, and answers **Ctrl+S**. Pages with unsaved edits get an orange dot in the menu. Leaving a page with unsaved edits asks first.
-- Deleting a reaction, a command or a group, and **Reset form to defaults**, don't ask "are you sure": a message at the bottom offers **Undo** (or Ctrl+Z) for ten seconds instead. Things that act at once (live command test, merging users, clearing credits) still ask.
+- Deleting a reaction, a command or a group, and **Reset form to defaults**, don't ask "are you sure": a message at the bottom offers **Undo** (or Ctrl+Z) for ten seconds instead. Things that act at once (live command test, merging people, clearing credits, **Start a new stream now**) still ask. **Unflag** on the Red flags page offers **Undo** too.
 - **High contrast** (top right) switches to black and white with bigger outlines; it follows your system's "more contrast" setting until you pick.
 - On a phone or tablet the menu becomes a drawer behind **☰**, so you can run the dashboard from beside the stream PC.
 
@@ -181,13 +181,25 @@ Points are Core's own currency, kept in its database. Turn them on under **Setti
 
 Chatters check theirs with `!points` (or `!balance`). Points pay for reactions that have a cost, for predictions, duels, slots and heists, for bumping a request and for a front-row seat.
 
-**People → Users & points** lists everyone with their points and linked accounts. Click a person to give or take points, write a note, or link their Kick, Twitch and YouTube accounts so one person keeps one balance whichever platform they chat from. **Merge** joins two entries.
+**People → Users & points** lists everyone with their points and linked accounts. Click a person (or their name on the Chat history page) to give or take points, write a note, see their **Chat log** or **Download CSV** of what they wrote, or **Red-flag** them. To keep one balance whichever platform someone chats from:
+
+- **Link another platform account**: pick the platform and type their name there. If Core already knows that name, the two become one person and their points add up; if not, their first chat line on that platform joins this person.
+- **Merge another person into this one**: type part of their name, press **Find**, and pick them from the list. Core asks first, naming both people and their points, because a merge can't be undone.
 
 ![Users & points](images/sc-users.png)
 
 ## 8. Chat history
 
-Core shows chat live without keeping it. If you want a record, turn on **Chat history log** (same settings page). **People → Chat history** then shows every message with search, a platform filter and **Download CSV** (everything, or one person's messages from their user page).
+Core shows chat live without keeping it. If you want a record, turn on **Chat history log** (same settings page). **People → Chat history** then shows the newest 200 messages that match the search, the platform filter and **🚩 only** (it says when there are more), and **Download CSV** saves every matching line, not only the 200 on screen. Click a name to open that person's page; their **Chat log** button brings you back here with only their lines (the × next to their name shows everyone again).
+
+### Red flags
+
+**People → Red flags** keeps trolls and spam bots off your stream. Write phrases (one per line; case doesn't matter, whole words only, `*` stands for any letters, so `scam*` catches "scammer"). A chat line with one of them red-flags its sender, and Core then keeps that person off every overlay and out of Stream Rooms: no chat, reactions, commands, chat games, points, credits or alerts. Their lines are still saved in Chat history when it is on, marked 🚩. Moderators and you are never flagged by a phrase unless you untick **Never flag moderators or the streamer**.
+
+- **Check past chat** reads the saved history and lists who already said a phrase; nobody is flagged until you tick them and press **Red-flag ticked chatters**.
+- **Flag a name by hand** at the bottom of the list, or press **Red-flag** on a person's page.
+- **Unflag** takes someone off the list; a message at the bottom offers **Undo** (or Ctrl+Z) for ten seconds, in case you hit the wrong row mid-stream.
+- **Only for red-flagged chatters** (under Save chat history) keeps just their lines and nobody else's.
 
 ![Chat history](images/sc-chat-history.png)
 
@@ -195,9 +207,9 @@ Core shows chat live without keeping it. If you want a record, turn on **Chat hi
 
 Every message that reaches an overlay or Stream Rooms carries:
 
-- the platform, the chatter's name, colour and badges (mod, sub, VIP) and their **profile picture** (YouTube sends it; Kick is looked up; Twitch has none yet);
+- the platform, the chatter's name, colour and badges (mod, sub, VIP) and their **profile picture** (YouTube sends it; Kick is looked up; Twitch is looked up once you connect your Twitch account, section 5);
 - **emotes** as pictures: Twitch emotes plus BetterTTV, FrankerFaceZ and 7TV, Kick emotes, and YouTube's custom emoji;
-- **who it replies to**: a message sent with Kick's or Twitch's reply button shows "↩ Replying to *Name*: what they said" on the chat overlay and in Stream Rooms. (On Twitch the "@Name" at the start of such a reply is left out, because the reply line already says who it's for. YouTube live chat has no reply button.)
+- **who it replies to**: a message sent with Kick's or Twitch's reply button shows "↩ Replying to *Name*: what they said" on the chat overlay and in Stream Rooms. (On Twitch the "@Name" at the start of such a reply is left out, because the reply line already says who it's for. On YouTube a reply to a Super Chat shows the same way.)
 - the chatter's **title** from chat games (*Regular*, *Die-hard*, *Legend*), once they have one.
 
 ---
@@ -222,15 +234,15 @@ Commands start with `!` (the prefix is a setting). `!help` lists the commands th
 
 ## 11. Chat reactions
 
-A reaction is an emoji, an emote or a `!command` that plays an effect in Stream Rooms: tomatoes, roses, confetti, a boot, the lights flickering, a sign over someone's head. When Stream Rooms isn't running, a fallback overlay (`/overlay/reactions.html`) plays the simpler ones.
+A reaction is an emoji, an emote or a `!command` that plays an effect in Stream Rooms: tomatoes, roses, confetti, a boot, the lights flickering, a sign over someone's head. When Stream Rooms isn't running, the reactions overlay (`/overlay/reactions.html`) plays the simpler ones.
 
 **Settings → Reactions** is where you decide what chat can throw and who may. Saving applies at once.
 
 ![Reactions](images/sc-cfg-reactions.png)
 
-- **Reactions on**, and **Send effects to**: *auto* (Stream Rooms when it's connected, otherwise the fallback overlay), *game* or *overlay*.
+- **Reactions on**, and **Send effects to**: *auto* (Stream Rooms when it's connected, otherwise the reactions overlay), *Stream Rooms only* or *reactions overlay only*.
 - **Who can be targeted**: *everyone, until they opt out* (`!nothrow`), or only people who opted in (`!throwok`). `!targets` lists what can be aimed at in the current room.
-- **Admins don't pay**, **Refund points if the game drops a reaction**, and **Chat replies** (answers about cooldowns and costs; emoji triggers never get a reply, so chat isn't spammed).
+- **Admins don't pay**, **Refund points if Stream Rooms can't play it**, **Lines Stream Rooms may post per minute**, and **Chat replies** (answers about cooldowns and costs; emoji triggers never get a reply, so chat isn't spammed).
 - Each reaction has its **triggers** (emoji, emote names, commands), an **effect** with its settings, **who** may use it (public, mod, admin; optionally subs or VIPs), **cooldowns** per person, for everyone and per target, a **point cost** (needs chat points on) and **how many** one message may fire.
 - **Pictures**: upload PNG, JPEG or GIF files; a reaction whose object is `img:<name>` throws that picture.
 
@@ -299,9 +311,9 @@ Alerts fire from real events as they happen: follows, subs, resubs and gifted su
 
 A rolling list of everyone who chatted this stream. **Overlays → Credits**:
 
-- **Feature + roll**: turn it on, then **Roll credits (freeze list)** to lock the list and loop it, **Live list** to let newcomers join the roll, **Play once** (or **Play once, then clear**, which leaves the screen empty afterwards), **Hold still**, **Pause**, **Restart**, and **Download CSV**. The list under the preview updates live and shows mods (★), message counts and sub / VIP / paid.
+- **Feature + roll**: **Credits on** is the one switch for collecting names (while it's off, a red line on this page and on Live controls says so, with a **Turn on** button). **Roll credits** freezes the list and loops it, **Live list** lets newcomers join the roll, **Play once** (or **Play once, then clear**, which leaves the screen empty afterwards), **Hold still**, **Pause**, **Restart roll**, and **Download CSV**. Live controls has the same buttons with the same names. The list under the preview updates live and shows mods (★), message counts and sub / VIP / paid.
 - **Style**: nine **motions** (Classic crawl, crawl down, Star Wars, cards, fade, slides, a name tape, Teletype, Matrix), presets along the top, and tabs for the copy (title, subtitle, footer), type, colours, layout and list order. Edits preview live; **Save look** keeps them.
-- **Settings → Points, permissions + chat → Chat credits** has the roster filters: leave your own channel out, the shortest message that counts, and names to ignore (the built-in bot list applies when it's empty).
+- **Settings → Points, permissions + chat → Chat credits** has the roster filters (and says whether credits are on): leave your own channel out, the shortest message that counts, and names to ignore (the built-in bot list applies when it's empty).
 
 ![Credits](images/sc-credits.png)
 
@@ -341,7 +353,7 @@ Viewer trading (`!buy`, `!sell`, `!tickers`) is designed but not switched on yet
 ![Chat overlay: skin, behaviour and custom CSS](images/sc-chat-overlay-look.png)
 
 - **Skin**: **Classic** is Stream Core's look (dark fade, text shadow, coloured badge chips). **Plain** is the bare base most chat CSS packs expect. **Custom CSS only** turns everything off so your CSS is the whole look.
-- **Behaviour**: **Hide messages after** so many seconds (0 keeps them), **Messages kept on screen**, **Newest message on top**, **Show chatter profile pictures** (Kick and YouTube pictures, and Twitch ones once your account is connected, section 5), **Sound volume** and **At most one sound every** so many seconds for busy chats. **Save behaviour** applies within a few seconds.
+- **Behaviour**: **Hide messages after** so many seconds (0 keeps them), **Messages kept on screen**, **Newest message on top**, **Show chatter profile pictures** (on unless you switched it off; Kick and YouTube pictures, and Twitch ones once your account is connected, section 5; where pictures come from and the names that never get one are under **Settings → Core + chat platforms → Chatter profile pictures**), **Sound volume** and **At most one sound every** so many seconds for busy chats. **Save behaviour** applies within a few seconds.
 - **Custom CSS**: paste the CSS you already have. The overlay's layout is the Streamlabs Chat Box one (`#log`, one `div` per message with `data-from`, `.meta` with `.badges`, `.name` and `.colon`, then `.message` and `.emote`), with StreamElements' names alongside, so Streamlabs, StreamElements and OBS Custom CSS written for those widgets works here with little or no change. The **Selector cheat sheet** under the box lists everything, and `overlay\CHAT.md` has the full notes and CSS variables (font, size, colour, emote size, the background fade).
 - **Pictures and sounds**: a **Background picture**, picture badges (**Mod badge**, **VIP badge**, **Sub badge**, …) that replace the text chips, a **New message sound** and a **Paid message sound** for Super Chats and Kicks. **Upload** takes PNG, JPEG, GIF, WebP or WebM for pictures and MP3, OGG or WAV for sounds; **Remove** takes them away again. The files land in `overlay\assets\chat\`, so dropping them there by hand works too. Sounds play inside OBS and XSplit; a normal browser tab needs one click on the page first (a browser rule, not Core's).
 
@@ -350,7 +362,9 @@ Viewer trading (`!buy`, `!sell`, `!tickers`) is designed but not switched on yet
 The same rules can go into OBS's own **Custom CSS** box on the browser source instead, if you prefer to keep them there.
 
 
-Each overlay is a web page. Add it as a **Browser source** (OBS) or **Webpage source** (XSplit) with a transparent background, one source per overlay, so you can place and size each on its own. **On stream → Sources & overlays** lists every address with a **Copy** button.
+Each overlay is a web page. Add it as a **Browser source** (OBS) or **Webpage source** (XSplit) with a transparent background, one source per overlay, so you can place and size each on its own. **Overlays → Sources & overlays** lists every address with a **Copy** button (it shows **Copied ✓** on the button). **Customise** builds an address with the switches you pick; the panel remembers your choices while the dashboard tab stays open, and **Reset switches** goes back to the defaults.
+
+Open an overlay address in a normal browser tab and a small line in the corner says what it sees: whether Core answers, which chat platforms are connected, the platform filter in the address (a misspelt one like `?platform=twich` is ignored, with a note) and how many messages came in. The line never shows inside OBS or XSplit; add `?hint=0` to hide it, or `?hint=1` to show it in OBS too.
 
 Most overlays take switches on their address (which platforms the chat shows, the skin, how long messages stay, which ticker a chart draws, and so on). You don't have to remember them: press **Customise** on the overlay's row. A panel opens with one control per switch; as you change them the address at the bottom rewrites itself, **Copy** puts it on the clipboard, and **Preview** shows the result right there. Nothing is saved in Core, the address *is* the setting, so two browser sources of the same overlay can be set up differently. Settings the overlay reads from `config.yaml` (how long an alert stays, for instance) sit on the same panel with a **Save settings** button, and links lead to the overlay's own pages (the chat look, the alerts tests, the credits editor).
 
@@ -362,11 +376,11 @@ Most overlays take switches on their address (which platforms the chat shows, th
 |---|---|---|
 | Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading) |
 | Alerts | `http://127.0.0.1:3850/overlay/alerts.html` | `?skin=classic` / `card` / `custom`; `?preview=1` shows a sample |
-| End credits | `http://127.0.0.1:3850/overlay/credits.html` | `?motion=matrix&title=THE%20CREW` overrides the saved look |
+| End credits overlay | `http://127.0.0.1:3850/overlay/credits.html` | `?motion=matrix&title=THE%20CREW` overrides the saved look |
 | Replies and chat games boards | `http://127.0.0.1:3850/overlay/replies.html` | `?boards=0` hides boards, `?replies=0` shows boards only |
 | Reactions fallback | `http://127.0.0.1:3850/overlay/reactions.html` | Only needed when Stream Rooms isn't running |
 | Market ticker / board / chart | `…/overlay/market.html`, `market-board.html`, `market-chart.html?symbol=FACT`, `market-cycle.html?symbols=FRG,FACT` | |
-| Minecraft stats | `http://127.0.0.1:3850/overlay/overlay.html` | Health, food, XP, deaths, armour, viewers, chat per minute, power, inventory; `?show=` / `?hide=` pick widgets |
+| Metrics overlay (Minecraft stats) | `http://127.0.0.1:3850/overlay/overlay.html` | Health, food, XP, deaths, armour, viewers, chat per minute, power, inventory; `?show=` / `?hide=` pick widgets |
 | OpenTTD companies / ticker | `…/overlay/openttd.html`, `openttd-ticker.html` | |
 
 ![The chat overlay, with a reply line](images/sc-overlay-chat.png)
@@ -391,13 +405,13 @@ Stream Rooms tells Core which effects the current room can play, so reactions ne
 
 ## 18. Minecraft
 
-Two Fabric mods (in the `fridge-minecraft` folder) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Games** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
+Two Fabric mods (in the `fridge-minecraft` folder) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Game plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
 
-![Settings → Games](images/sc-cfg-games.png)
+![Settings → Game plugins](images/sc-cfg-games.png)
 
 ## 19. Factorio, Granvir and OpenTTD
 
-- **Factorio**: run the **Fridge Factorio Stats** bridge (port 3847) next to the game; it reads power, research and kills over RCON and feeds overlays of its own. In Core, turn **Factorio** on under **Settings → Games**. The power and item vaults pay market dividends.
+- **Factorio**: run the **Fridge Factorio Stats** bridge (port 3847) next to the game; it reads power, research and kills over RCON and feeds overlays of its own. In Core, turn **Factorio** on under **Settings → Game plugins**. The power and item vaults pay market dividends.
 - **Granvir**: the **Fridge Granvir Stats** plugin (BepInEx, port 3855) reports co-op stats; turn **Granvir** on the same way.
 - **OpenTTD**: Core joins the game's admin port and runs the **Chat Fund**: `!invest` turns points into company cash, `!companies` lists them, and two overlays show the companies and a ticker. Settings are on the Games page (host, admin port and password, points-to-pounds rate, limits).
 

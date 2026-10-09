@@ -14,7 +14,7 @@ Core owns every rule. The game only draws what Core sends and reports what happe
 | Who can be targeted | `targeting: opt_out` (everyone until `!nothrow`) or `opt_in` (only after `!throwok`). Stored in `data/reactions_optout.json` |
 | Chat replies | `reactions.messages.*` templates; emoji triggers never reply (no spam) |
 
-Edit it all in **Admin → Config → Reactions**. Save writes the `reactions:` block of `config.yaml` and applies immediately. A normal Config save never overwrites that block.
+Edit it all in **Settings → Reactions**. Save writes the `reactions:` block of `config.yaml` and applies immediately. A normal Config save never overwrites that block.
 
 ## Chat syntax
 
@@ -114,7 +114,7 @@ The target's name was checked against the last `room_state`. If it has gone sinc
 A reaction can throw / drop / float a picture instead of an emoji: set its **Object** setting to `img:<name>`. The built-in `boot` entry (`!boot`, 🥾) throws `img:boot`.
 
 - Built-in pictures: `overlay/assets/reactions/` (ships `boot.png`).
-- Your uploads: **Admin → Config → Reactions → Pictures**. Stored in `data/reaction_images/` (local, not in git). An upload with a built-in's name replaces it for this install; deleting the upload brings the built-in back.
+- Your uploads: **Settings → Reactions → Pictures**. Stored in `data/reaction_images/` (local, not in git). An upload with a built-in's name replaces it for this install; deleting the upload brings the built-in back.
 - PNG, JPEG or GIF (animated GIFs play), up to 5 MB. The type is read from the file itself, not the extension. Names: `a-z 0-9 - _`, up to 40 characters.
 - In an entry's Object box, click a thumbnail or type `img:name`; an unknown name is flagged.
 
@@ -143,7 +143,7 @@ Targets it offers: `screen` (aliases tv, stage, movie), `webcam`, `chat`, one pe
 - `core/store.py` — `spend_points()` atomic check-and-debit
 - `api/server.py` — WebSocket JSON frames → engine
 - `api/admin_routes.py` — `GET/PUT /api/admin/reactions`, `POST /api/admin/reactions/test`
-- `admin/` — Config → Reactions editor
+- `admin/` — Settings → Reactions editor
 - `overlay/reactions.html|css|js` — fallback overlay (`?debug=1`, `?scale=1.5`, `?any=1`)
 - `data/reactions_optout.json`, `data/reactions_caps.json` (last effect list a game reported)
 - `overlay/assets/reactions/`, `data/reaction_images/` — pictures

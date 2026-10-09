@@ -7,6 +7,7 @@ Standalone twin: the [fridge-chat-credits](https://github.com/sensokasucks/fridg
 ## Must keep
 
 - [ ] Opt-in: `credits.enabled` default **false**. Enable from Admin → Credits (hot-applied) or Config checkbox.
+- [ ] The on/off switch is only on the Credits page; Settings → Points, permissions + chat → Chat credits just says on/off with a link. `PUT /api/admin/config` keeps the live `credits.enabled` (a stale form copy can't switch credits off). `POST /credits/play` returns `credits_enabled` and a `warning` while off. Tests: `tests/test_dashboard_tidy.py`.
 - [ ] Unique chatters come from the **same** Kick / Twitch / YouTube adapters as live chat. No second listener.
 - [ ] Overlay URL: `http://127.0.0.1:3850/overlay/credits.html` (transparent Webpage source).
 - [ ] Every motion runs on one pixel `requestAnimationFrame` loop (`credits.speed_px_per_sec` / `duration_sec` for crawls). Do **not** go back to CSS `@keyframes` + `translateY(%)` (CEF dropped that animation).

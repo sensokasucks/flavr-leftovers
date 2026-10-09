@@ -13,9 +13,14 @@ Tabs, in order:
 - [ ] **Settings → Game plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
 - [ ] **Credits** — enable, roll/loop/once/hold/once-then-clear, pause, restart, CSV download, live list over `/ws`, style editor, pins, preview (see [credits-core.md](credits-core.md))
 - [ ] **Alert test** — fire kinds + skin + custom CSS (see [alerts.md](alerts.md))
-- [ ] **Users & Points** — search, adjust, link identities, CSV
-- [ ] **Chat History** — only fills when `chat_log.enabled`
+- [ ] **Users & Points** — search, adjust, link another platform account **by name** (`POST /users/{id}/link` with `username` and no `platform_user_id`: the known account by that name, else a `name:` placeholder their first chat line claims), merge by name search (confirm names both people and their points), per-person Chat log / Download CSV / Red-flag
+- [ ] **Chat History** — only fills when `chat_log.enabled`; shows the newest 200 and says so; names open the person; Download CSV follows the platform / search / 🚩 filters (`GET /chat/export?platform=&q=&flagged=`)
+- [ ] **Red flags** (People) — its own page (`#redflags`), not a card on Chat history; Unflag offers Undo (`DELETE /red-flags/{id}` returns `removed`, `POST /red-flags/restore` puts it back)
 - [ ] **Config** — hybrid editor for `config.yaml` + `commands.json`; advanced fields accordion; **Reactions** editor; command group table; overlay module checkboxes
+- [ ] One name per page: menu, Settings pills (same order as the menu), page title and in-app links use the same words ("Points, permissions + chat", "Game plugins", "Sources & overlays" under Overlays). No banner or hint points at a "Config" menu. Live controls is the landing page (`tab-live` is the `active` panel in the HTML).
+- [ ] Credits on/off has one switch, on the Credits page (`PUT /credits/enabled`); a config save keeps the live `credits.enabled`. While off, the Credits page and Live controls show a red "Credits are off" line with **Turn on**, and the play state never says "Looping". Live controls and Credits page buttons share labels.
+- [ ] Sources & overlays: Customise remembers its switches and open panels in `sessionStorage` (per browser tab); Copy shows "Copied ✓" on the button.
+- [ ] Sub-page pills are a `role=tablist` (arrow keys move). Status cards are `<section>` with a heading, not `<legend>` outside a fieldset. **Start a new stream now** asks first.
 
 APIs that the tabs depend on must not disappear:
 
