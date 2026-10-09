@@ -7,7 +7,7 @@ Home: repo root. Map: [README.md](../README.md).
 - [ ] Project prefix is `fridge-`. No new `xsplit-*` folders.
 - [ ] One concern per folder. Platforms = adapters. Games = plugins (`fridge-stream-core/plugins/<id>/`). Overlays = dumb HTML.
 - [ ] Bind loopback (`127.0.0.1`) by default. Do not expose ports to the internet in examples or start scripts.
-- [ ] Loopback is not enough: browsers can reach it. HTTP apps keep the local guard — Python apps via `core/local_guard.py` (Core + Chat Credits copies stay in sync), game bridges via Core's `X-Fridge-Core: 1` header + no `Origin` + loopback `Host`. No `Access-Control-Allow-Origin: *` on write endpoints.
+- [ ] Loopback is not enough: browsers can reach it. HTTP apps keep the local guard — Python apps via `core/local_guard.py` (Core's copy and the one in the fridge-chat-credits repo stay in sync), game bridges via Core's `X-Fridge-Core: 1` header + no `Origin` + loopback `Host`. No `Access-Control-Allow-Origin: *` on write endpoints.
 - [ ] Ports stay put:
 
   | Port | Owner |
@@ -17,14 +17,13 @@ Home: repo root. Map: [README.md](../README.md).
   | 3851 | Reactive Image HTTP (flavr-reactive-image repo) |
   | 3852 | Minecraft client mod (flavr-game-plugins repo) |
   | 3853 | Minecraft server mod / NeoForge bridge (flavr-game-plugins repo) |
-  | 3854 | Standalone Chat Credits |
+  | 3854 | Standalone Chat Credits (fridge-chat-credits repo) |
   | 3855 | Granvir Stats (flavr-game-plugins repo) |
 
 - [ ] Live secrets stay out of git: `config/config.yaml`, `.env`, `data/`, `*.db`, jars, `.venv`, `.grok/`.
 - [ ] Examples stay committed: `*.example.*`, `config.example.yaml`, `commands.example.json`.
 - [ ] Root start/install bats still exist and still point at the current folders:
   - `INSTALL Stream Core.bat` / `START Stream Core.bat`
-  - `INSTALL Chat Credits.bat` / `START Chat Credits.bat`
 - [ ] Root README table lists every live package + its port.
 - [ ] Stream Core changelog remains the workshop changelog: `fridge-stream-core/CHANGELOG.md`.
 - [ ] Git hooks in `githooks/` still block secrets and built binaries (turned on with `git config core.hooksPath githooks`, see GIT.md).

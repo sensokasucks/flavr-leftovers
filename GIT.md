@@ -13,6 +13,7 @@ Related repos (not part of this one):
 
 - **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)** — Minecraft, Factorio, Granvir, OpenTTD plugins and their mods / bridges
 - **[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image)** — the audio-reactive avatar app
+- **[fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits)** — standalone Chat Credits (for streams without Core)
 
 ## Git hooks (optional)
 

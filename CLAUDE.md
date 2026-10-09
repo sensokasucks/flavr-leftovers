@@ -11,13 +11,13 @@ Style: build streaming plugins based on user needs. Keep everything modular and 
 | Folder | Role | Port |
 |--------|------|------|
 | [fridge-stream-core](fridge-stream-core/) | Chat backbone: adapters → EventBus → commands / points / admin → game plugins (`plugins/`) | 3850 |
-| [fridge-chat-credits](fridge-chat-credits/) | Standalone unique-chatter credits (skip if using Core Credits) | 3854 |
 | [checklists/](checklists/) | Feature contracts (`Must keep`) | — |
 
 The game plugins and game-side mods (Minecraft, Factorio, Granvir, OpenTTD; ports 3847 / 3852 / 3853 / 3855)
 live in their own repo, [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins). Core's `plugins/` folder is empty in git
 (installed game folders are git-ignored). The audio-reactive avatar (port 3851) lives in
-[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image).
+[flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image), the standalone Chat Credits app (port 3854) in
+[fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits).
 
 Changelog: [fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md). Map: [README.md](README.md). Git: [GIT.md](GIT.md).
 
@@ -37,6 +37,6 @@ Changelog: [fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md). M
 - Chat / commands / points / admin / overlays that are shared → `fridge-stream-core/`
 - Anything game-specific (Minecraft, Factorio, Granvir, OpenTTD, a new game) → the flavr-game-plugins repo; never game-specific code in Core itself
 - A game needs something new from Core → a generic hook in `core/plugin_api.py`, documented in `docs/PLUGINS.md`
-- Standalone credits movie → `fridge-chat-credits/` only when that app is in play; Core Credits is separate (`checklists/credits-core.md`)
+- Standalone credits app → the fridge-chat-credits repo; Core Credits is separate (`checklists/credits-core.md`)
 
 After a change: update the matching checklist if an invariant moved, and note it in `fridge-stream-core/CHANGELOG.md` under Unreleased when the behavior is user-visible.

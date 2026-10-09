@@ -14,7 +14,6 @@
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |
 | Overlays (shared) | [overlays.md](overlays.md) | Webpage sources, ports, query filters |
 | Game plugins | [plugins.md](plugins.md) | `plugins/`, `core/plugins.py`, `core/plugin_api.py`, `core/plugin_manifest.py`, Settings → Game plugins |
-| Chat Credits (standalone) | [chat-credits-standalone.md](chat-credits-standalone.md) | `:3854` app — only if that package is in play |
 
 ## Always-on companions
 
