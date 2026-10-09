@@ -598,16 +598,21 @@
     try {
       const s = await api("/api/admin/status");
       const chips = [];
+      const problems = [];
       for (const [name, p] of Object.entries(s.platforms || {})) {
         if (!p.configured_enabled && !p.running) continue;
         const word = p.running ? "" : p.state === "retrying" ? " retrying" : " stopped";
-        chips.push(pill(!!p.running, escapeHtml(name) + word));
+        const line = platformLine(name, p, s.server_time);
+        chips.push(`<span title="${escapeHtml(line.text)}">${pill(!!p.running, escapeHtml(name) + word)}</span>`);
+        if (!p.running || line.quiet) problems.push(`<li>${line.html}</li>`);
       }
       for (const [name, g] of Object.entries(s.games || {})) {
         if (!g.configured_enabled && !g.running) continue;
         chips.push(pill(!!g.running, escapeHtml(name) + (g.running ? "" : " stopped")));
       }
-      if (!chips.length) chips.push('<span class="muted">No chat platforms or games switched on</span>');
+      if (!chips.length) chips.push(firstRunHint());
+      renderRestartBanner(s);
+      renderYouTubeBox(s);
       const m = s.metrics || {};
       const cr = s.credits || {};
       const rx = s.reactions || {};
@@ -617,6 +622,7 @@
       }
       box.innerHTML =
         `<div class="live-chips">${chips.join("")}</div>` +
+        (problems.length ? `<ul class="status-list live-problems">${problems.join("")}</ul>` : "") +
         `<div class="live-metrics">` +
         `<span>Viewers <strong>${m.viewers ?? 0}</strong></span>` +
         `<span>Chat / min <strong>${Number(m.cpm ?? 0).toFixed(1)}</strong></span>` +
@@ -701,6 +707,198 @@
     });
   }
 
+  /** "14 s ago" / "3 min ago" from two epoch-second stamps. */
+  function agoText(then, now) {
+    const sec = Math.max(0, Math.round((now || Date.now() / 1000) - then));
+    if (sec < 60) return sec + " s ago";
+    if (sec < 3600) return Math.round(sec / 60) + " min ago";
+    return Math.round(sec / 3600) + " h ago";
+  }
+
+  /**
+   * One plain line on how a chat platform is doing:
+   * "Connected · last message 14 s ago", or why it isn't connected with a link to fix it.
+   * quiet = connected, but nothing has arrived for a while (worth a look, not an error).
+   */
+  function platformLine(name, p, now) {
+    const label = name.charAt(0).toUpperCase() + name.slice(1);
+    const fixAt = /Advanced/i.test(p.last_error || "") ? "#config/advanced" : "#config/core";
+    const go = ` <a href="${fixAt}">Fix in Settings →</a>`;
+    if (!p.configured_enabled) return { text: label + ": off", html: `${label}: off`, quiet: false };
+    if (p.running && p.connected) {
+      let text = "Connected";
+      let quiet = false;
+      if (p.last_message_at) {
+        text += " · last message " + agoText(p.last_message_at, now);
+        quiet = (now || Date.now() / 1000) - p.last_message_at > 600;
+      } else {
+        text += " · no chat yet";
+      }
+      return { text: label + ": " + text, html: `<strong>${label}</strong> <span class="platform-ok">${escapeHtml(text)}</span>`, quiet };
+    }
+    if (p.running) {
+      return { text: label + ": connecting…", html: `<strong>${label}</strong> <span class="platform-ok">connecting…</span>`, quiet: false };
+    }
+    const why = p.last_error || (p.state === "retrying"
+      ? "Not connected yet; Core keeps trying."
+      : "Switched on but not connected. Check the channel name, then Reconnect.");
+    const cls = p.state === "retrying" ? "platform-why warn" : "platform-why";
+    return {
+      text: label + ": " + why,
+      html: `<strong>${label}</strong> <span class="${cls}">${escapeHtml(why)}${go}</span>`,
+      quiet: false,
+    };
+  }
+
+  /** Nothing switched on yet (first run): say what to do next instead of an empty page. */
+  function firstRunHint() {
+    return '<span class="muted">No chat platforms on yet. <a href="#config/core">Connect Kick, Twitch or YouTube →</a> ' +
+      'Then add the chat overlay to OBS from <a href="#sources">Sources &amp; overlays</a>.</span>';
+  }
+
+  /** "Restart Core to apply: …" with a Restart button, only while a saved setting needs it. */
+  function renderRestartBanner(s) {
+    const box = $("restart-banner");
+    if (!box) return;
+    const pending = (s && s.restart_needed) || [];
+    box.hidden = !pending.length;
+    if (!pending.length) return;
+    $("restart-why").textContent = "Restart Stream Core to apply: " + pending.join("; ") + ".";
+    $("restart-now").hidden = !s.can_restart;
+    $("restart-how").textContent = s.can_restart
+      ? ""
+      : "Close the Stream Core window and double-click START Stream Core.bat again.";
+  }
+
+  async function restartCore() {
+    const btn = $("restart-now");
+    if (!confirm("Restart Stream Core now? Overlays and Stream Rooms reconnect by themselves in a few seconds.")) return;
+    btn.disabled = true;
+    $("restart-how").textContent = "Restarting…";
+    try {
+      const res = await api("/api/admin/restart", { method: "POST", body: "{}" });
+      $("restart-how").textContent = res.message || "Restarting…";
+      // wait for Core to go away and come back, then reload what's on screen
+      let back = false;
+      await new Promise((r) => setTimeout(r, 2500));
+      for (let i = 0; i < 40 && !back; i++) {
+        try {
+          await api("/api/admin/status");
+          back = true;
+        } catch (_) {
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      $("restart-how").textContent = back ? "Stream Core restarted." : "Core hasn't come back yet. Check its window.";
+      if (back) {
+        loadStatus();
+        loadLiveStatus();
+      }
+    } catch (e) {
+      $("restart-how").textContent = readableActionError(e);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+  if ($("restart-now")) $("restart-now").onclick = restartCore;
+
+  /** Live controls: the YouTube live video box (only while YouTube is switched on). */
+  function renderYouTubeBox(s) {
+    const card = $("live-yt-card");
+    if (!card) return;
+    const yt = (s.platforms || {}).youtube || {};
+    card.hidden = !yt.configured_enabled;
+    if (!yt.configured_enabled) return;
+    const cur = $("live-yt-current");
+    if (cur) {
+      const line = platformLine("youtube", yt, s.server_time);
+      cur.innerHTML = (yt.detail ? `Video <code>${escapeHtml(yt.detail)}</code> · ` : "No video set · ") + line.html.replace(/^<strong>Youtube<\/strong> /, "");
+    }
+  }
+  async function connectYouTubeVideo() {
+    const input = $("live-yt-video");
+    const msg = $("live-yt-msg");
+    const raw = (input.value || "").trim();
+    const say = (t, ok = true) => {
+      msg.textContent = t;
+      msg.classList.toggle("bad", !ok);
+    };
+    const id = cleanYouTube(raw);
+    if (!id) return say("Paste the link of your live stream (youtube.com/watch?v=…, youtu.be/…, /live/… or a Studio link).", false);
+    $("live-yt-connect").disabled = true;
+    say("Connecting…");
+    try {
+      const res = await api("/api/admin/platforms/youtube/video", { method: "POST", body: JSON.stringify({ video: raw }) });
+      say(res.message || "Saved.");
+      input.value = "";
+      loadLiveStatus();
+    } catch (e) {
+      say(readableActionError(e), false);
+    } finally {
+      $("live-yt-connect").disabled = false;
+    }
+  }
+  if ($("live-yt-connect")) $("live-yt-connect").onclick = connectYouTubeVideo;
+  // Settings boxes tidy a pasted link as soon as you leave them (kick.com/name → name)
+  [["cfg-kick-slug", (v) => cleanKick(v)], ["cfg-tw-channel", (v) => cleanTwitch(v)], ["cfg-yt-video", (v) => cleanYouTube(v)]]
+    .forEach(([id, fn]) => {
+      const el = $(id);
+      if (!el) return;
+      el.addEventListener("change", () => {
+        const clean = fn(el.value);
+        if (clean && clean !== el.value.trim()) el.value = clean;
+      });
+    });
+  if ($("live-yt-video")) {
+    $("live-yt-video").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") connectYouTubeVideo();
+    });
+  }
+
+  // Pasted links → what each platform needs (same rules as core/platform_links.py).
+  function cleanYouTube(raw) {
+    const text = String(raw || "").trim();
+    if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text;
+    let url;
+    try {
+      url = new URL(/^[a-z]+:\/\//i.test(text) ? text : "https://" + text);
+    } catch (_) {
+      return "";
+    }
+    const host = url.hostname.toLowerCase();
+    if (!/(youtube\.com|youtu\.be|youtube-nocookie\.com)$/.test(host)) return "";
+    const v = url.searchParams.get("v") || "";
+    if (/^[A-Za-z0-9_-]{11}$/.test(v)) return v;
+    if (host.endsWith("youtu.be")) {
+      const first = url.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[A-Za-z0-9_-]{11}$/.test(first) ? first : "";
+    }
+    const m = /\/(?:live|shorts|embed|v|video)\/([A-Za-z0-9_-]{11})(?:[/?#]|$)/.exec(url.pathname);
+    return m ? m[1] : "";
+  }
+  function cleanChannel(raw, host) {
+    let text = String(raw || "").trim();
+    if (text.toLowerCase().includes(host)) {
+      try {
+        const parts = new URL(/^[a-z]+:\/\//i.test(text) ? text : "https://" + text).pathname.split("/").filter(Boolean);
+        if (parts[0] && parts[0].toLowerCase() === "popout" && parts.length > 1) parts.shift();
+        text = parts[0] || "";
+      } catch (_) {
+        return text;
+      }
+    }
+    return text.replace(/^[@#]+/, "").trim();
+  }
+  const cleanKick = (raw) => cleanChannel(raw, "kick.com");
+  const cleanTwitch = (raw) => cleanChannel(raw, "twitch.tv").toLowerCase();
+
+  // An error thrown by api() already reads well; network failures get plain words.
+  function readableActionError(e) {
+    const msg = String((e && e.message) || e || "");
+    if (/Failed to fetch|NetworkError|Load failed/i.test(msg)) return "Can't reach Stream Core. Is it running?";
+    return msg || "Something went wrong.";
+  }
+
   function pill(ok, label) {
     const cls = ok ? "pill ok" : "pill off";
     return `<span class="${cls}">${label}</span>`;
@@ -711,6 +909,7 @@
     if (!body) return;
     try {
       const s = await api("/api/admin/status");
+      renderRestartBanner(s);
       const m = s.metrics || {};
       let html = "";
       html += `<div class="cfg-card"><legend>Core</legend>
@@ -727,16 +926,13 @@
       for (const [name, p] of Object.entries(s.platforms || {})) {
         const run = p.running;
         const want = p.configured_enabled;
-        let note = "";
-        if (want && !run && !p.last_error) note = " (enabled but not connected — check the channel, then Reconnect)";
-        if (!want && !run) note = " (disabled)";
-        const state = run ? pill(true, "running") : p.state === "retrying" ? pill(false, "retrying") : pill(false, "stopped");
+        const state = run ? pill(true, p.connected ? "connected" : "connecting") : p.state === "retrying" ? pill(false, "retrying") : pill(false, want ? "not connected" : "off");
+        const line = platformLine(name, p, s.server_time);
         html += `<li><strong>${name}</strong> ${state}
           ${want ? pill(true, "config on") : pill(false, "config off")}
           ${p.detail ? `<span class="muted">${escapeHtml(p.detail)}</span>` : ""}
-          <span class="muted">${note}</span>
-          ${want && p.last_error ? `<span class="muted" style="color:var(--danger)">${escapeHtml(p.last_error)}</span>` : ""}
-          ${want ? `<button class="platform-reconnect" data-platform="${name}">Reconnect</button>` : ""}</li>`;
+          ${want ? `<button class="platform-reconnect" data-platform="${name}">Reconnect</button>` : ""}
+          ${want ? `<span class="platform-line">${line.html.replace(/^<strong>[^<]*<\/strong> /, "")}</span>` : ""}</li>`;
       }
       html += `</ul></div>`;
 
@@ -1727,6 +1923,7 @@
       $("user-detail").innerHTML = `
         <h2>${escapeHtml(u.display_name || "User #" + u.id)}</h2>
         <div class="points">${u.points} pts</div>
+        <p id="user-action-msg" class="action-msg" role="status" aria-live="polite"></p>
         <h3>Linked accounts</h3>
         <ul class="identities">${idents || "<li class='muted'>None</li>"}</ul>
 
@@ -1768,49 +1965,84 @@
         <div class="ledger">${ledger || "<span class='muted'>Empty</span>"}</div>
       `;
 
-      $("pts-apply").onclick = async () => {
+      const who = u.display_name || "user #" + u.id;
+      // every button answers on the line under the name, also after the panel redraws
+      const userMsg = (text, ok = true) => {
+        const el = $("user-action-msg");
+        if (!el) return;
+        el.textContent = text;
+        el.classList.toggle("bad", !ok);
+      };
+      const act = async (btn, work) => {
+        btn.disabled = true;
+        userMsg("Working…");
+        try {
+          const done = await work();
+          if (!done) userMsg("");
+          if (done && done.redraw) await selectUser(id);
+          if (done && done.msg) userMsg(done.msg, true);
+        } catch (e) {
+          userMsg(readableActionError(e), false);
+        } finally {
+          if ($(btn.id)) $(btn.id).disabled = false;
+        }
+      };
+      $("pts-apply").onclick = () => act($("pts-apply"), async () => {
         const delta = parseInt($("pts-delta").value, 10);
-        if (Number.isNaN(delta)) return alert("Enter a number");
-        await api("/api/admin/users/" + id + "/points", {
+        if (Number.isNaN(delta) || !delta) throw new Error("Type how many points, like 50 or -20.");
+        const res = await api("/api/admin/users/" + id + "/points", {
           method: "POST",
           body: JSON.stringify({
             delta,
             reason: $("pts-reason").value || "admin adjust",
           }),
         });
-        selectUser(id);
         refreshStats();
-      };
-      $("link-btn").onclick = async () => {
-        await api("/api/admin/users/" + id + "/link", {
+        const bal = res && res.balance != null ? Number(res.balance).toLocaleString() : "?";
+        return {
+          redraw: true,
+          msg: (delta > 0 ? `Gave ${delta} points to ${who}` : `Took ${-delta} points from ${who}`) + ` (now ${bal}).`,
+        };
+      });
+      $("link-btn").onclick = () => act($("link-btn"), async () => {
+        const pid = $("link-pid").value.trim();
+        if (!pid) throw new Error("Type the platform account to link.");
+        const res = await api("/api/admin/users/" + id + "/link", {
           method: "POST",
           body: JSON.stringify({
             platform: $("link-platform").value,
-            platform_user_id: $("link-pid").value.trim(),
+            platform_user_id: pid,
             username: $("link-user").value.trim(),
           }),
         });
-        selectUser(id);
-      };
-      $("merge-btn").onclick = async () => {
+        loadUsers();
+        return {
+          redraw: true,
+          msg: res && res.merged
+            ? `Linked ${$("link-platform").value} account; its points were merged into ${who}.`
+            : `Linked ${$("link-platform").value} account to ${who}.`,
+        };
+      });
+      $("merge-btn").onclick = () => act($("merge-btn"), async () => {
         const absorb = parseInt($("merge-id").value, 10);
-        if (Number.isNaN(absorb)) return alert("Enter user ID");
-        if (!confirm("Merge user " + absorb + " into this one?")) return;
-        await api("/api/admin/users/" + id + "/merge", {
+        if (Number.isNaN(absorb)) throw new Error("Pick the person to merge in first.");
+        if (!confirm("Merge user " + absorb + " into " + who + "? This can't be undone.")) return null;
+        const res = await api("/api/admin/users/" + id + "/merge", {
           method: "POST",
           body: JSON.stringify({ absorb_user_id: absorb }),
         });
-        selectUser(id);
         loadUsers();
         refreshStats();
-      };
-      $("notes-btn").onclick = async () => {
+        const bal = res && res.balance != null ? Number(res.balance).toLocaleString() : "?";
+        return { redraw: true, msg: `Merged into ${who} (now ${bal} points).` };
+      });
+      $("notes-btn").onclick = () => act($("notes-btn"), async () => {
         await api("/api/admin/users/" + id + "/notes", {
           method: "POST",
           body: JSON.stringify({ notes: $("user-notes").value }),
         });
-        setStatus("Notes saved");
-      };
+        return { msg: "Notes saved." };
+      });
     } catch (e) {
       setStatus(String(e.message || e), false);
     }
@@ -2049,23 +2281,44 @@
     downloadCsv(uid ? parseInt(uid, 10) : null);
   };
 
-  function downloadCsv(userId) {
+  async function downloadCsv(userId) {
     const params = new URLSearchParams();
     if (userId) params.set("user_id", String(userId));
     const url = "/api/admin/chat/export?" + params.toString();
-    fetch(url, { headers: { "X-Admin-Token": token() } })
-      .then(async (res) => {
-        if (!res.ok) throw new Error(await res.text());
-        return res.blob();
-      })
-      .then((blob) => {
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = userId ? `chat_user_${userId}.csv` : "chat_all.csv";
-        a.click();
-        URL.revokeObjectURL(a.href);
-      })
-      .catch((e) => alert(String(e.message || e)));
+    const msg = $("chat-export-msg");
+    const say = (text, ok = true) => {
+      if (!msg) return;
+      msg.textContent = text;
+      msg.classList.toggle("bad", !ok);
+    };
+    say("Preparing the file…");
+    try {
+      await downloadFile(url, userId ? `chat_user_${userId}.csv` : "chat_all.csv");
+      say("Downloaded.");
+    } catch (e) {
+      say("Download failed: " + readableActionError(e), false);
+    }
+  }
+
+  /** GET a file from Core and save it; errors come back in plain words (like api()). */
+  async function downloadFile(url, fallbackName) {
+    const res = await fetch(url, { headers: { "X-Admin-Token": token() } });
+    if (!res.ok) {
+      if (res.status === 401) needToken();
+      throw new Error(readableError(await res.text(), res.status, res.statusText));
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("content-disposition") || "";
+    const m = cd.match(/filename="?([^";]+)"?/);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : fallbackName;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    }, 1000);
   }
 
   // ------------------------------------------------------------------
@@ -2420,7 +2673,7 @@
     const chatroomRaw = $("cfg-kick-chatroom").value.trim();
     const kick = {
       enabled: $("cfg-kick-enabled").checked,
-      channel_slug: $("cfg-kick-slug").value.trim(),
+      channel_slug: cleanKick($("cfg-kick-slug").value),
       poll_viewer_interval_sec: num($("cfg-kick-poll").value, 15),
       avatars: $("cfg-kick-avatars").checked,
     };
@@ -2441,7 +2694,7 @@
       kick,
       twitch: {
         enabled: $("cfg-tw-enabled").checked,
-        channel: $("cfg-tw-channel").value.trim().replace(/^#/, ""),
+        channel: cleanTwitch($("cfg-tw-channel").value),
         third_party_emotes: $("cfg-tw-3p").checked,
         avatars: $("cfg-tw-avatars").checked,
         client_id: $("cfg-tw-client-id").value.trim(),
@@ -2452,7 +2705,7 @@
         mode: $("cfg-yt-mode").value || "innertube",
         api_key: $("cfg-yt-apikey").value.trim(),
         channel_id: $("cfg-yt-channel").value.trim(),
-        video_id: $("cfg-yt-video").value.trim(),
+        video_id: cleanYouTube($("cfg-yt-video").value) || $("cfg-yt-video").value.trim(),
         live_chat_id: $("cfg-yt-livechat").value.trim(),
       },
       ...collectPluginSections(),
@@ -2561,6 +2814,11 @@
   $("cfg-save").onclick = async () => {
     try {
       const config = collectConfigFromForm();
+      const oldPort = Number(((lastLoadedConfig || {}).core || {}).port || 3850);
+      const newPort = Number((config.core || {}).port || 3850);
+      if (newPort !== oldPort && !confirm(
+        `Change Core's port from ${oldPort} to ${newPort}?\n\nAfter the restart every OBS browser source, ` +
+        `Stream Rooms and this dashboard must use http://127.0.0.1:${newPort}/ instead.`)) return;
       const newToken = String(((config.points || {}).admin_token) || "").trim();
       const res = await api("/api/admin/config", {
         method: "PUT",
@@ -2577,6 +2835,7 @@
       }
       setCfgStatus(res.message || "Saved", true);
       setStatus(res.message || "Config saved — chat platforms applied", true);
+      renderRestartBanner(res);
       setCfgDirty(false);
     } catch (e) {
       setCfgStatus(String(e.message || e), false);
@@ -2728,7 +2987,7 @@
         const data = await api("/api/admin/command-groups/reload", { method: "POST", body: "{}" });
         showConflicts(data.conflicts || []);
         await loadGroups();
-        setGrpStatus("Hot-reloaded · groups: " + (data.groups_active || []).join(", "), true);
+        setGrpStatus("Reloaded from disk · groups: " + (data.groups_active || []).join(", "), true);
       } catch (e) {
         setGrpStatus(String(e.message || e), false);
       }
@@ -3808,9 +4067,19 @@
     };
   }
   async function crdPlay(body) {
-    const res = await api("/api/admin/credits/play", { method: "POST", body: JSON.stringify(body) });
-    renderCreditsPlay(res);
-    return res;
+    // also pressed from Live controls mid-stream: never fail silently
+    try {
+      const res = await api("/api/admin/credits/play", { method: "POST", body: JSON.stringify(body) });
+      renderCreditsPlay(res);
+      return res;
+    } catch (e) {
+      const text = "Credits: " + readableActionError(e);
+      for (const id of ["crd-play-state", "live-crd-state"]) {
+        if ($(id)) $(id).textContent = text;
+      }
+      setStatus(text, false);
+      return null;
+    }
   }
   if ($("crd-roll")) $("crd-roll").onclick = () => crdPlay({ playing: true, mode: "loop", freeze: true, restart: true });
   if ($("crd-live")) $("crd-live").onclick = () => crdPlay({ freeze: false, playing: true });
@@ -3824,22 +4093,9 @@
   if ($("crd-csv")) {
     $("crd-csv").onclick = async () => {
       try {
-        const res = await fetch("/api/admin/credits/roster.csv", { headers: headers() });
-        if (!res.ok) throw new Error((await res.text()) || res.statusText);
-        const blob = await res.blob();
-        const cd = res.headers.get("content-disposition") || "";
-        const m = cd.match(/filename="?([^";]+)"?/);
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = m ? m[1] : "chatters.csv";
-        document.body.appendChild(a);
-        a.click();
-        setTimeout(() => {
-          URL.revokeObjectURL(a.href);
-          a.remove();
-        }, 1000);
+        await downloadFile("/api/admin/credits/roster.csv", "chatters.csv");
       } catch (e) {
-        if ($("crd-play-state")) $("crd-play-state").textContent = String(e.message || e);
+        if ($("crd-play-state")) $("crd-play-state").textContent = "Download failed: " + readableActionError(e);
       }
     };
   }
@@ -3847,8 +4103,12 @@
   if ($("crd-reset")) {
     $("crd-reset").onclick = async () => {
       if (!confirm("Clear unique chatters for this session?")) return;
-      await api("/api/admin/credits/reset", { method: "POST", body: "{}" });
-      initCreditsTab(true);
+      try {
+        await api("/api/admin/credits/reset", { method: "POST", body: "{}" });
+        initCreditsTab(true);
+      } catch (e) {
+        if ($("crd-play-state")) $("crd-play-state").textContent = "Clear failed: " + readableActionError(e);
+      }
     };
   }
   if ($("crd-save-look")) {
@@ -4611,6 +4871,27 @@
   // fields (poll question, test chat, alert test, tester, grant shares ...) are not sections.
   // ------------------------------------------------------------------
   var PAGE_SAVER = null;
+
+  // "Reload from disk" buttons throw away what you typed: ask first when something is unsaved.
+  // (Capture phase, so a Cancel stops the button's own handler.)
+  const RELOAD_BUTTONS = {
+    "cfg-reload": () => !!($("cfg-savebar") && $("cfg-savebar").classList.contains("dirty")),
+    "rx-reload": () => sectionDirty((s) => s.reload === "rx-reload"),
+    "grp-reload": () => sectionDirty((s) => s.reload === "grp-reload"),
+    "cmd-reload": () => sectionDirty((s) => s.reload === "cmd-reload") || !!(PAGE_SAVER && PAGE_SAVER.cmdFormEdited),
+    "fun-reload": () => sectionDirty((s) => s.page === "fun"),
+  };
+  function sectionDirty(match) {
+    return !!(PAGE_SAVER && PAGE_SAVER.sections.some((s) => s.dirty && match(s)));
+  }
+  document.addEventListener("click", (ev) => {
+    const btn = ev.target && ev.target.closest && ev.target.closest("button");
+    const check = btn && RELOAD_BUTTONS[btn.id];
+    if (!check || !check()) return;
+    if (confirm("You have unsaved changes here. Reload from disk and throw them away?")) return;
+    ev.stopImmediatePropagation();
+    ev.preventDefault();
+  }, true);
 
   /** Leaving `tabId`'s page for another one: ask first if the current page has unsaved edits. */
   function pageCanLeave(nextTab) {

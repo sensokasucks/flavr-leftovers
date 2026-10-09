@@ -71,6 +71,13 @@
 
   <main class="admin-main">
 
+  <!-- Shown only while a saved setting waits for a Core restart (port, game on/off ...) -->
+  <div id="restart-banner" class="restart-banner" role="status" hidden>
+    <span id="restart-why" class="why"></span>
+    <button id="restart-now" class="primary" type="button">Restart Core now</button>
+    <span id="restart-how" class="muted"></span>
+  </div>
+
   <!-- Live controls: the buttons you need mid-stream -->
   <section id="tab-live" class="panel">
     <div class="page-head">
@@ -79,6 +86,20 @@
     </div>
     <div id="live-status" class="live-status"><span class="muted">Save your admin token above to see what's running.</span></div>
     <div class="live-grid">
+      <section class="live-card" id="live-yt-card" hidden>
+        <div class="live-card-head">
+          <h3>YouTube live video</h3>
+          <a href="#config/core" class="live-link">YouTube settings →</a>
+        </div>
+        <p class="hint">Each YouTube stream has a new video. Paste its link here (from the address bar, Share, or YouTube Studio) and press Connect.</p>
+        <p id="live-yt-current" class="live-state">—</p>
+        <div class="yt-live-row">
+          <label for="live-yt-video" class="visually-hidden">YouTube live video link</label>
+          <input id="live-yt-video" type="text" placeholder="https://www.youtube.com/watch?v=… or youtu.be/…" autocomplete="off" />
+          <button id="live-yt-connect" class="primary" type="button">Connect</button>
+        </div>
+        <p id="live-yt-msg" class="action-msg" role="status" aria-live="polite"></p>
+      </section>
       <section class="live-card">
         <div class="live-card-head">
           <h3>Credits</h3>
@@ -278,7 +299,7 @@
       <div class="acc-body">
       <div class="config-actions">
         <button class="primary" id="fun-save">Save + apply</button>
-        <button id="fun-reload">Reload</button>
+        <button id="fun-reload" title="Throws away unsaved edits on this page">Reload from disk</button>
         <span id="fun-status" class="muted"></span>
       </div>
       <div id="fun-conflicts" class="conflict-banner" hidden></div>
@@ -314,7 +335,7 @@
 
   <!-- Status hub -->
   <section id="tab-status" class="panel active">
-    <p class="tab-intro">Live view of what Stream Core is running; it refreshes itself every 10 seconds while open. Chat platforms reconnect when you save Config; games still need a Core restart.</p>
+    <p class="tab-intro">Live view of what Stream Core is running; it refreshes itself every 10 seconds while open. Each chat platform says whether chat is arriving and, if it isn't connected, why. Most settings apply when you save; the few that need a Core restart show a <strong>Restart Core now</strong> bar at the top.</p>
     <div class="toolbar">
       <button id="status-refresh" class="primary">Refresh status</button>
       <span id="status-updated" class="muted"></span>
@@ -1038,6 +1059,7 @@
       <label class="check" title="Only lines from red-flagged chatters"><input id="chat-flagged" type="checkbox" /> 🚩 only</label>
       <button id="chat-search">Search</button>
       <button id="chat-export">Download CSV</button>
+      <span id="chat-export-msg" class="action-msg" role="status" aria-live="polite"></span>
     </div>
     <table id="chat-table">
       <thead>
@@ -1062,7 +1084,7 @@
     <div class="config-actions config-savebar" id="cfg-savebar">
       <button class="primary" id="cfg-save" title="Write config.yaml and apply it now (Ctrl+S)">Save &amp; apply</button>
       <span id="cfg-dirty" class="cfg-dirty" hidden>Unsaved changes</span>
-      <button id="cfg-reload">Reload from disk</button>
+      <button id="cfg-reload" title="Throws away unsaved edits on this page">Reload from disk</button>
       <button id="cfg-reset-defaults" class="danger" title="Fill form with built-in defaults (does not save yet)">Reset form to defaults</button>
       <span id="cfg-status" class="muted"></span>
     </div>
@@ -1108,7 +1130,7 @@
         <legend>Kick</legend>
         <p class="hint">Public chat socket + viewer poll. Chatroom id is auto-detected and saved when possible.</p>
         <label class="check"><input id="cfg-kick-enabled" type="checkbox" /> Enabled</label>
-        <label>Channel slug <span class="field-help">kick.com/<strong>this</strong> only</span>
+        <label>Channel slug <span class="field-help">kick.com/<strong>this</strong> (pasting the whole link works too)</span>
           <input id="cfg-kick-slug" type="text" placeholder="kick.com/THIS_PART" />
         </label>
         <label>Viewer poll (seconds)
@@ -1163,8 +1185,8 @@
             <option value="auto">auto (official if api_key set)</option>
           </select>
         </label>
-        <label>Live video ID
-          <input id="cfg-yt-video" type="text" placeholder="Required for innertube" />
+        <label>Live video <span class="field-help">Link or ID; changes every stream (also on Live controls)</span>
+          <input id="cfg-yt-video" type="text" placeholder="youtube.com/watch?v=… or the ID" />
         </label>
         <label>API key (official mode)
           <input id="cfg-yt-apikey" type="text" autocomplete="off" placeholder="AIza…" />
@@ -1335,7 +1357,7 @@
         <h2>Chat reactions</h2>
         <div class="config-actions">
           <button class="primary" id="rx-save">Save + apply</button>
-          <button id="rx-reload">Reload</button>
+          <button id="rx-reload" title="Throws away unsaved edits">Reload from disk</button>
           <button id="rx-add">Add reaction</button>
           <span id="rx-status" class="muted"></span>
         </div>
@@ -1446,7 +1468,7 @@
         <h2>Command groups</h2>
         <div class="config-actions">
           <button class="primary" id="grp-save">Save groups</button>
-          <button id="grp-reload">Hot-reload</button>
+          <button id="grp-reload" title="Re-reads config.yaml and commands.json; throws away unsaved edits">Reload from disk</button>
           <button id="grp-add">Add group</button>
           <span id="grp-status" class="muted"></span>
         </div>
@@ -1483,7 +1505,7 @@
         <h2>Chat commands</h2>
         <div class="config-actions">
           <button class="primary" id="cmd-save">Save + hot-reload</button>
-          <button id="cmd-reload">Reload</button>
+          <button id="cmd-reload" title="Throws away unsaved edits">Reload from disk</button>
           <button id="cmd-add">Add command</button>
           <span id="cmd-status" class="muted"></span>
         </div>

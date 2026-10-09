@@ -64,6 +64,10 @@ class NotesBody(BaseModel):
     notes: str = ""
 
 
+class YouTubeVideoBody(BaseModel):
+    video: str = ""
+
+
 class ConfigSaveBody(BaseModel):
     """Full config dict as edited by the GUI. Written to config.yaml."""
 
@@ -238,6 +242,40 @@ def _core_base(cfg: dict) -> str:
     return f"http://{core.get('host', '127.0.0.1')}:{int(core.get('port', 3850))}"
 
 
+def clean_platform_fields(cfg: dict) -> None:
+    """Pasted links → the channel name / video id each adapter needs (saved that way)."""
+    from core.platform_links import kick_slug, twitch_channel, youtube_video_id
+
+    for plat, key, fn in (("kick", "channel_slug", kick_slug), ("twitch", "channel", twitch_channel),
+                          ("youtube", "video_id", youtube_video_id)):
+        section = cfg.get(plat)
+        if not isinstance(section, dict) or not section.get(key):
+            continue
+        raw = str(section[key])
+        clean = fn(raw)
+        if clean and clean != raw:
+            cfg[plat] = {**section, key: clean}
+
+
+def restart_info(core_state) -> list:
+    from core.restart import restart_needed
+
+    boot = getattr(core_state, "boot_config", None)
+    if not isinstance(boot, dict):
+        return []
+    return restart_needed(boot, getattr(core_state, "config", None) or {}, plugin_manifest.installed())
+
+
+def _can_restart_raw():
+    from core.restart import can_restart
+
+    return can_restart()
+
+
+def _can_restart() -> bool:
+    return _can_restart_raw()[0]
+
+
 def keep_admin_token(incoming: dict, live: dict) -> None:
     """Swap an empty / placeholder points.admin_token in a config save for the live one."""
     current = ((live or {}).get("points") or {}).get("admin_token")
@@ -402,7 +440,9 @@ def create_admin_router(core_state) -> APIRouter:
             ),
             "metrics": metrics,
             "sources": sources,
-            "note": "Chat platforms apply live when config is saved. Restart Stream Core for game toggles.",
+            "server_time": time.time(),
+            "restart_needed": restart_info(core_state),
+            "can_restart": _can_restart(),
         }
 
     @router.get("/users")
@@ -525,8 +565,8 @@ def create_admin_router(core_state) -> APIRouter:
             "defaults": DEFAULTS,
             "config_path": cfg_path,
             "commands_path": cmd_path,
-            "note": "Changes are written to disk. Chat platforms reconnect on save; "
-            "restart Stream Core for game toggles and the port.",
+            "note": "Changes are written to disk and most apply at once. Saving says when "
+            "something needs a Core restart (the port, switching a game on or off).",
         }
 
     @router.put("/config")
@@ -548,6 +588,7 @@ def create_admin_router(core_state) -> APIRouter:
         # value ("Reset form to defaults", a cleared box) keeps the token in use, or every
         # dashboard page would be locked out on the next call.
         keep_admin_token(incoming, live)
+        clean_platform_fields(incoming)
         # Reactions / chat games / picture settings are owned by their own pages; a stale form copy must not undo them
         for owned in ("reactions", "chat_games", "avatars", "red_flags"):
             if isinstance(live.get(owned), dict):
@@ -603,15 +644,70 @@ def create_admin_router(core_state) -> APIRouter:
             except Exception:
                 log.exception("apply_platforms after config save failed")
                 platforms_note = " Chat platforms could not be applied, see the Core log."
+        pending = restart_info(core_state)
+        restart_note = (" Restart Core to apply: " + "; ".join(pending) + ".") if pending else ""
         return {
             "ok": True,
             "path": str(path),
-            "message": "Saved. Chat platforms apply live; restart Stream Core for game toggles."
-            + platforms_note
-            + groups_note
-            + credits_note,
+            "message": "Saved." + platforms_note + groups_note + credits_note + restart_note,
             "platforms": platforms_info,
+            "restart_needed": pending,
+            "can_restart": _can_restart(),
         }
+
+    @router.post("/restart")
+    async def restart_core(x_admin_token: Optional[str] = Header(None)):
+        """Restart Stream Core (only when it can come back by itself, see core/restart.py)."""
+        _auth(x_admin_token)
+        ok, _how = _can_restart_raw()
+        request = getattr(core_state, "request_restart", None)
+        if not ok or not callable(request):
+            pending = restart_info(core_state)
+            what = ("; ".join(pending)) if pending else "the settings you changed"
+            raise HTTPException(
+                409,
+                "Core can't restart itself from here. Close the Stream Core window and double-click "
+                f"START Stream Core.bat again to apply: {what}.",
+            )
+        request()
+        return {"ok": True, "message": "Restarting Stream Core… this page reconnects in a few seconds."}
+
+    @router.post("/platforms/youtube/video")
+    async def set_youtube_video(body: YouTubeVideoBody, x_admin_token: Optional[str] = Header(None)):
+        """Live controls box: take any YouTube link (or id), save youtube.video_id, reconnect."""
+        _auth(x_admin_token)
+        from core.platform_links import youtube_video_id
+
+        vid = youtube_video_id(body.video)
+        if not vid:
+            raise HTTPException(
+                400,
+                "That doesn't look like a YouTube video link. Paste the link of your live stream "
+                "(youtube.com/watch?v=…, youtu.be/…, youtube.com/live/… or a Studio link).",
+            )
+        live = copy.deepcopy(getattr(core_state, "config", None) or load_config())
+        yt = dict(live.get("youtube") or {})
+        yt["video_id"] = vid
+        live["youtube"] = yt
+        try:
+            save_config(live)
+        except Exception as e:
+            log.exception("save_config failed")
+            raise HTTPException(500, f"Could not save the video: {e}") from e
+        try:
+            core_state.config = load_config()
+        except Exception:
+            core_state.config = live
+        apply_platforms = getattr(core_state, "apply_platforms", None)
+        info = {}
+        if callable(apply_platforms) and yt.get("enabled"):
+            info = await apply_platforms(force=("youtube",))
+        msg = f"YouTube video set to {vid}."
+        if not yt.get("enabled"):
+            msg += " YouTube chat is off: switch it on under Settings → Core + chat platforms."
+        else:
+            msg += " Connecting… (it keeps trying until the stream is live)."
+        return {"ok": True, "video_id": vid, "message": msg, **info}
 
     @router.post("/platforms/{name}/reconnect")
     async def reconnect_platform(name: str, x_admin_token: Optional[str] = Header(None)):
