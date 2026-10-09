@@ -67,6 +67,7 @@ def make_core(overrides: dict) -> "main.StreamCore":
     core._platform_applied = {}
     core._platform_lock = asyncio.Lock()
     core._kick_stale_rooms = set()
+    core.platform_status = {}
     core.state = CoreState()
     core.state.config = config
     core.state.adapters = core.adapters
@@ -173,6 +174,38 @@ class PlatformReloadTests(unittest.IsolatedAsyncioTestCase):
         self.core.state.config = fresh
         info = await self.core.apply_platforms()
         self.assertEqual(info["changed"], [])
+
+
+    async def test_bad_platform_setting_does_not_stop_the_others(self):
+        class Broken(FakeAdapter):
+            name = "kick"
+
+            def __init__(self, config, bus, metrics):
+                raise ValueError("kick.chatroom_id is not a number")
+
+        self.core = make_core({
+            "kick": {"enabled": True, "channel_slug": "abc"},
+            "twitch": {"enabled": True, "channel": "fridge"},
+        })
+        with mock.patch.dict(main.PLATFORM_ADAPTERS, {"kick": Broken}):
+            await self.core._start_all_platforms()
+        self.assertIn("twitch", self.core.adapters)
+        self.assertNotIn("kick", self.core.adapters)
+        info = self.core.platform_info("kick")
+        self.assertEqual(info["state"], "stopped")
+        self.assertIn("not a number", info["last_error"])
+
+    async def test_kick_room_found_while_running_is_not_a_reconnect(self):
+        await self._boot({"kick": {"enabled": True, "channel_slug": "abc", "chatroom_id": None}})
+        # the fake resolved and wrote a chatroom id at start; pretend the applied copy predates it
+        adapter = self.core.adapters["kick"]
+        adapter.chatroom_id = 77
+        before = {k: v for k, v in self.core.config["kick"].items() if k != "chatroom_id"}
+        self.core._platform_applied["kick"] = before
+        self._save(kick={"chatroom_id": 77})
+        info = await self.core.apply_platforms()
+        self.assertEqual(info["changed"], [])
+        self.assertIs(self.core.adapters["kick"], adapter)
 
 
 class AdminRouteTests(unittest.TestCase):

@@ -589,7 +589,8 @@
       const chips = [];
       for (const [name, p] of Object.entries(s.platforms || {})) {
         if (!p.configured_enabled && !p.running) continue;
-        chips.push(pill(!!p.running, escapeHtml(name) + (p.running ? "" : " stopped")));
+        const word = p.running ? "" : p.state === "retrying" ? " retrying" : " stopped";
+        chips.push(pill(!!p.running, escapeHtml(name) + word));
       }
       for (const [name, g] of Object.entries(s.games || {})) {
         if (!g.configured_enabled && !g.running) continue;
@@ -716,12 +717,14 @@
         const run = p.running;
         const want = p.configured_enabled;
         let note = "";
-        if (want && !run) note = " (enabled but not connected — check the channel, then Reconnect)";
+        if (want && !run && !p.last_error) note = " (enabled but not connected — check the channel, then Reconnect)";
         if (!want && !run) note = " (disabled)";
-        html += `<li><strong>${name}</strong> ${run ? pill(true, "running") : pill(false, "stopped")}
+        const state = run ? pill(true, "running") : p.state === "retrying" ? pill(false, "retrying") : pill(false, "stopped");
+        html += `<li><strong>${name}</strong> ${state}
           ${want ? pill(true, "config on") : pill(false, "config off")}
-          ${p.detail ? `<span class="muted">${p.detail}</span>` : ""}
+          ${p.detail ? `<span class="muted">${escapeHtml(p.detail)}</span>` : ""}
           <span class="muted">${note}</span>
+          ${want && p.last_error ? `<span class="muted" style="color:var(--danger)">${escapeHtml(p.last_error)}</span>` : ""}
           ${want ? `<button class="platform-reconnect" data-platform="${name}">Reconnect</button>` : ""}</li>`;
       }
       html += `</ul></div>`;

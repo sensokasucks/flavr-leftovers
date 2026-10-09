@@ -122,6 +122,8 @@ class StreamCore:
         self._platform_lock = asyncio.Lock()
         # Kick chatroom ids left over from a channel we switched away from
         self._kick_stale_rooms: set[str] = set()
+        # Why a platform that is switched on isn't running (adapter gone, so keep its last word)
+        self.platform_status: dict[str, dict] = {}
         self.games = {}
         self.state = CoreState()
         self.state.config = config
@@ -221,8 +223,7 @@ class StreamCore:
         await self.plugins.start_enabled()
 
         # Start chat adapters (all opt-in — default enabled=false)
-        for name in PLATFORM_ADAPTERS:
-            await self._start_platform(name)
+        await self._start_all_platforms()
 
         self.refresh_command_groups()
         self.state.reload_commands = self.reload_commands_live
@@ -262,14 +263,27 @@ class StreamCore:
     # Chat platforms (hot-applied, no restart)
     # ------------------------------------------------------------------
 
+    async def _start_all_platforms(self) -> None:
+        """One bad platform setting is logged and shown on Status; it never stops Core starting."""
+        for name in PLATFORM_ADAPTERS:
+            try:
+                await self._start_platform(name)
+            except Exception as exc:
+                log.exception("%s adapter failed to start", name)
+                self.platform_status[name] = {
+                    "state": "stopped", "connected": False, "last_message_at": None,
+                    "last_error": f"{name.title()} could not start: {exc}",
+                }
+
     async def _start_platform(self, name: str) -> None:
         section = self.config.get(name) or {}
+        self.platform_status.pop(name, None)
         if not section.get("enabled", False):
             log.info("%s adapter disabled (%s.enabled=false)", name.title(), name)
             self._platform_applied[name] = copy.deepcopy(section)
             return
-        adapter = PLATFORM_ADAPTERS[name](self.config, self.bus, self.metrics)
         try:
+            adapter = PLATFORM_ADAPTERS[name](self.config, self.bus, self.metrics)
             await adapter.start()
         finally:
             # Kick may write a resolved chatroom_id back into config while starting
@@ -277,8 +291,17 @@ class StreamCore:
         if getattr(adapter, "_running", False):
             self.adapters[name] = adapter
         else:
-            # start() already logged why (channel not set, chatroom lookup failed, ...)
+            # start() already logged why (channel not set, ...); keep it for the dashboard
+            info = adapter.status_info() if hasattr(adapter, "status_info") else {}
             await adapter.stop()
+            self.platform_status[name] = {**info, "state": "stopped", "connected": False}
+
+    def platform_info(self, name: str) -> dict:
+        """state / connected / last_error / last_message_at for one platform (Status page)."""
+        adapter = self.adapters.get(name)
+        if adapter is not None and hasattr(adapter, "status_info"):
+            return adapter.status_info()
+        return dict(self.platform_status.get(name) or {})
 
     async def _stop_platform(self, name: str) -> None:
         adapter = self.adapters.pop(name, None)
@@ -298,6 +321,16 @@ class StreamCore:
         if strip(new) != strip(old):
             return True
         return new.get("chatroom_id") not in (None, "", old.get("chatroom_id"))
+
+    def _kick_room_found_live(self, name: str, section: dict, old: dict | None) -> bool:
+        if name != "kick" or old is None:
+            return False
+        strip = lambda d: {k: v for k, v in d.items() if k != "chatroom_id"}
+        if strip(section) != strip(old):
+            return False
+        adapter = self.adapters.get("kick")
+        room = getattr(adapter, "chatroom_id", None)
+        return bool(room) and str(room) == str(section.get("chatroom_id"))
 
     def _forget_kick_room(self, section: dict, old: dict | None) -> dict:
         """Drop a chatroom_id that belongs to the previous Kick channel."""
@@ -334,12 +367,20 @@ class StreamCore:
                     section = self._forget_kick_room(section, old)
                 if name not in force and not self._platform_changed(section, old):
                     continue
+                if name not in force and self._kick_room_found_live(name, section, old):
+                    # the running adapter found (and saved) this chatroom id itself: no reconnect
+                    self._platform_applied[name] = copy.deepcopy(section)
+                    continue
                 log.info("Applying %s settings (reconnecting)", name)
                 await self._stop_platform(name)
                 try:
                     await self._start_platform(name)
-                except Exception:
+                except Exception as exc:
                     log.exception("%s adapter failed to start", name)
+                    self.platform_status[name] = {
+                        "state": "stopped", "connected": False, "last_message_at": None,
+                        "last_error": f"{name.title()} could not start: {exc}",
+                    }
                 changed.append(name)
             return {"changed": changed, "running": sorted(self.adapters)}
 

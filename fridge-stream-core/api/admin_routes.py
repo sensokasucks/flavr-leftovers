@@ -302,11 +302,20 @@ def create_admin_router(core_state) -> APIRouter:
 
         # Config intent vs live
         platforms = {}
+        core = getattr(core_state, "core", None)
         for key in ("kick", "twitch", "youtube"):
             section = cfg.get(key) or {}
+            info = core.platform_info(key) if core is not None and hasattr(core, "platform_info") else {}
+            running = key in adapters_live
+            state = info.get("state") or ("connected" if running else "stopped")
             platforms[key] = {
                 "configured_enabled": bool(section.get("enabled")),
-                "running": key in adapters_live,
+                # "running" = the adapter is up and not stuck retrying
+                "running": running and state != "retrying",
+                "state": state if running else "stopped",
+                "connected": bool(info.get("connected")) if running else False,
+                "last_error": str(info.get("last_error") or ""),
+                "last_message_at": info.get("last_message_at"),
                 "detail": section.get("channel_slug")
                 or section.get("channel")
                 or section.get("video_id")
