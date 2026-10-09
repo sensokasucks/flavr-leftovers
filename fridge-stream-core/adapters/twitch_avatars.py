@@ -23,6 +23,8 @@ import time
 from pathlib import Path
 from typing import Awaitable, Callable, Optional
 
+from adapters import avatar_link_file
+
 log = logging.getLogger("adapters.twitch_avatars")
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "twitch_avatars.json"
@@ -62,6 +64,7 @@ class TwitchAvatars:
         self._flush_task: Optional[asyncio.Task] = None
         self._tasks: set[asyncio.Task] = set()
         self._dirty = False
+        self._last_save = 0.0
         self._load()
 
     def get(self, user_id: str) -> Optional[str]:
@@ -97,18 +100,25 @@ class TwitchAvatars:
         if not self._dirty:
             return
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_text(json.dumps(self._cache), encoding="utf-8")
+            self._cache = avatar_link_file.prune(self._cache)
+            avatar_link_file.write(self._path, self._cache)
             self._dirty = False
+            self._last_save = time.monotonic()
         except OSError as e:
             log.debug("could not save %s: %s", self._path, e)
+
+    def save_soon(self) -> None:
+        """Save, but at most every few seconds while chat is busy (stop() saves the rest)."""
+        if time.monotonic() - self._last_save >= avatar_link_file.SAVE_EVERY_SEC or not self._last_save:
+            self.save()
 
     # ── private ─────────────────────────────────────────────
     def _load(self) -> None:
         try:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                self._cache = {str(k): v for k, v in data.items() if isinstance(v, dict)}
+                self._cache = avatar_link_file.prune(
+                    {str(k): v for k, v in data.items() if isinstance(v, dict)})
         except (OSError, ValueError):
             self._cache = {}
 
@@ -140,7 +150,7 @@ class TwitchAvatars:
                 url = found.get(i, "")
                 self._cache[i] = {"url": url, "ts": now}
             self._dirty = True
-            self.save()
+            self.save_soon()
             for i in ids:
                 url = found.get(i, "")
                 if url:
