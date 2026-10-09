@@ -135,7 +135,11 @@ class ConnectionManager:
             if sender is None:
                 continue
             if not sender.offer(text):
-                self.drop_slow(ws, f"{self.SEND_QUEUE_MAX} messages behind")
+                # give the client's sender one chance to run (a burst with no pause in
+                # between), then cut it off if it is still that far behind
+                await asyncio.sleep(0)
+                if not sender.offer(text):
+                    self.drop_slow(ws, f"{self.SEND_QUEUE_MAX} messages behind")
 
 
 class _ClientSender:
