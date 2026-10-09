@@ -25,7 +25,7 @@
     hide_after_sec: 0,
     max_messages: 30,
     newest_on_top: false,
-    show_avatars: false,
+    show_avatars: true,
     sound_volume: 0.6,
     sound_min_gap_sec: 2,
   };

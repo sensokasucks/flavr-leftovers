@@ -19,7 +19,7 @@ OPTIONS = {
     "hide_after_sec": 0,        # 0 = messages stay
     "max_messages": 30,
     "newest_on_top": False,
-    "show_avatars": False,      # chatter profile pictures next to the name
+    "show_avatars": True,       # chatter profile pictures next to the name (a saved choice wins)
     "sound_volume": 0.6,
     "sound_min_gap_sec": 2.0,   # busy chat: at most one sound this often
 }
