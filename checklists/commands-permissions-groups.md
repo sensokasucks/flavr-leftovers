@@ -5,7 +5,8 @@ Home: `core/command_router.py`, `core/command_groups.py`, `core/permissions.py`,
 ## Must keep
 
 - [ ] Prefix is `!` from `core.command_prefix`.
-- [ ] Permission tiers: `admin` / `mod` / `public`. Entries match case-insensitively. Plain names match **Kick + Twitch** logins only; `kick:` / `twitch:` scope one platform; YouTube needs `youtube:<channel id>`. (Changed from "across all platforms": YouTube names are copyable display names, so a plain entry let anyone impersonate an admin.)
+- [ ] Permission tiers: `admin` / `mod` / `public`. Entries match case-insensitively. Plain names match **Kick + Twitch** logins only; `kick:` / `twitch:` scope one platform; YouTube needs `youtube:<channel id>`. (Changed from "across all platforms": YouTube names are copyable display names, so a plain entry let anyone impersonate an admin.) With **both** Kick and Twitch on, a plain name counts only on the platform where it is the streamer's own channel name (`PermissionManager.bare_name_applies`); Core warns at start about plain entries that stopped counting. `!permit name` keeps working by plain name. Tests: `tests/test_permissions_platform.py`.
+- [ ] Public game commands that put chatter text into a game command ship with `allowedValues` (Core `config/commands.json` `spawn` / `give` / `effect`); the router renders the listed lower-case spelling. Tests: `tests/test_command_groups.py` `GameCommandAllowListTests`.
 - [ ] Admin test bench injects its test admin as `platform:id`, not a plain name.
 - [ ] `!permit` still exists on group `core`.
 - [ ] Commands support aliases, quantity, and templates.

@@ -31,7 +31,8 @@ APIs that the tabs depend on must not disappear:
 
 Auth:
 
-- [ ] `_auth` never accepts `change-me` / empty. Fallback token lives in `data/admin_token.txt` and is printed at startup.
+- [ ] `_auth` never accepts `change-me` / empty. Fallback token lives in `data/admin_token.txt`. The console never prints the whole token (address + first 4 characters); Core writes `data/Open dashboard.url` (`/admin/#token=…`, the page stores it and strips it from the address bar), `core.open_dashboard` opens it at start.
+- [ ] A config save with an empty / placeholder `points.admin_token` keeps the live token (`keep_admin_token`); "Reset form to defaults" leaves the token box alone. Tests: `tests/test_admin_token.py`.
 - [ ] `api()` unwraps FastAPI `detail` (`readableError`); a 401 calls `needToken()` (token box shown + highlighted + focused, message says where the token lives). Saving Config with a new `points.admin_token` updates the browser's stored token (`cfg-save`).
 
 Save rules:

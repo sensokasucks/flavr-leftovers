@@ -109,7 +109,7 @@ http://127.0.0.1:3850/admin/
   - After save: chat platforms reconnect live (only the ones that changed); groups + commands hot-reload; **restart Stream Core** for game toggles
 
 Set `points.admin_token` in `config.yaml` (or via the Config tab), paste it into the dashboard header, click **Save**.
-If you leave it as `change-me`, Core refuses that value and generates a random token in `data/admin_token.txt` (also printed in the console at startup).
+If you leave it as `change-me`, Core refuses that value and generates a random token in `data/admin_token.txt`. The console shows only its first characters; double-click `data/Open dashboard.url` to open the dashboard signed in (`core.open_dashboard: true` opens it at every start). Saving the Config form with an empty token keeps the current one.
 
 ### Security
 
