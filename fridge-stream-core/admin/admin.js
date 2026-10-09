@@ -734,7 +734,7 @@
           ${g.detail ? `<span class="muted">${escapeHtml(g.detail)}</span>` : g.player_name ? `<span class="muted">player ${escapeHtml(g.player_name)}</span>` : ""}
           ${g.error ? `<span class="muted" style="color:var(--danger)">${escapeHtml(g.error)}</span>` : ""}</li>`;
       }
-      if (!gameRows.length) html += `<li class="muted">No game plugins installed (games pack: folders in plugins\\)</li>`;
+      if (!gameRows.length) html += `<li class="muted">No game plugins installed (get them from flavr-game-plugins, folders go in plugins\\)</li>`;
       html += `</ul>
         <p class="hint">Commands are grouped by game. Stopped games hide their command group. Factorio and Granvir start as stats/overlay only; Granvir chat commands stay host-only in the BepInEx plugin.</p>
       </div>`;
@@ -1541,7 +1541,7 @@
       const prefix = integData.prefix || "!";
       const games = integData.games || [];
       if (!games.length) {
-        host.innerHTML = `<p class="integ-empty">No game plugins installed. Add the games pack to the plugins folder, switch a game on under Settings → Game plugins and restart Core.</p>`;
+        host.innerHTML = `<p class="integ-empty">No game plugins installed. Copy a game's folder from the game plugins download into the plugins folder, switch a game on under Settings → Game plugins and restart Core.</p>`;
       } else {
         host.innerHTML = games.map((g) => renderGamePanel(g, prefix)).join("");
       }
@@ -2087,8 +2087,9 @@
     if (!host) return;
     if (!pluginsInfo.length) {
       host.innerHTML = `<p class="integ-empty">No game plugins installed. Stream Core works without them.
-        To add Minecraft, Factorio, Granvir or OpenTTD, download the <strong>games pack</strong> from the
-        Releases page, unzip it into the <code>fridge-stream-core</code> folder (it fills <code>plugins\\</code>) and restart Core.</p>`;
+        To add Minecraft, Factorio, Granvir or OpenTTD, get them from
+        <a href="https://github.com/sensokasucks/flavr-game-plugins" target="_blank" rel="noopener">flavr-game-plugins</a>: copy the game's folder into
+        <code>fridge-stream-core\\plugins\\</code> and restart Core.</p>`;
       return;
     }
     host.innerHTML = pluginsInfo.map((p) => {

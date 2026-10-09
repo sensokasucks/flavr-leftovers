@@ -46,7 +46,9 @@ class GroupResolveTests(unittest.TestCase):
         self.assertIn("points", resolve_active_groups(cfg))
 
     def test_catalog_includes_reason(self):
-        rows = catalog_status({"minecraft": {"enabled": False}}, running_games=[])
+        cfg = {"minecraft": {"enabled": False},
+               "command_groups": {"minecraft": {"enabled": True, "bind": "minecraft"}}}
+        rows = catalog_status(cfg, running_games=[])
         mc = next(r for r in rows if r["id"] == "minecraft")
         self.assertFalse(mc["active"])
         self.assertIn("enabled=false", mc["reason"])

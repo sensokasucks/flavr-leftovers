@@ -25,7 +25,6 @@ Home: repo root. Map: [README.md](../README.md).
 - [ ] Root start/install bats still exist and still point at the current folders:
   - `INSTALL Stream Core.bat` / `START Stream Core.bat`
   - `INSTALL Chat Credits.bat` / `START Chat Credits.bat`
-  - `START Granvir Mock.bat`
 - [ ] Root README table lists every live package + its port.
 - [ ] Stream Core changelog remains the workshop changelog: `fridge-stream-core/CHANGELOG.md`.
 - [ ] Git hooks in `githooks/` still block secrets and built binaries.

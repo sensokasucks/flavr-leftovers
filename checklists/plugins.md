@@ -1,6 +1,6 @@
 # Checklist — Game plugins
 
-Home: `fridge-stream-core/plugins/<id>/` (one folder per game), loader `core/plugins.py`,
+Home: `fridge-stream-core/plugins/<id>/` (one folder per game, empty in git; the games live in [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)), loader `core/plugins.py`,
 manifests `core/plugin_manifest.py`, contract `core/plugin_api.py`. Spec: [docs/PLUGINS.md](../fridge-stream-core/docs/PLUGINS.md).
 
 ## Must keep
@@ -16,7 +16,7 @@ manifests `core/plugin_manifest.py`, contract `core/plugin_api.py`. Spec: [docs/
 - [ ] Enabling / disabling a plugin or changing its address says "restart Core"; Market fields apply live.
 - [ ] No game-specific code in Core (`main.py`, `core/`, `api/`, `admin/`): it goes in the plugin and reaches Core through a hook in `core/plugin_api.py`.
 - [ ] `games/base.py` stays as a re-export of `BasePlugin` / `BaseGameIntegration` for outside code.
-- [ ] Games pack: `tools/pack_games.py` zips each plugin folder (tracked files only).
+- [ ] No game plugin folders committed to this repo; `.gitignore` keeps installed ones out. Games and their checklists live in flavr-game-plugins.
 
 ## Drop risks
 
@@ -26,6 +26,7 @@ manifests `core/plugin_manifest.py`, contract `core/plugin_api.py`. Spec: [docs/
 
 ## After-change verify
 
-- [ ] `python -m pytest -q` from `fridge-stream-core` (includes `plugins/*/tests`).
+- [ ] `python -m pytest -q` from `fridge-stream-core` (also runs `plugins/*/tests` of installed games).
+- [ ] The game repo's tests still pass against this Core (`python -m pytest -q` in flavr-game-plugins with `STREAM_CORE_DIR` set).
 - [ ] Start Core with `STREAM_CORE_PLUGINS_DIR` pointing at an empty folder: dashboard loads, Settings → Game plugins shows the empty message.
 - [ ] Settings → Game plugins card, Market sub-page, Status row and Sources entries for each installed plugin.

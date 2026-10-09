@@ -1,4 +1,5 @@
-"""Game plugins: manifests, loading, the bundled four, and the dashboard / API routes.
+"""Game plugins: manifests, loading, and the dashboard / API routes. The real games (and their
+tests against this Core) live in the flavr-game-plugins repo.
 Run from fridge-stream-core:
 
     python -m unittest tests.test_plugins -v
@@ -25,9 +26,6 @@ from core.config import DEFAULTS, _deep_merge  # noqa: E402
 from core.permissions import PermissionManager  # noqa: E402
 from core.plugin_api import BasePlugin, HttpPlugin  # noqa: E402
 from core.plugins import PluginManager  # noqa: E402
-
-BUNDLED = ("factorio", "granvir", "minecraft", "openttd")
-
 
 def _write_plugin(base: Path, pid: str, manifest: dict, files: dict | None = None) -> Path:
     folder = base / pid
@@ -240,91 +238,13 @@ class HttpPluginTests(unittest.TestCase):
         self.assertFalse(res["success"])
 
 
-class BundledPluginTests(unittest.TestCase):
-    """The four games that used to be built in, from the real plugins/ folder."""
-
-    def setUp(self):
-        os.environ.pop("STREAM_CORE_PLUGINS_DIR", None)
-        plugin_manifest.reset_cache()
-        self.addCleanup(plugin_manifest.reset_cache)
-
-    def test_all_four_install_cleanly(self):
-        found = {m.id: m for m in plugin_manifest.discover(force=True)}
-        for pid in BUNDLED:
-            self.assertIn(pid, found)
-            self.assertEqual(found[pid].error, "", pid)
-        mgr = PluginManager(get_config=lambda: DEFAULTS, games={})
-        mgr.load_all()
-        for pid in BUNDLED:
-            self.assertEqual(mgr.loaded[pid].error, "", pid)
-
-    def test_config_defaults_kept(self):
-        # same defaults as when the games were built in, and all off
-        for pid in BUNDLED:
-            self.assertFalse(DEFAULTS[pid]["enabled"], pid)
-        self.assertEqual(DEFAULTS["minecraft"]["server_mod_url"], "http://127.0.0.1:3853")
-        self.assertEqual(DEFAULTS["granvir"]["bridge_url"], "http://127.0.0.1:3855")
-        self.assertEqual(DEFAULTS["command_groups"]["minecraft"]["bind"], "minecraft")
-        self.assertFalse(DEFAULTS["command_groups"]["openttd"]["always"])
-
-    def test_manifest_fields_reference_real_defaults(self):
-        for pid in BUNDLED:
-            m = plugin_manifest.find(pid)
-            fields = list(m.get("settings") or []) + list((m.get("market") or {}).get("fields") or [])
-            for f in fields:
-                cur = DEFAULTS[pid]
-                for part in str(f["key"]).split("."):
-                    self.assertIn(part, cur, f"{pid}: {f['key']}")
-                    cur = cur[part]
-
-    def test_plugin_commands_merge_under_the_users_file(self):
-        with tempfile.TemporaryDirectory() as d:
-            path = Path(d) / "commands.json"
-            # the user's file renamed !spawn's alias and dropped nothing else
-            path.write_text(json.dumps({
-                "spawn": {"group": "minecraft", "aliases": ["mob"], "template": "summon {entity}"},
-                "points": {"group": "points"},
-            }), encoding="utf-8")
-            router = CommandRouter(
-                commands_path=path,
-                permission_manager=PermissionManager(DEFAULTS),
-                default_commands=plugin_manifest.default_commands,
-            )
-            cmds = router.commands
-            self.assertEqual(cmds["spawn"].aliases, ["mob"])          # the file wins
-            self.assertIn("points", cmds)
-            plugin_only = set(plugin_manifest.default_commands()) - {"spawn"}
-            self.assertTrue(plugin_only)
-            for name in plugin_only:
-                self.assertIn(name, cmds)                                # plugin defaults fill the rest
-
-    def test_old_urls_still_answer(self):
-        from fastapi.testclient import TestClient
-
-        from api.server import CoreState, create_app
-
-        state = CoreState()
-        state.config = DEFAULTS
-        state.games = {}
-        mgr = PluginManager(get_config=lambda: state.config, games=state.games)
-        mgr.load_all()
-        state.plugins = mgr
-        app = create_app(state)
-        with TestClient(app, base_url="http://127.0.0.1:3850") as client:
-            self.assertEqual(client.get("/api/stats").json(), {})
-            ottd = client.get("/api/openttd/state")
-            self.assertEqual(ottd.status_code, 200)
-            for page in ("openttd.html", "openttd-ticker.html", "market-openttd.html",
-                         "market-minecraft.html", "market-factorio.html", "overlay.html"):
-                self.assertEqual(client.get("/overlay/" + page).status_code, 200, page)
-            self.assertEqual(client.get("/overlay/nope-not-here.html").status_code, 404)
-
-    def test_factorio_dividend_defaults(self):
-        mgr = PluginManager(get_config=lambda: DEFAULTS, games={})
-        mgr.load_all()
-        self.assertEqual(mgr.dividend_defaults("factorio", {"unit": "items"}, {})["symbol"], "FACT")
-        self.assertEqual(mgr.dividend_defaults("factorio", {}, {})["symbol"], "PWR")
-        self.assertEqual(mgr.dividend_defaults("granvir", {}, {}), {})
+DEMO_MANIFEST = {
+    "id": "demo", "name": "Demo Game", "kind": "http",
+    "config_defaults": {"bridge_url": "http://127.0.0.1:3999", "player_name": ""},
+    "command_group": {"description": "Demo commands"},
+    "settings": [{"key": "player_name", "label": "Player name", "type": "text"}],
+    "http": {"base_url_key": "bridge_url", "health": "/stats"},
+}
 
 
 class AdminPluginRouteTests(unittest.TestCase):
@@ -335,10 +255,19 @@ class AdminPluginRouteTests(unittest.TestCase):
         from api import admin_routes
         from api.server import CoreState
 
-        os.environ.pop("STREAM_CORE_PLUGINS_DIR", None)
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        _write_plugin(Path(tmp.name), "demo", DEMO_MANIFEST, {"commands.json": json.dumps({"jump": {"aliases": ["j"]}})})
+        env = mock.patch.dict(os.environ, {"STREAM_CORE_PLUGINS_DIR": tmp.name})
+        env.start()
+        self.addCleanup(env.stop)
         plugin_manifest.reset_cache()
+        self.addCleanup(plugin_manifest.reset_cache)
         self.state = CoreState()
-        self.state.config = _deep_merge(DEFAULTS, {"points": {"admin_token": "tok-123456789"}})
+        self.state.config = _deep_merge(DEFAULTS, {
+            "points": {"admin_token": "tok-123456789"},
+            "demo": {"enabled": False, "bridge_url": "http://127.0.0.1:3999", "player_name": ""},
+        })
         self.state.games = {}
         mgr = PluginManager(get_config=lambda: self.state.config, games=self.state.games)
         mgr.load_all()
@@ -359,16 +288,15 @@ class AdminPluginRouteTests(unittest.TestCase):
         res = self.client.get("/api/admin/plugins", headers=self.headers)
         self.assertEqual(res.status_code, 200, res.text)
         ids = [p["id"] for p in res.json()["plugins"]]
-        for pid in BUNDLED:
-            self.assertIn(pid, ids)
+        self.assertEqual(ids, ["demo"])
 
     def test_save_settings(self):
-        url = "/api/admin/plugins/minecraft/settings"
+        url = "/api/admin/plugins/demo/settings"
         res = self.client.put(url, headers=self.headers, json={"values": {"player_name": "Sen"}})
         self.assertEqual(res.status_code, 200, res.text)
         self.assertTrue(res.json()["restart_needed"])
-        self.assertEqual(self.state.config["minecraft"]["player_name"], "Sen")
-        self.assertEqual(self.saved[-1]["minecraft"]["player_name"], "Sen")
+        self.assertEqual(self.state.config["demo"]["player_name"], "Sen")
+        self.assertEqual(self.saved[-1]["demo"]["player_name"], "Sen")
         self.assertIn("command_groups", self.saved[-1])                  # the rest of config kept
         bad = self.client.put(url, headers=self.headers, json={"values": {"nope": 1}})
         self.assertEqual(bad.status_code, 400)
@@ -391,7 +319,7 @@ class AdminPluginRouteTests(unittest.TestCase):
                                               default_commands=plugin_manifest.default_commands)
             res = self.client.get("/api/admin/commands", headers=self.headers)
         self.assertEqual(res.status_code, 200, res.text)
-        self.assertIn("spawn", json.dumps(res.json()))
+        self.assertIn("jump", json.dumps(res.json()))
 
 
 class CoerceFieldTests(unittest.TestCase):

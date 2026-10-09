@@ -792,7 +792,7 @@ No CDN. Canvas charts only. Gold / green / red to match the other Fridge overlay
 
 Do not start slice 4 until 1–2 feel good on a live stream. A wrong death hook is louder than a missing one.
 
-Vault blocks live in the existing game projects (`fridge-factorio-stats` mod, `fridge-minecraft` server-mod), not in Core. They only POST work.
+Vault blocks live in the game projects in [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins) (`fridge-factorio-stats` mod, `fridge-minecraft` server-mod), not in Core. They only POST work.
 
 ## Open decisions (defaults)
 

@@ -32,12 +32,14 @@ Claude Code: open this folder and it will load **[CLAUDE.md](CLAUDE.md)** (point
 | Folder | What it is | Default port |
 |--------|------------|--------------|
 | [fridge-stream-core](fridge-stream-core/) | Chat backbone (Kick / Twitch / YouTube opt-in adapters) → event bus → commands / points / admin → game plugins (`plugins/`) | 3850 |
-| [fridge-minecraft](fridge-minecraft/) | Fabric client + server mods that Stream Core talks to | 3852 / 3853 |
 | [fridge-chat-credits](fridge-chat-credits/) | Unique-chatter credits roll + control desk | 3854 |
-| [fridge-factorio-stats](fridge-factorio-stats/) | Factorio overlays + Chat Dynamo (stream power) | 3847 |
-| [fridge-granvir-stats](fridge-granvir-stats/) | Granvir BepInEx stats plugin + overlay + mock bridge | 3855 |
 | [fridge-reactive-image](fridge-reactive-image/) | Native audio-reactive avatar (Python) | 3851 |
 | [fridge-reactive-image-legacy](fridge-reactive-image-legacy/) | Archived Node avatar app | — |
+
+Game plugins (Minecraft, Factorio, Granvir, OpenTTD) and their mods / bridges (`fridge-minecraft`,
+`fridge-factorio-stats`, `fridge-granvir-stats`, ports 3847 / 3852 / 3853 / 3855) live in their own
+repository: **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)**. Copy a game's folder into
+`fridge-stream-core/plugins/` to use it.
 
 ## Ports (leave these alone)
 

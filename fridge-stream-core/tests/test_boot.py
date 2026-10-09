@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from core import plugin_manifest
 from core.config import DEFAULTS, load_config, sanitize_yaml_text
 from core.credits import CreditsEngine
 from core.models import ChatEvent, ChatUser, Platform
@@ -78,10 +79,8 @@ class SeedAndLoadTests(unittest.TestCase):
         self.assertFalse(cfg["kick"]["enabled"])
         self.assertFalse(cfg["twitch"]["enabled"])
         self.assertFalse(cfg["youtube"]["enabled"])
-        self.assertFalse(cfg["minecraft"]["enabled"])
-        self.assertFalse(cfg["factorio"]["enabled"])
-        self.assertFalse(cfg["granvir"]["enabled"])
-        self.assertEqual(cfg["granvir"]["bridge_url"], "http://127.0.0.1:3855")
+        for pid in plugin_manifest.installed_ids():     # installed game plugins start off
+            self.assertFalse(cfg[pid]["enabled"], pid)
         self.assertFalse(cfg["chat_log"]["enabled"])
         self.assertFalse(cfg["points"]["enabled"])
         self.assertFalse(cfg["credits"]["enabled"])
