@@ -96,7 +96,7 @@ DEFAULTS: Dict[str, Any] = {
     "overlay": {
         "show_inventory_seconds": 12,
         "alert_duration_ms": 6000,
-        # Stats overlay (/overlay/overlay.html) modules. All on by default.
+        # Metrics overlay (/overlay/overlay.html) modules. All on by default.
         # Query string still wins: ?show=health,power or ?hide=food,armor
         "modules": {
             "health": True,
@@ -146,7 +146,7 @@ DEFAULTS: Dict[str, Any] = {
         "enabled": False,  # persist messages to SQLite (Chat History tab)
         "only_flagged": False,  # save only red-flagged chatters' lines (red_flags)
     },
-    # Red flags (core/red_flags.py, card on the Chat history tab): a chat line with one of these
+    # Red flags (core/red_flags.py, People → Red flags page): a chat line with one of these
     # phrases puts its sender on a list kept off every overlay and out of Stream Rooms
     "red_flags": {
         "enabled": True,     # off = nobody hidden, nobody new flagged (the list is kept)

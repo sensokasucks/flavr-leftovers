@@ -45,7 +45,7 @@ echo.
 echo   Admin hub:     http://127.0.0.1:3850/admin/
 echo   (signed in:    double-click fridge-stream-core\data\Open dashboard.url)
 echo   Chat overlay:  http://127.0.0.1:3850/overlay/chat.html
-echo   Stats overlay: http://127.0.0.1:3850/overlay/overlay.html
+echo   Metrics overlay: http://127.0.0.1:3850/overlay/overlay.html
 echo.
 echo Leave this window open while you stream. Press Ctrl+C to stop.
 echo.

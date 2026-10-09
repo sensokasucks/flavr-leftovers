@@ -35,11 +35,11 @@
       <button class="tab" data-keywords="stream roll alert fire test quick buttons" data-tab="live">Live controls</button>
       <button class="tab" data-keywords="poll predict prediction trivia rate rating request queue moments clip heist slots duel hype combo emote launch cheer boo streak claim seat games" data-tab="fun">Chat games</button>
       <button class="tab" data-keywords="running adapters platforms health metrics viewers" data-tab="status">Status</button>
-      <button class="tab" data-keywords="obs xsplit browser source url webpage overlay links customise customize builder switches options parameters" data-tab="sources">Sources &amp; overlays</button>
     </div>
 
     <div class="nav-group">
       <div class="nav-heading">Overlays</div>
+      <button class="tab" data-keywords="obs xsplit browser source url webpage overlay links customise customize builder switches options parameters" data-tab="sources">Sources &amp; overlays</button>
       <button class="tab" data-keywords="end credits roll crawl star wars matrix typewriter teletype ticker motion preset font letterbox grain movie cast job pin csv" data-tab="credits">Credits</button>
       <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look sound picture gif webm upload" data-tab="alerts">Alerts</button>
       <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom" data-tab="chatlook">Chat overlay</button>
@@ -54,7 +54,8 @@
     <div class="nav-group">
       <div class="nav-heading">People</div>
       <button class="tab" data-keywords="viewers points balance accounts link" data-tab="users">Users &amp; points</button>
-      <button class="tab" data-keywords="messages log export csv search red flag flagged phrases hide block troll spam" data-tab="chat">Chat history</button>
+      <button class="tab" data-keywords="messages log export csv search" data-tab="chat">Chat history</button>
+      <button class="tab" data-keywords="red flag flagged phrases hide block troll spam moderation ban unflag" data-tab="redflags">Red flags</button>
     </div>
 
     <div class="nav-group">
@@ -79,7 +80,7 @@
   </div>
 
   <!-- Live controls: the buttons you need mid-stream -->
-  <section id="tab-live" class="panel">
+  <section id="tab-live" class="panel active">
     <div class="page-head">
       <h2 class="page-title">Live controls</h2>
       <p class="tab-intro">Everything you reach for mid-stream. Settings live in the other pages.</p>
@@ -107,14 +108,15 @@
           <a href="#credits" class="live-link">Credits page →</a>
         </div>
         <p id="live-crd-state" class="live-state">—</p>
+        <p id="live-crd-off" class="crd-off" role="status" hidden>Credits are off: nobody is being collected. <button type="button" class="crd-turn-on">Turn on</button></p>
         <div class="live-buttons">
-          <button class="primary" data-proxy="crd-roll">Roll credits</button>
+          <button class="primary" data-proxy="crd-roll" title="Freeze the list of names and roll it from the start">Roll credits</button>
           <button data-proxy="crd-once">Play once</button>
           <button data-proxy="crd-once-clear">Play once, then clear</button>
           <button data-proxy="crd-loop">Loop</button>
           <button data-proxy="crd-hold">Hold still</button>
           <button data-proxy="crd-pause" id="live-crd-pause">Pause</button>
-          <button data-proxy="crd-restart">Restart</button>
+          <button data-proxy="crd-restart">Restart roll</button>
           <button data-proxy="crd-live">Live list</button>
         </div>
       </section>
@@ -334,7 +336,7 @@
   </section>
 
   <!-- Status hub -->
-  <section id="tab-status" class="panel active">
+  <section id="tab-status" class="panel">
     <p class="tab-intro">Live view of what Stream Core is running; it refreshes itself every 10 seconds while open. Each chat platform says whether chat is arriving and, if it isn't connected, why. Most settings apply when you save; the few that need a Core restart show a <strong>Restart Core now</strong> bar at the top.</p>
     <div class="toolbar">
       <button id="status-refresh" class="primary">Refresh status</button>
@@ -603,7 +605,8 @@
       <div class="acc-body">
         <fieldset class="cfg-card">
           <legend>Feature</legend>
-          <label class="check"><input type="checkbox" id="crd-enabled" /> Enabled</label>
+          <p id="crd-off" class="crd-off" role="status" hidden>Credits are off: nobody is being collected. <button type="button" class="crd-turn-on">Turn on</button></p>
+          <label class="check"><input type="checkbox" id="crd-enabled" /> Credits on (collect everyone who chats)</label>
           <div class="form-row" style="margin-top:10px; gap:8px; flex-wrap:wrap">
             <button class="primary" id="crd-enable-save" type="button">Save enable</button>
             <span id="crd-enable-status" class="muted"></span>
@@ -617,13 +620,13 @@
         <fieldset class="cfg-card">
           <legend>Roll</legend>
           <div class="form-row" style="gap:8px; flex-wrap:wrap">
-            <button class="primary" id="crd-roll" type="button">Roll credits (freeze list)</button>
+            <button class="primary" id="crd-roll" type="button" title="Freeze the list of names and roll it from the start">Roll credits</button>
             <button id="crd-live" type="button">Live list</button>
             <button id="crd-loop" type="button">Loop</button>
             <button id="crd-once" type="button">Play once</button>
             <button id="crd-once-clear" type="button">Play once, then clear</button>
             <button id="crd-hold" type="button">Hold still</button>
-            <button id="crd-pause" type="button">Pause / play</button>
+            <button id="crd-pause" type="button">Pause</button>
             <button id="crd-restart" type="button">Restart roll</button>
             <button id="crd-csv" type="button">Download CSV</button>
             <button class="danger" id="crd-reset" type="button">Reset session</button>
@@ -891,6 +894,7 @@
           </div>
           <label class="check"><input id="chat-opt-top" type="checkbox" /> Newest message on top</label>
           <label class="check"><input id="chat-opt-avatars" type="checkbox" /> Show chatter profile pictures</label>
+          <p class="hint">Where pictures come from, and names that never get one: <a href="#config/core">Settings → Core + chat platforms → Chatter profile pictures</a>.</p>
           <div class="row2">
             <label>Sound volume <span class="field-help"><span id="chat-opt-volume-val">60</span>%</span>
               <input id="chat-opt-volume" type="range" min="0" max="100" step="5" value="60" />
@@ -995,16 +999,45 @@
 
   <!-- Chat -->
   <section id="tab-chat" class="panel">
-    <p class="tab-intro">Stored message history (separate from the live overlay). Off by default — turn on <strong>Save chat history</strong> in Config if you want this tab to fill.</p>
+    <p class="tab-intro">Stored message history (separate from the live overlay). Off by default: turn on <a href="#config/points">Save chat history</a> (Settings → Points, permissions + chat) if you want this page to fill. Red-flagged chatters have their own page: <a href="#redflags">Red flags</a>.</p>
     <p id="chat-log-banner" class="config-banner" hidden>
       Chat logging is currently <strong>off</strong>. New messages are not saved. Existing rows (if any) still show below.
     </p>
     <p id="chat-log-only-flagged" class="config-banner" hidden>
-      Chat history is saved <strong>only for red-flagged chatters</strong> (Config → Points, permissions + chat → Chat history log).
+      Chat history is saved <strong>only for red-flagged chatters</strong> (<a href="#config/points">Settings → Points, permissions + chat → Chat history log</a>).
     </p>
+    <div class="toolbar">
+      <input id="chat-user-id" type="hidden" />
+      <span id="chat-person" class="chat-person" hidden></span>
+      <select id="chat-platform">
+        <option value="">All platforms</option>
+        <option value="kick">kick</option>
+        <option value="twitch">twitch</option>
+        <option value="youtube">youtube</option>
+      </select>
+      <input id="chat-q" placeholder="Search message text…" />
+      <label class="check" title="Only lines from red-flagged chatters"><input id="chat-flagged" type="checkbox" /> 🚩 only</label>
+      <button id="chat-search">Search</button>
+      <button id="chat-export" title="Every saved line that matches the filters above (not only the 200 shown)">Download CSV</button>
+      <span id="chat-export-msg" class="action-msg" role="status" aria-live="polite"></span>
+    </div>
+    <p id="chat-count" class="muted" role="status" aria-live="polite"></p>
+    <table id="chat-table">
+      <thead>
+        <tr>
+          <th>Time</th><th>User</th><th>Platform</th><th>Message</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <!-- Red flags: phrases that hide a chatter from every overlay and Stream Rooms -->
+  <section id="tab-redflags" class="panel">
+    <p class="tab-intro">Keep trolls and spam bots off the overlays and out of Stream Rooms. A flagged chatter's lines are still saved in <a href="#chat">Chat history</a> when it is on.</p>
     <fieldset class="cfg-card rf-card" id="rf-card">
-      <legend>🚩 Red flags</legend>
-      <p class="hint">A chat line with one of these phrases red-flags its sender. Core then keeps them off every overlay and out of Stream Rooms (chat, seats, reactions, commands, points, credits, alerts). What they write still goes in the chat log when <strong>Save chat history</strong> is on, so you can read it here. To save nobody else's chat, tick <strong>Only for red-flagged chatters</strong> under Save chat history.</p>
+      <legend>🚩 Phrases and settings</legend>
+      <p class="hint">A chat line with one of these phrases red-flags its sender. Core then keeps them off every overlay and out of Stream Rooms (chat, seats, reactions, commands, points, credits, alerts). What they write still goes in the chat log when <strong>Save chat history</strong> is on, so you can read it on <a href="#chat">Chat history</a> (tick 🚩 only). To save nobody else's chat, tick <strong>Only for red-flagged chatters</strong> under Save chat history.</p>
       <label class="check" title="Off = nobody is hidden and nobody new gets flagged. The list below is kept."><input id="rf-enabled" type="checkbox" /> Hide red-flagged chatters</label>
       <label class="check" title="A moderator or you quoting a phrase (to warn chat) is not flagged."><input id="rf-skip-mods" type="checkbox" /> Never flag moderators or the streamer</label>
       <label>Red flag phrases <span class="field-help">One per line. Upper or lower case doesn't matter. Whole words only ("ass" does not catch "class"); <code>*</code> stands for any letters ("scam*" catches "scammer").</span>
@@ -1047,28 +1080,6 @@
         <button type="button" id="rf-flag" title="Red-flag this name now">Red-flag</button>
       </div>
     </fieldset>
-    <div class="toolbar">
-      <input id="chat-user-id" placeholder="User ID (optional)" />
-      <select id="chat-platform">
-        <option value="">All platforms</option>
-        <option value="kick">kick</option>
-        <option value="twitch">twitch</option>
-        <option value="youtube">youtube</option>
-      </select>
-      <input id="chat-q" placeholder="Search message text…" />
-      <label class="check" title="Only lines from red-flagged chatters"><input id="chat-flagged" type="checkbox" /> 🚩 only</label>
-      <button id="chat-search">Search</button>
-      <button id="chat-export">Download CSV</button>
-      <span id="chat-export-msg" class="action-msg" role="status" aria-live="polite"></span>
-    </div>
-    <table id="chat-table">
-      <thead>
-        <tr>
-          <th>Time</th><th>User</th><th>Platform</th><th>Message</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
   </section>
 
   <!-- Config (hybrid GUI) -->
@@ -1090,13 +1101,13 @@
     </div>
 
     <div class="subtabs" data-subtabs="config">
-      <button type="button" class="subtab active" data-sub="core">Core + platforms</button>
+      <button type="button" class="subtab active" data-sub="core">Core + chat platforms</button>
       <button type="button" class="subtab" data-sub="games">Game plugins</button>
-      <button type="button" class="subtab" data-sub="points">Points + chat</button>
-      <button type="button" class="subtab" data-sub="advanced">Advanced</button>
+      <button type="button" class="subtab" data-sub="points">Points, permissions + chat</button>
       <button type="button" class="subtab" data-sub="reactions">Reactions</button>
       <button type="button" class="subtab" data-sub="groups">Command groups</button>
       <button type="button" class="subtab" data-sub="commands">Chat commands</button>
+      <button type="button" class="subtab" data-sub="advanced">Advanced</button>
     </div>
 
     <div class="acc-stack" data-acc="config">
@@ -1195,9 +1206,10 @@
 
       <fieldset class="cfg-card" id="av-card">
         <legend>Chatter profile pictures</legend>
-        <p class="hint">Core saves each chatter's picture once (in <code>data\avatars</code>) and serves it to the chat overlay, other overlays and Stream Rooms. The per-platform "Chatter profile pictures" ticks above decide whether Core looks pictures up at all.</p>
+        <p class="hint">Core saves each chatter's picture once (in <code>data\avatars</code>) and serves it to the chat overlay, other overlays and Stream Rooms. The per-platform "Chatter profile pictures" ticks above decide whether Core looks pictures up at all (Twitch also needs <strong>Connect Twitch</strong>).</p>
+        <p class="hint" id="av-where">Showing on: chat overlay (<span id="av-chat-state">…</span>, <a href="#chatlook/look">change</a>) · Stream Rooms (when it is connected).</p>
         <label class="check" title="Off = overlays load pictures from Kick / Twitch / YouTube directly"><input id="cfg-av-save-local" type="checkbox" /> Save pictures in Core</label>
-        <label>Never show a picture for <span class="field-help">One name per line. <code>kick:name</code> = only on that platform. Stream Rooms adds its own list here when it connects.</span>
+        <label>Never show a picture for <span class="field-help">One name per line. <code>kick:name</code> = only on that platform. Stream Rooms adds its own hide list here each time it connects, so take a name off there too or it comes back.</span>
           <textarea id="cfg-av-hide" rows="4" spellcheck="false" placeholder="some_bot&#10;kick:someone"></textarea>
         </label>
         <p class="hint" id="av-info"></p>
@@ -1221,7 +1233,7 @@
     </details>
 
     <details class="acc" data-sub="points">
-      <summary>Permissions, points + chat</summary>
+      <summary>Points, permissions + chat</summary>
       <div class="acc-body">
     <div class="config-grid">
       <fieldset class="cfg-card">
@@ -1263,8 +1275,8 @@
 
       <fieldset class="cfg-card">
         <legend>Chat credits</legend>
-        <p class="hint">Unique-chatter end-credits overlay. Uses Core’s existing chat adapters. Hot-applied — no restart.</p>
-        <label class="check"><input id="cfg-credits-enabled" type="checkbox" /> Enabled</label>
+        <p class="hint">Unique-chatter end-credits overlay. Uses Core’s existing chat adapters. Hot-applied, no restart.</p>
+        <p class="hint">Credits are <strong id="cfg-credits-onoff">…</strong>. Turn them on or off on the <a href="#credits/run">Credits page</a>.</p>
         <label class="check"><input id="cfg-credits-own" type="checkbox" checked /> Leave my own channel out of the roll</label>
         <label>Shortest message that counts <span class="field-help">Characters; 1 = any message</span>
           <input id="cfg-credits-minlen" type="number" min="0" max="200" />
@@ -1278,7 +1290,7 @@
         <legend>Chat history log</legend>
         <p class="hint">Writes every message to SQLite for this dashboard's Chat History tab and CSV export. The live overlay does not need this. Off by default.</p>
         <label class="check"><input id="cfg-chatlog-enabled" type="checkbox" /> Save chat history</label>
-        <label class="check" title="Everyone else's chat is not saved. Red-flagged chatters are set on the Chat history page."><input id="cfg-chatlog-only-flagged" type="checkbox" /> Only for red-flagged chatters</label>
+        <label class="check" title="Everyone else's chat is not saved. Red-flagged chatters are set on the Red flags page (People → Red flags)."><input id="cfg-chatlog-only-flagged" type="checkbox" /> Only for red-flagged chatters</label>
       </fieldset>
     </div>
       </div>
@@ -1364,7 +1376,7 @@
       </div>
       <p class="hint" style="margin:0 0 10px">
         An emoji, emote or <code>!command</code> in chat plays an effect in Stream Rooms
-        (or on <code>/overlay/reactions.html</code> when the game isn't connected).
+        (or on the reactions overlay, <code>/overlay/reactions.html</code>, when Stream Rooms isn't connected).
         Core checks permissions, cooldowns and point costs, and charges the Core points ledger.
         Saving applies immediately, no restart needed.
       </p>
@@ -1375,11 +1387,11 @@
         <fieldset class="cfg-card">
           <legend>Reactions</legend>
           <label class="check"><input type="checkbox" id="rx-enabled" /> Reactions on</label>
-          <label>Send effects to <span class="field-help">auto = game when connected, else fallback overlay</span>
+          <label>Send effects to <span class="field-help">auto = Stream Rooms when it is connected, else the reactions overlay</span>
             <select id="rx-send-to">
-              <option value="auto">auto</option>
-              <option value="game">game only</option>
-              <option value="overlay">fallback overlay only</option>
+              <option value="auto">auto (Stream Rooms, else the overlay)</option>
+              <option value="game">Stream Rooms only</option>
+              <option value="overlay">reactions overlay only</option>
             </select>
           </label>
           <label>Who can be targeted
@@ -1389,7 +1401,7 @@
             </select>
           </label>
           <label class="check"><input type="checkbox" id="rx-admins-free" /> Admins don't pay</label>
-          <label class="check"><input type="checkbox" id="rx-refund" /> Refund points if the game drops a reaction</label>
+          <label class="check"><input type="checkbox" id="rx-refund" /> Refund points if Stream Rooms can't play it</label>
           <label class="check"><input type="checkbox" id="rx-replies" /> Chat replies (cooldown, no points, …)</label>
         </fieldset>
         <fieldset class="cfg-card">
@@ -1403,7 +1415,7 @@
           <label>List targets
             <input id="rx-cmd-targets" type="text" />
           </label>
-          <label>Game chat lines per minute <span class="field-help">0 = the game can't post</span>
+          <label>Lines Stream Rooms may post per minute <span class="field-help">0 = Stream Rooms can't post in chat</span>
             <input id="rx-say" type="number" min="0" max="60" />
           </label>
         </fieldset>

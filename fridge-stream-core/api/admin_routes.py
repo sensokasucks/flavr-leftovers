@@ -609,6 +609,12 @@ def create_admin_router(core_state) -> APIRouter:
         for owned in ("reactions", "chat_games", "avatars", "red_flags"):
             if isinstance(live.get(owned), dict):
                 incoming[owned] = live[owned]
+        # Credits on/off belongs to the Credits page (PUT /credits/enabled)
+        live_credits = live.get("credits")
+        if isinstance(live_credits, dict) and "enabled" in live_credits:
+            section = dict(incoming.get("credits") or {})
+            section["enabled"] = bool(live_credits["enabled"])
+            incoming["credits"] = section
         # Game plugins' market fields are owned by the Market page (saved there, applied live)
         for m in plugin_manifest.installed():
             section = incoming.get(m.id)
@@ -1386,21 +1392,28 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.post("/red-flags/flag")
     async def flag_by_hand(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
-        """Flag a name by hand: ``{"name": "someone", "platform": "kick"|""}`` (no platform = everywhere)."""
+        """Flag a name by hand: ``{"name": "someone", "platform": "kick"|""}`` (no platform = everywhere).
+        From a person's page also ``platform_user_id`` (their account) and ``display_name``."""
         _auth(x_admin_token)
         name = str(body.get("name") or "").strip().lstrip("@")[:80]
         platform = str(body.get("platform") or "").strip().lower()
+        uid = str(body.get("platform_user_id") or "").strip()[:120]
+        if uid.startswith(NAME_ID_PREFIX):
+            uid = ""
+        display = str(body.get("display_name") or name).strip()[:80]
         if ":" in name and not platform:
             platform, name = (x.strip() for x in name.split(":", 1))
         if not name:
             raise HTTPException(400, "name required")
         if platform and platform not in ("kick", "twitch", "youtube"):
             raise HTTPException(400, "platform must be kick, twitch or youtube")
+        if uid and not platform:
+            raise HTTPException(400, "platform required with platform_user_id")
         rf = _red_flags()
-        await rf.flag(platform, "", name, name, source="manual")
+        await rf.flag(platform, uid, name, display, source="manual")
         hide = getattr(core_state, "red_flag_hide", None)
         if hide is not None:
-            await hide(platform, "", name.lower(), name)
+            await hide(platform, uid, name.lower(), display)
         return {"ok": True, **(await _red_flags_info())}
 
     @router.post("/red-flags/check-past")

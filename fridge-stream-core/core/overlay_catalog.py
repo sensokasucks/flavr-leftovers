@@ -129,7 +129,7 @@ OVERLAYS: list[dict[str, Any]] = [
     {
         "id": "credits",
         "file": "credits.html",
-        "name": "Chat Credits overlay",
+        "name": "End credits overlay",
         "notes": "Built-in unique-chatter end credits (Admin → Credits). Transparent Webpage source.",
         "params": [],
         "settings": [{"label": "Credits look, motion and roll controls", "hash": "#credits"}],

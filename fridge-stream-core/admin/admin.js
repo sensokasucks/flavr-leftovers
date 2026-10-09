@@ -250,7 +250,12 @@
     });
     const bar = document.querySelector('.subtabs[data-subtabs="' + stack.dataset.acc + '"]');
     if (bar) {
-      bar.querySelectorAll(".subtab[data-sub]").forEach((b) => b.classList.toggle("active", b.dataset.sub === pick));
+      bar.querySelectorAll(".subtab[data-sub]").forEach((b) => {
+        const on = b.dataset.sub === pick;
+        b.classList.toggle("active", on);
+        b.setAttribute("aria-selected", on ? "true" : "false");
+        b.tabIndex = on ? 0 : -1;
+      });
     }
     const panel = $("tab-" + tabId);
     if (panel) panel.dataset.sub = pick;
@@ -332,6 +337,9 @@
     if (tabId === "market") initMarketTab();
     if (tabId === "chat") {
       loadChat();
+      refreshChatLogBanner();
+    }
+    if (tabId === "redflags") {
       if (!(PAGE_SAVER && PAGE_SAVER.isDirty("rf"))) loadRedFlags();
       refreshChatLogBanner();
     }
@@ -391,9 +399,26 @@
   narrow.addEventListener("change", () => setNavOpen(false));
   document.querySelectorAll(".subtabs").forEach((bar) => {
     const panel = bar.closest(".panel");
+    bar.setAttribute("role", "tablist");
+    bar.querySelectorAll(".subtab[data-sub]").forEach((b) => {
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", b.classList.contains("active") ? "true" : "false");
+    });
     bar.addEventListener("click", (ev) => {
       const btn = ev.target.closest(".subtab[data-sub]");
       if (btn && panel) go(panel.id.replace(/^tab-/, ""), btn.dataset.sub);
+    });
+    // Left / Right / Home / End move between the pills, like any tab list
+    bar.addEventListener("keydown", (ev) => {
+      const tabs = [...bar.querySelectorAll(".subtab[data-sub]")].filter((b) => !b.hidden);
+      const i = tabs.indexOf(document.activeElement);
+      if (i < 0) return;
+      const next = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[ev.key];
+      if (next == null) return;
+      ev.preventDefault();
+      const t = tabs[(next + tabs.length) % tabs.length];
+      t.focus();
+      t.click();
     });
   });
   window.addEventListener("popstate", routeFromHash);
@@ -636,6 +661,8 @@
   async function loadLiveCredits() {
     try {
       const data = await api("/api/admin/credits");
+      creditsEnabled = !!data.enabled;
+      renderCreditsOnOff();
       renderCreditsPlay(data.play);
       renderCreditsRoster(data.roster);
       connectCreditsWs();
@@ -912,7 +939,7 @@
       renderRestartBanner(s);
       const m = s.metrics || {};
       let html = "";
-      html += `<div class="cfg-card"><legend>Core</legend>
+      html += `<section class="cfg-card"><h3 class="card-legend">Core</h3>
         <p>Listening on <code>${s.core.host}:${s.core.port}</code> · prefix <code>${s.core.command_prefix}</code></p>
         <p>Active command groups: <strong>${(s.command_groups_active || []).join(", ") || "—"}</strong>
         · ${s.commands_loaded || 0} command defs loaded</p>
@@ -920,9 +947,9 @@
         · Chat log: ${s.chat_log_enabled ? pill(true, "on") : pill(false, "off")}
         · Credits: ${s.credits && s.credits.running ? pill(true, "on") : pill(false, "off")}
           ${s.credits ? `<span class="muted">${s.credits.count || 0} unique</span>` : ""}</p>
-      </div>`;
+      </section>`;
 
-      html += `<div class="cfg-card"><legend>Chat platforms</legend><ul class="status-list">`;
+      html += `<section class="cfg-card"><h3 class="card-legend">Chat platforms</h3><ul class="status-list">`;
       for (const [name, p] of Object.entries(s.platforms || {})) {
         const run = p.running;
         const want = p.configured_enabled;
@@ -934,9 +961,9 @@
           ${want ? `<button class="platform-reconnect" data-platform="${name}">Reconnect</button>` : ""}
           ${want ? `<span class="platform-line">${line.html.replace(/^<strong>[^<]*<\/strong> /, "")}</span>` : ""}</li>`;
       }
-      html += `</ul></div>`;
+      html += `</ul></section>`;
 
-      html += `<div class="cfg-card"><legend>Game plugins</legend><ul class="status-list">`;
+      html += `<section class="cfg-card"><h3 class="card-legend">Game plugins</h3><ul class="status-list">`;
       const gameRows = Object.entries(s.games || {});
       for (const [name, g] of gameRows) {
         html += `<li><strong>${escapeHtml(g.name || name)}</strong> ${g.running ? pill(true, "running") : pill(false, "stopped")}
@@ -947,14 +974,14 @@
       if (!gameRows.length) html += `<li class="muted">No game plugins installed (get them from flavr-game-plugins, folders go in plugins\\)</li>`;
       html += `</ul>
         <p class="hint">Commands are grouped by game. Stopped games hide their command group. Factorio and Granvir start as stats/overlay only; Granvir chat commands stay host-only in the BepInEx plugin.</p>
-      </div>`;
+      </section>`;
 
-      html += `<div class="cfg-card"><legend>Live metrics</legend>
+      html += `<section class="cfg-card"><h3 class="card-legend">Live metrics</h3>
         <p>Viewers <strong>${m.viewers ?? 0}</strong>
         · CPM <strong>${(m.cpm ?? 0).toFixed ? m.cpm.toFixed(1) : m.cpm}</strong>
         · Power <strong>${m.power_level ?? 0}</strong>/15
         · Cmd rate <strong>${m.command_rate ?? 0}</strong></p>
-      </div>`;
+      </section>`;
 
       body.innerHTML = html;
       body.querySelectorAll(".platform-reconnect").forEach((btn) => {
@@ -984,7 +1011,62 @@
   // panel draws one control per switch and rewrites the address as you change them; nothing is
   // saved in Core, the address is the setting, so two OBS sources can differ.
   const esc = (s) => String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-  const openSourcePanels = new Set();
+  // The Customise panels remember what you picked (and which were open) for this browser tab,
+  // so following a "More for this overlay" link or pressing Refresh list doesn't reset them.
+  const SRC_STATE_KEY = "fridge-admin-src-panels";
+  function srcState() {
+    try {
+      return JSON.parse(sessionStorage.getItem(SRC_STATE_KEY) || "{}") || {};
+    } catch {
+      return {};
+    }
+  }
+  function saveSrcState(st) {
+    try {
+      sessionStorage.setItem(SRC_STATE_KEY, JSON.stringify(st));
+    } catch {}
+  }
+  const openSourcePanels = new Set(srcState().open || []);
+  function rememberOpenPanels() {
+    saveSrcState({ ...srcState(), open: [...openSourcePanels] });
+  }
+
+  /** "Copied ✓" on the button itself for a moment (the top-bar status is often off-screen). */
+  async function copyWithFeedback(btn, text) {
+    const label = btn.dataset.label || btn.textContent;
+    btn.dataset.label = label;
+    let ok = true;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      ok = false;
+    }
+    btn.textContent = ok ? "Copied ✓" : "Copy failed: select the address by hand";
+    btn.classList.toggle("copied", ok);
+    clearTimeout(btn._copyTimer);
+    btn._copyTimer = setTimeout(() => {
+      btn.textContent = label;
+      btn.classList.remove("copied");
+    }, ok ? 1500 : 4000);
+    return ok;
+  }
+
+  function applyParamValues(panel, params, values) {
+    for (const p of params) {
+      if (!(p.key in values)) continue;
+      const box = panel.querySelector(`.src-param[data-key="${CSS.escape(p.key)}"]`);
+      if (!box) continue;
+      const v = values[p.key];
+      if (p.type === "bool") box.querySelector("input").checked = !!v;
+      else if (p.type === "multi") {
+        const list = Array.isArray(v) ? v.map(String) : [];
+        box.querySelectorAll("input").forEach((i) => { i.checked = list.includes(i.value); });
+      } else {
+        const el = box.querySelector("select, input");
+        if (el) el.value = v == null ? "" : String(v);
+      }
+    }
+  }
 
   function buildOverlayUrl(page, params, values) {
     const q = new URLSearchParams();
@@ -1098,7 +1180,8 @@
     let html = `<div class="src-panel" data-page="${esc(page)}">`;
     if (params.length) html += `<div class="src-params">${params.map((p) => paramControl(id, p)).join("")}</div>`;
     else html += `<p class="hint">This overlay has no switches on its address.</p>`;
-    html += `<div class="src-url-row"><code class="src-url">${esc(src.url)}</code><button type="button" class="src-copy">Copy</button><button type="button" class="src-preview-btn">Preview</button></div>`;
+    html += `<div class="src-url-row"><code class="src-url">${esc(src.url)}</code><button type="button" class="src-copy">Copy</button><button type="button" class="src-preview-btn">Preview</button>` +
+      (params.length ? `<button type="button" class="src-reset link-btn" title="Back to the overlay's defaults">Reset switches</button>` : "") + `</div>`;
     html += `<div class="src-preview" hidden></div>`;
     if (config.length) {
       html += `<div class="src-config-box"><div class="src-param-title">Saved settings (config.yaml)</div>${config.map(configControl).join("")}<div class="form-row"><button type="button" class="src-config-save">Save settings</button><span class="muted src-config-status"></span></div></div>`;
@@ -1116,8 +1199,13 @@
     const page = panel.dataset.page;
     const urlEl = panel.querySelector(".src-url");
     const previewBox = panel.querySelector(".src-preview");
-    const refresh = () => {
-      urlEl.textContent = buildOverlayUrl(page, params, readParamValues(panel, params));
+    const refresh = (remember = true) => {
+      const values = readParamValues(panel, params);
+      urlEl.textContent = buildOverlayUrl(page, params, values);
+      if (remember && params.length) {
+        const st = srcState();
+        saveSrcState({ ...st, values: { ...(st.values || {}), [page]: values } });
+      }
       if (!previewBox.hidden) showPreview();
     };
     const showPreview = () => {
@@ -1125,14 +1213,21 @@
       previewBox.innerHTML = `<iframe title="Overlay preview" src="${esc(urlEl.textContent)}"></iframe><p class="hint">Transparent parts show the checkerboard. The source in OBS has your scene behind it instead.</p>`;
     };
     panel.querySelectorAll(".src-param input, .src-param select").forEach((el) => { el.oninput = refresh; el.onchange = refresh; });
-    panel.querySelector(".src-copy").onclick = async () => {
-      try {
-        await navigator.clipboard.writeText(urlEl.textContent);
-        setStatus("Copied URL");
-      } catch {
-        setStatus("Copy failed — select the URL manually", false);
-      }
-    };
+    const copyBtn = panel.querySelector(".src-copy");
+    copyBtn.onclick = () => copyWithFeedback(copyBtn, urlEl.textContent);
+    const resetBtn = panel.querySelector(".src-reset");
+    if (resetBtn) {
+      resetBtn.onclick = () => {
+        const defaults = {};
+        for (const p of params) defaults[p.key] = p.type === "multi" ? [] : p.default ?? (p.type === "bool" ? false : "");
+        applyParamValues(panel, params, defaults);
+        const st = srcState();
+        const values = { ...(st.values || {}) };
+        delete values[page];
+        saveSrcState({ ...st, values });
+        refresh(false);
+      };
+    }
     panel.querySelector(".src-preview-btn").onclick = () => {
       if (previewBox.hidden) showPreview();
       else { previewBox.hidden = true; previewBox.innerHTML = ""; }
@@ -1142,7 +1237,9 @@
       fillConfigControls(panel, src.config || []);
       save.onclick = () => saveConfigControls(panel, src.config || [], panel.querySelector(".src-config-status"));
     }
-    refresh();
+    const kept = (srcState().values || {})[page];
+    if (kept && params.length) applyParamValues(panel, params, kept);
+    refresh(false);
   }
 
   async function loadSources() {
@@ -1171,18 +1268,14 @@
           tr.querySelector(".src-customise").onclick = () => {
             ptr.hidden = !ptr.hidden;
             if (ptr.hidden) openSourcePanels.delete(src.name); else openSourcePanels.add(src.name);
+            rememberOpenPanels();
+            tr.querySelector(".src-customise").setAttribute("aria-expanded", ptr.hidden ? "false" : "true");
           };
+          tr.querySelector(".src-customise").setAttribute("aria-expanded", ptr.hidden ? "false" : "true");
         }
       });
       tb.querySelectorAll(".copy-url").forEach((btn) => {
-        btn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(btn.dataset.url);
-            setStatus("Copied URL");
-          } catch {
-            setStatus("Copy failed — select the URL manually", false);
-          }
-        };
+        btn.onclick = () => copyWithFeedback(btn, btn.dataset.url);
       });
     } catch (e) {
       setStatus(String(e.message || e), false);
@@ -1667,7 +1760,7 @@
     const cmds = game.commands || [];
     const cmdList =
       cmds.length === 0
-        ? `<p class="integ-empty">No commands in group <code>${escapeHtml(game.command_group)}</code>. Add them under Config → Commands (group: ${escapeHtml(game.id)}).</p>`
+        ? `<p class="integ-empty">No commands in group <code>${escapeHtml(game.command_group)}</code>. Add them under Settings → Chat commands (group: ${escapeHtml(game.id)}).</p>`
         : `<ul class="integ-cmd-list">${cmds
             .map((c) => {
               const ex = exampleForCommand(c, prefix);
@@ -1835,14 +1928,7 @@
       });
 
       document.querySelectorAll(".integ-copy").forEach((btn) => {
-        btn.onclick = async () => {
-          try {
-            await navigator.clipboard.writeText(btn.dataset.url || "");
-            setIntegCmdStatus("URL copied");
-          } catch {
-            setIntegCmdStatus("Copy failed — select the link manually", false);
-          }
-        };
+        btn.onclick = () => copyWithFeedback(btn, btn.dataset.url || "");
       });
 
       integReady = true;
@@ -1934,24 +2020,34 @@
           <button class="primary" id="pts-apply">Apply</button>
         </div>
 
+        <h3>Chat</h3>
+        <div class="form-row">
+          <button type="button" id="user-chatlog" title="Chat history, only this person">Chat log</button>
+          <button type="button" id="user-csv" title="Everything this person wrote, as a CSV file">Download CSV</button>
+          <button type="button" class="danger" id="user-flag" title="Hide them from every overlay and Stream Rooms (Red flags page)">Red-flag</button>
+        </div>
+
         <h3>Link another platform account</h3>
         <div class="form-row">
+          <label for="link-platform" class="visually-hidden">Platform</label>
           <select id="link-platform">
             <option value="kick">kick</option>
             <option value="twitch">twitch</option>
             <option value="youtube">youtube</option>
           </select>
-          <input id="link-pid" placeholder="Platform user id" />
-          <input id="link-user" placeholder="Username" />
-          <button id="link-btn">Link / merge</button>
+          <label for="link-user" class="visually-hidden">Their name on that platform</label>
+          <input id="link-user" placeholder="Their name on that platform" autocomplete="off" />
+          <button type="button" id="link-btn">Link</button>
         </div>
-        <p class="muted">If that platform id already has a user, their points merge into this one.</p>
+        <p class="muted">If Core already knows that name on that platform, the two become one person and their points add up. If not, their first chat line there joins this person.</p>
 
-        <h3>Merge another user into this one</h3>
+        <h3>Merge another person into this one</h3>
         <div class="form-row">
-          <input type="number" id="merge-id" placeholder="Absorb user ID" />
-          <button class="danger" id="merge-btn">Merge</button>
+          <label for="merge-q" class="visually-hidden">Find the person to merge in</label>
+          <input id="merge-q" type="search" placeholder="Find them by name…" autocomplete="off" />
+          <button type="button" id="merge-find">Find</button>
         </div>
+        <div id="merge-results" class="merge-results"></div>
 
         <h3>Notes</h3>
         <div class="form-row">
@@ -1978,13 +2074,14 @@
         userMsg("Working…");
         try {
           const done = await work();
-          if (!done) userMsg("");
+          if (!done || !done.msg) userMsg("");
           if (done && done.redraw) await selectUser(id);
           if (done && done.msg) userMsg(done.msg, true);
         } catch (e) {
           userMsg(readableActionError(e), false);
         } finally {
-          if ($(btn.id)) $(btn.id).disabled = false;
+          const live = btn.id ? $(btn.id) : btn;
+          if (live) live.disabled = false;
         }
       };
       $("pts-apply").onclick = () => act($("pts-apply"), async () => {
@@ -2004,37 +2101,88 @@
           msg: (delta > 0 ? `Gave ${delta} points to ${who}` : `Took ${-delta} points from ${who}`) + ` (now ${bal}).`,
         };
       });
+      const pts = (n) => Number(n || 0).toLocaleString() + " pts";
+      $("user-chatlog").onclick = () => {
+        setChatPerson({ id: u.id, name: who });
+        $("chat-q").value = "";
+        $("chat-platform").value = "";
+        $("chat-flagged").checked = false;
+        go("chat");
+        loadChat();
+      };
+      $("user-csv").onclick = () => {
+        downloadCsv(new URLSearchParams({ user_id: String(u.id) }), $("user-action-msg"));
+      };
+      $("user-flag").onclick = () => act($("user-flag"), async () => {
+        const accounts = (u.identities || []).filter((i) => i.username || i.display_name);
+        if (!accounts.length) throw new Error("No chat account to flag yet.");
+        if (!confirm(`Red-flag ${who}? Core hides them from every overlay and Stream Rooms. Unflag them on the Red flags page.`)) return null;
+        for (const i of accounts) {
+          await api("/api/admin/red-flags/flag", {
+            method: "POST",
+            body: JSON.stringify({
+              name: i.username || i.display_name,
+              display_name: i.display_name || i.username,
+              platform: i.platform,
+              platform_user_id: i.platform_user_id || "",
+            }),
+          });
+        }
+        return { msg: `${who} red-flagged. The Red flags page lists them.` };
+      });
+      $("link-user").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("link-btn").click();
+      });
       $("link-btn").onclick = () => act($("link-btn"), async () => {
-        const pid = $("link-pid").value.trim();
-        if (!pid) throw new Error("Type the platform account to link.");
+        const name = $("link-user").value.trim().replace(/^@/, "");
+        const plat = $("link-platform").value;
+        if (!name) throw new Error(`Type their name on ${plat}.`);
         const res = await api("/api/admin/users/" + id + "/link", {
           method: "POST",
-          body: JSON.stringify({
-            platform: $("link-platform").value,
-            platform_user_id: pid,
-            username: $("link-user").value.trim(),
-          }),
-        });
-        loadUsers();
-        return {
-          redraw: true,
-          msg: res && res.merged
-            ? `Linked ${$("link-platform").value} account; its points were merged into ${who}.`
-            : `Linked ${$("link-platform").value} account to ${who}.`,
-        };
-      });
-      $("merge-btn").onclick = () => act($("merge-btn"), async () => {
-        const absorb = parseInt($("merge-id").value, 10);
-        if (Number.isNaN(absorb)) throw new Error("Pick the person to merge in first.");
-        if (!confirm("Merge user " + absorb + " into " + who + "? This can't be undone.")) return null;
-        const res = await api("/api/admin/users/" + id + "/merge", {
-          method: "POST",
-          body: JSON.stringify({ absorb_user_id: absorb }),
+          body: JSON.stringify({ platform: plat, username: name }),
         });
         loadUsers();
         refreshStats();
-        const bal = res && res.balance != null ? Number(res.balance).toLocaleString() : "?";
-        return { redraw: true, msg: `Merged into ${who} (now ${bal} points).` };
+        return {
+          redraw: true,
+          msg: res && res.merged
+            ? `${name} on ${plat} is now part of ${who}; their points were added.`
+            : res && res.waiting_for_chat
+              ? `Linked. Core hasn't seen ${name} on ${plat} yet; their first chat line there joins ${who}.`
+              : `Linked ${name} on ${plat} to ${who}.`,
+        };
+      });
+      const findToMerge = () => act($("merge-find"), async () => {
+        const q = $("merge-q").value.trim();
+        const box = $("merge-results");
+        box.innerHTML = "";
+        if (!q) throw new Error("Type part of their name.");
+        const found = (await api("/api/admin/users?q=" + encodeURIComponent(q))).filter((x) => x.id !== u.id);
+        if (!found.length) return { msg: `Nobody else called "${q}".` };
+        for (const other of found.slice(0, 10)) {
+          const b = document.createElement("button");
+          b.type = "button";
+          b.className = "merge-pick";
+          const name = other.display_name || "someone";
+          b.innerHTML = `<strong>${escapeHtml(name)}</strong> <span class="muted">${escapeHtml(other.accounts || "")} · ${pts(other.points)}</span>`;
+          b.onclick = () => act(b, async () => {
+            if (!confirm(`Merge ${name} (${pts(other.points)}${other.accounts ? "; " + other.accounts : ""}) into ${who} (${pts(u.points)})?\n\nTheir points, accounts and chat move to ${who}. This can't be undone.`)) return null;
+            const res = await api("/api/admin/users/" + id + "/merge", {
+              method: "POST",
+              body: JSON.stringify({ absorb_user_id: other.id }),
+            });
+            loadUsers();
+            refreshStats();
+            const bal = res && res.balance != null ? Number(res.balance).toLocaleString() : "?";
+            return { redraw: true, msg: `Merged ${name} into ${who} (now ${bal} points).` };
+          });
+          box.appendChild(b);
+        }
+        return { msg: found.length > 10 ? "Showing 10; type more of the name to narrow it down." : "" };
+      });
+      $("merge-find").onclick = findToMerge;
+      $("merge-q").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") findToMerge();
       });
       $("notes-btn").onclick = () => act($("notes-btn"), async () => {
         await api("/api/admin/users/" + id + "/notes", {
@@ -2046,6 +2194,13 @@
     } catch (e) {
       setStatus(String(e.message || e), false);
     }
+  }
+
+  /** Open a person's page (from a name in Chat history). */
+  function openPerson(userId) {
+    if (!userId) return;
+    go("users");
+    selectUser(Number(userId));
   }
 
   $("user-search").onclick = loadUsers;
@@ -2070,20 +2225,57 @@
     }
   }
 
+  // Chat history for one person: set from their page (Chat log) or cleared with ×
+  function setChatPerson(person) {
+    $("chat-user-id").value = person ? String(person.id) : "";
+    const chip = $("chat-person");
+    if (!chip) return;
+    chip.hidden = !person;
+    chip.innerHTML = "";
+    if (!person) return;
+    const label = document.createElement("span");
+    label.textContent = "Only " + (person.name || "this person");
+    const clear = document.createElement("button");
+    clear.type = "button";
+    clear.className = "link-btn";
+    clear.setAttribute("aria-label", "Show everyone");
+    clear.title = "Show everyone";
+    clear.textContent = "×";
+    clear.onclick = () => {
+      setChatPerson(null);
+      loadChat();
+    };
+    chip.append(label, clear);
+  }
+
+  function chatFilters() {
+    const params = new URLSearchParams();
+    const uid = $("chat-user-id").value.trim();
+    if (uid) params.set("user_id", uid);
+    const plat = $("chat-platform").value;
+    if (plat) params.set("platform", plat);
+    const q = $("chat-q").value.trim();
+    if (q) params.set("q", q);
+    if ($("chat-flagged") && $("chat-flagged").checked) params.set("flagged", "1");
+    return params;
+  }
+
+  const CHAT_ROWS = 200;
   async function loadChat() {
     try {
-      const params = new URLSearchParams();
-      const uid = $("chat-user-id").value.trim();
-      if (uid) params.set("user_id", uid);
-      const plat = $("chat-platform").value;
-      if (plat) params.set("platform", plat);
-      const q = $("chat-q").value.trim();
-      if (q) params.set("q", q);
-      if ($("chat-flagged") && $("chat-flagged").checked) params.set("flagged", "1");
-      params.set("limit", "200");
+      const params = chatFilters();
+      const filtered = [...params.keys()].length > 0;
+      params.set("limit", String(CHAT_ROWS));
       const rows = await api("/api/admin/chat?" + params.toString());
       const tb = $("chat-table").querySelector("tbody");
       tb.innerHTML = "";
+      if ($("chat-count")) {
+        $("chat-count").textContent = !rows.length
+          ? (filtered ? "No saved lines match these filters." : "No chat saved yet.")
+          : rows.length >= CHAT_ROWS
+            ? `Showing the newest ${CHAT_ROWS} lines. Search or filter to find older ones, or Download CSV for all of them.`
+            : `${rows.length} line${rows.length === 1 ? "" : "s"}.`;
+      }
       for (const r of rows) {
         const tr = document.createElement("tr");
         if (r.flagged) {
@@ -2092,11 +2284,15 @@
         }
         tr.innerHTML =
           `<td>${fmtTime(r.timestamp)}</td>` +
-          `<td>${r.flagged ? '<span class="rf-mark" aria-label="red-flagged">🚩</span> ' : ""}${escapeHtml(r.display_name || r.username)} <span class="muted">#${
-            r.user_id || "?"
-          }</span></td>` +
+          `<td>${r.flagged ? '<span class="rf-mark" aria-label="red-flagged">🚩</span> ' : ""}` +
+          (r.user_id
+            ? `<button type="button" class="link-btn chat-who" title="Open their page (points, accounts, notes)">${escapeHtml(r.display_name || r.username)}</button>`
+            : escapeHtml(r.display_name || r.username)) +
+          `</td>` +
           `<td>${escapeHtml(r.platform)}</td>` +
           `<td>${escapeHtml(r.message)}</td>`;
+        const who = tr.querySelector(".chat-who");
+        if (who) who.onclick = () => openPerson(r.user_id);
         tb.appendChild(tr);
       }
     } catch (e) {
@@ -2133,18 +2329,30 @@
         `<button type="button" class="rf-show" title="Show what they wrote in the chat log below">Messages${f.messages ? " (" + f.messages + ")" : ""}</button> ` +
         `<button type="button" class="rf-unflag" title="Take them off the list: their new chat shows again">Unflag</button></td>`;
       tr.querySelector(".rf-show").onclick = () => {
-        $("chat-user-id").value = "";
+        setChatPerson(null);
         $("chat-q").value = "";
         $("chat-platform").value = f.platform || "";
         $("chat-flagged").checked = true;
+        go("chat");
         loadChat();
-        $("chat-table").scrollIntoView({ behavior: "smooth", block: "start" });
       };
       tr.querySelector(".rf-unflag").onclick = async () => {
         try {
-          fillRedFlags(await api(`/api/admin/red-flags/${f.id}`, { method: "DELETE" }));
+          const d = await api(`/api/admin/red-flags/${f.id}`, { method: "DELETE" });
+          fillRedFlags(d);
           $("rf-status").textContent = `${name} unflagged: their new chat shows again.`;
-          loadChat();
+          // a misclick mid-stream must not let a troll back in for good
+          undoToast(`${name} unflagged.`, async () => {
+            try {
+              fillRedFlags(await api("/api/admin/red-flags/restore", {
+                method: "POST",
+                body: JSON.stringify({ removed: d.removed || f }),
+              }));
+              $("rf-status").textContent = `${name} is red-flagged again.`;
+            } catch (e) {
+              $("rf-status").textContent = String(e.message || e);
+            }
+          });
         } catch (e) {
           $("rf-status").textContent = String(e.message || e);
         }
@@ -2276,16 +2484,12 @@
       if (e.key === "Enter") $("rf-flag").click();
     });
   }
-  $("chat-export").onclick = () => {
-    const uid = $("chat-user-id").value.trim();
-    downloadCsv(uid ? parseInt(uid, 10) : null);
-  };
+  $("chat-export").onclick = () => downloadCsv(chatFilters(), $("chat-export-msg"));
 
-  async function downloadCsv(userId) {
-    const params = new URLSearchParams();
-    if (userId) params.set("user_id", String(userId));
+  /** The chat log as CSV: the Chat history filters, or user_id alone from a person's page. */
+  async function downloadCsv(params, msg) {
+    const userId = params.get("user_id");
     const url = "/api/admin/chat/export?" + params.toString();
-    const msg = $("chat-export-msg");
     const say = (text, ok = true) => {
       if (!msg) return;
       msg.textContent = text;
@@ -2546,9 +2750,7 @@
       $("cfg-chatlog-only-flagged").checked = !!clog.only_flagged;
     }
     const crd = cfg.credits || {};
-    if ($("cfg-credits-enabled")) {
-      $("cfg-credits-enabled").checked = !!crd.enabled;
-    }
+    if ($("cfg-credits-onoff")) $("cfg-credits-onoff").textContent = crd.enabled ? "on" : "off";
     if ($("cfg-credits-ignore")) $("cfg-credits-ignore").value = listToLines(crd.ignore_usernames || []);
     if ($("cfg-credits-minlen")) $("cfg-credits-minlen").value = crd.min_message_length ?? 1;
     if ($("cfg-credits-own")) $("cfg-credits-own").checked = crd.ignore_own_channel !== false;
@@ -2631,6 +2833,15 @@
       fillAvatarSettings(await api("/api/admin/avatars"));
     } catch (e) {
       $("av-info").textContent = String(e.message || e);
+    }
+    // the chat overlay's own switch lives on its page; say here whether it is on
+    if ($("av-chat-state")) {
+      try {
+        const st = await api("/api/admin/chat/style");
+        $("av-chat-state").textContent = (st.options || {}).show_avatars ? "on" : "off";
+      } catch {
+        $("av-chat-state").textContent = "?";
+      }
     }
   }
 
@@ -2759,7 +2970,7 @@
   // Merge onto what was loaded so the look keys (Admin → Credits → Style) are kept.
   function creditsConfigBlock() {
     const block = { ...((lastLoadedConfig || {}).credits || {}) };
-    block.enabled = $("cfg-credits-enabled") ? $("cfg-credits-enabled").checked : false;
+    // on/off is the Credits page's switch (Core keeps the live value on save)
     if ($("cfg-credits-ignore")) block.ignore_usernames = linesToList($("cfg-credits-ignore").value);
     if ($("cfg-credits-minlen")) block.min_message_length = Math.max(0, Math.round(num($("cfg-credits-minlen").value, 1)));
     if ($("cfg-credits-own")) block.ignore_own_channel = $("cfg-credits-own").checked;
@@ -3082,7 +3293,7 @@
     bits.push(st.active ? `<span class="pill ok">reactions live</span>` : `<span class="pill off">reactions off</span>`);
     if (st.game_connected) {
       const names = (st.game_clients || []).map((c) => c.client).join(", ");
-      bits.push(`<span class="pill ok">game connected</span>${escapeHtml(names)}`);
+      bits.push(`<span class="pill ok">Stream Rooms connected</span>${escapeHtml(names)}`);
       const room = st.room_state;
       if (room) {
         const t = (room.targets || []).map((x) => x.id).concat((room.guests || []).map((g) => g.name || g.id));
@@ -3091,7 +3302,7 @@
           (room.seated ? ` · ${room.seated.length} seated` : ""));
       }
     } else {
-      bits.push(`<span class="pill off">game not connected</span>fallback overlay plays what it can`);
+      bits.push(`<span class="pill off">Stream Rooms not connected</span>the reactions overlay plays what it can`);
     }
     if (!st.points_enabled) bits.push(` · <span class="rx-warn">points are off — reactions with a cost won't run</span>`);
     const s = st.stats || {};
@@ -3336,9 +3547,9 @@
     const eff = rxEffect(e.effect);
     $("rx-effect-desc").textContent = eff
       ? (eff.description || "") +
-        (eff.in_game === false ? " (the connected game doesn't list this effect)" : "") +
-        (eff.overlay ? " Fallback overlay: yes." : " Fallback overlay: no.")
-      : "Unknown effect id — the game decides what to do.";
+        (eff.in_game === false ? " (Stream Rooms doesn't list this effect)" : "") +
+        (eff.overlay ? " Reactions overlay: yes." : " Reactions overlay: no.")
+      : "Unknown effect id: Stream Rooms decides what to do.";
     const params = (eff && eff.params) || [];
     box.innerHTML = params.length
       ? `<legend>Effect settings</legend>` + params.map((p) => rxParamInput(p, (e.params || {})[p.name])).join("")
@@ -3974,11 +4185,42 @@
       : "<div>No chatters yet — enable credits and chat, or add a test name.</div>";
   }
 
+  // Credits on/off as Core last said (null = not known yet)
+  let creditsEnabled = null;
+  function renderCreditsOnOff(enabled) {
+    if (typeof enabled === "boolean") creditsEnabled = enabled;
+    for (const id of ["crd-off", "live-crd-off"]) {
+      if ($(id)) $(id).hidden = creditsEnabled !== false;
+    }
+    renderCreditsPlay();
+  }
+  document.addEventListener("click", async (ev) => {
+    const btn = ev.target.closest(".crd-turn-on");
+    if (!btn) return;
+    btn.disabled = true;
+    try {
+      const res = await api("/api/admin/credits/enabled", { method: "PUT", body: JSON.stringify({ enabled: true }) });
+      if ($("crd-enabled")) $("crd-enabled").checked = !!res.enabled;
+      renderCreditsOnOff(!!res.enabled);
+    } catch (e) {
+      setStatus("Credits: " + readableActionError(e), false);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   function renderCreditsPlay(p) {
     creditsPlay = { ...creditsPlay, ...(p || {}) };
+    if (p && typeof p.credits_enabled === "boolean" && p.credits_enabled !== creditsEnabled) {
+      renderCreditsOnOff(p.credits_enabled);
+      return;
+    }
     const mode = { loop: "Looping", once: "Play once", hold: "Holding still", clear: "Play once, then clear" }[creditsPlay.mode] || creditsPlay.mode;
-    const text = (creditsPlay.playing === false ? "Paused · " : "") + mode +
-      (creditsPlay.freeze ? " · list frozen" : " · live list");
+    // while off, say so instead of "Looping": the roll only has the names it already had
+    const text = creditsEnabled === false
+      ? "Off: no names are being collected."
+      : (creditsPlay.playing === false ? "Paused · " : "") + mode +
+        (creditsPlay.freeze ? " · list frozen" : " · live list");
     if ($("crd-play-state")) $("crd-play-state").textContent = text;
     if ($("live-crd-state")) $("live-crd-state").textContent = text;
     const label = creditsPlay.playing === false ? "Play" : "Pause";
@@ -4021,6 +4263,8 @@
       $("tab-credits").dataset.ready = "1";
       if ($("crd-enabled")) $("crd-enabled").checked = !!data.enabled;
       fillCreditsTheme(data.theme);
+      creditsEnabled = !!data.enabled;
+      renderCreditsOnOff();
       renderCreditsPlay(data.play);
       renderCreditsRoster(data.roster);
       connectCreditsWs();
@@ -4050,21 +4294,14 @@
           body: JSON.stringify({ enabled: $("crd-enabled").checked }),
         });
         $("crd-enable-status").textContent = res.enabled ? "On" : "Off";
+        renderCreditsOnOff(!!res.enabled);
       } catch (e) {
         $("crd-enable-status").textContent = String(e.message || e);
       }
     };
   }
   if ($("crd-copy")) {
-    $("crd-copy").onclick = async () => {
-      const url = location.origin + "/overlay/credits.html";
-      try {
-        await navigator.clipboard.writeText(url);
-        $("crd-enable-status").textContent = "URL copied";
-      } catch {
-        $("crd-enable-status").textContent = url;
-      }
-    };
+    $("crd-copy").onclick = () => copyWithFeedback($("crd-copy"), location.origin + "/overlay/credits.html");
   }
   async function crdPlay(body) {
     // also pressed from Live controls mid-stream: never fail silently
@@ -4790,6 +5027,8 @@
     const btn = ev.target.closest("[data-fun]");
     if (btn) {
       const key = btn.dataset.fun;
+      if (key === "stream/new" &&
+          !confirm("Start a new stream now?\n\nStreaks, !claim and moment times start counting again from now. Only do this if you went live again before chat had been quiet for the streak gap.")) return;
       if ((key.endsWith("/clear") || key === "predict/cancel") && !confirm("Sure? " + btn.textContent.trim())) return;
       const [feature, action] = key.split("/");
       await funAction(feature, action, funExtra(key));
@@ -4955,7 +5194,7 @@
       { key: "chat-opts", page: "chatlook", sub: "look", name: "Chat overlay behaviour",
         fields: ["chat-opt-hide", "chat-opt-max", "chat-opt-top", "chat-opt-avatars", "chat-opt-volume", "chat-opt-gap"],
         button: "chat-opt-save" },
-      { key: "rf", page: "chat", sub: "", name: "Red flags",
+      { key: "rf", page: "redflags", sub: "", name: "Red flags",
         fields: ["rf-enabled", "rf-skip-mods", "rf-phrases"], button: "rf-save", save: saveRedFlags },
       { key: "mkt-set", page: "market", sub: "listings", name: "Market settings", group: "mkt-set",
         scope: "#mkt-switches", button: "mkt-save" },

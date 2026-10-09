@@ -1202,3 +1202,35 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 .yt-live-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .yt-live-row input { flex: 1 1 240px; min-width: 0; }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Status cards are sections (a legend is only valid in a fieldset) */
+.cfg-card > .card-legend {
+  margin: 0 0 6px;
+  padding: 0 6px;
+  font-weight: 700;
+  color: var(--accent);
+  font-size: 0.95rem;
+}
+
+/* Red flags page, credits-off line, copy feedback, Chat history person filter, merge picker */
+.crd-off {
+  color: var(--danger);
+  font-weight: 600;
+  margin: 6px 0;
+}
+.crd-off button { margin-left: 6px; }
+button.copied { border-color: var(--accent); color: var(--accent); }
+.chat-person {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border: 1px solid var(--accent-dim);
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+.chat-who { padding: 0; min-height: 0; text-align: left; color: var(--text); text-decoration: underline dotted; }
+.chat-who:hover { color: var(--accent); }
+#chat-count { margin: 6px 16px; }
+.merge-results { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
+.merge-pick { text-align: left; }
