@@ -29,6 +29,7 @@ from core import plugin_manifest
 from core.command_groups import catalog_status
 from core.local_guard import is_placeholder_token, resolve_admin_token, token_matches
 from core.models import ChatEvent, ChatUser, Platform
+from core.store import NAME_ID_PREFIX
 from core.alerts import (
     SKINS,
     build_alert,
@@ -51,7 +52,7 @@ class PointsBody(BaseModel):
 
 class LinkBody(BaseModel):
     platform: str
-    platform_user_id: str
+    platform_user_id: str = ""          # empty: link by ``username`` instead
     username: str = ""
     display_name: str = ""
 
@@ -483,13 +484,24 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         if not await _store().get_user(user_id):
             raise HTTPException(404, "User not found")
-        return await _store().link_identity(
-            user_id,
-            body.platform.lower().strip(),
-            body.platform_user_id.strip(),
-            body.username.strip(),
-            body.display_name.strip(),
+        platform = body.platform.lower().strip()
+        if platform not in ("kick", "twitch", "youtube"):
+            raise HTTPException(400, "platform must be kick, twitch or youtube")
+        pid = body.platform_user_id.strip()
+        username = body.username.strip().lstrip("@")
+        if not pid:
+            # By name: the account Core already knows by that name on that platform, or a
+            # placeholder that their first chat line on that platform claims (core/store.py)
+            if not username:
+                raise HTTPException(400, "Type their name on that platform")
+            found = await _store().find_identity_by_name(platform, username)
+            pid = found["platform_user_id"] if found else NAME_ID_PREFIX + username.lower()
+        result = await _store().link_identity(
+            user_id, platform, pid, username, body.display_name.strip(),
         )
+        if isinstance(result, dict):
+            result = {**result, "waiting_for_chat": pid.startswith(NAME_ID_PREFIX)}
+        return result
 
     @router.post("/users/{user_id}/merge")
     async def merge_users(
@@ -535,10 +547,14 @@ def create_admin_router(core_state) -> APIRouter:
     @router.get("/chat/export")
     async def export_chat(
         user_id: Optional[int] = None,
+        platform: str = "",
+        q: str = "",
+        flagged: bool = False,
         x_admin_token: Optional[str] = Header(None),
     ):
         _auth(x_admin_token)
-        csv_text = await _store().export_chat_csv(user_id=user_id)
+        csv_text = await _store().export_chat_csv(user_id=user_id, platform=platform.strip().lower(),
+                                                  q=q.strip(), flagged_only=flagged)
         filename = f"chat_user_{user_id}.csv" if user_id else "chat_all.csv"
         return Response(
             content=csv_text,
@@ -1430,8 +1446,29 @@ def create_admin_router(core_state) -> APIRouter:
     async def unflag(flag_id: int, x_admin_token: Optional[str] = Header(None)):
         """Take someone off the list: their new chat shows again (lines already hidden stay hidden)."""
         _auth(x_admin_token)
-        if await _red_flags().unflag(flag_id) is None:
+        removed = await _red_flags().unflag(flag_id)
+        if removed is None:
             raise HTTPException(404, "Not on the red-flag list")
+        return {"ok": True, "removed": removed, **(await _red_flags_info())}
+
+    @router.post("/red-flags/restore")
+    async def restore_flag(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Undo an Unflag: put back the row ``DELETE /red-flags/{id}`` returned as ``removed``."""
+        _auth(x_admin_token)
+        row = body.get("removed") if isinstance(body.get("removed"), dict) else body
+        platform = str(row.get("platform") or "").strip().lower()
+        uid = str(row.get("platform_user_id") or "").strip()[:120]
+        username = str(row.get("username") or "").strip()[:80]
+        display = str(row.get("display_name") or username).strip()[:80]
+        source = str(row.get("source") or "manual").strip()[:20]
+        if platform not in ("", "kick", "twitch", "youtube") or not (uid or username):
+            raise HTTPException(400, "Nothing to put back")
+        rf = _red_flags()
+        await rf.flag(platform, uid, username or display, display, phrase=str(row.get("phrase") or ""),
+                      message=str(row.get("message") or ""), source=source)
+        hide = getattr(core_state, "red_flag_hide", None)
+        if hide is not None:
+            await hide(platform, uid, username.lower(), display)
         return {"ok": True, **(await _red_flags_info())}
 
     @router.get("/chat/style")
@@ -1832,8 +1869,12 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         eng = _credits()
         payload = body.model_dump() if hasattr(body, "model_dump") else body.dict()
-        public = eng.set_play(payload)
+        public = dict(eng.set_play(payload))
         await _credits_broadcast(eng)
+        # Rolling still works (seeded or earlier names), but say plainly that nobody new is collected
+        public["credits_enabled"] = bool(eng.enabled)
+        if not eng.enabled:
+            public["warning"] = "Credits are off: nobody is being collected. Turn them on on the Credits page."
         return public
 
     @router.post("/credits/reset")

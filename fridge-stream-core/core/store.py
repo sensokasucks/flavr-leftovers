@@ -889,6 +889,22 @@ class Store:
             conn.commit()
             return {"ok": True, "merged": False, "user_id": target_user_id}
 
+    def _find_identity_by_name_sync(self, platform: str, username: str) -> Optional[dict]:
+        name = (username or "").strip().lstrip("@").lower()
+        if not name:
+            return None
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT * FROM identities WHERE platform=? AND (lower(username)=? OR lower(display_name)=?) "
+                "ORDER BY last_seen DESC LIMIT 1",
+                (platform, name, name),
+            ).fetchone()
+            return dict(row) if row else None
+
+    async def find_identity_by_name(self, platform: str, username: str) -> Optional[dict]:
+        """The account Core has seen with this login or display name on that platform (newest), or None."""
+        return await self._run(self._find_identity_by_name_sync, platform, username)
+
     async def link_identity(
         self,
         target_user_id: int,
@@ -1130,8 +1146,10 @@ class Store:
     async def remove_red_flag(self, flag_id: int) -> Optional[dict]:
         return await self._run(self._remove_red_flag_sync, flag_id)
 
-    def _export_chat_csv_sync(self, user_id: Optional[int] = None) -> str:
-        rows = self._search_chat_sync(user_id=user_id, limit=1_000_000, offset=0)
+    def _export_chat_csv_sync(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
+                              flagged_only: bool = False) -> str:
+        rows = self._search_chat_sync(user_id=user_id, platform=platform, q=q, limit=1_000_000, offset=0,
+                                      flagged_only=flagged_only)
         buf = io.StringIO()
         w = SafeWriter(buf)
         w.writerow(
@@ -1165,8 +1183,10 @@ class Store:
             )
         return buf.getvalue()
 
-    async def export_chat_csv(self, user_id: Optional[int] = None) -> str:
-        return await self._run(self._export_chat_csv_sync, user_id)
+    async def export_chat_csv(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
+                              flagged_only: bool = False) -> str:
+        """The chat log as CSV, with the same filters as the Chat history search."""
+        return await self._run(self._export_chat_csv_sync, user_id, platform, q, flagged_only)
 
     # ------------------------------------------------------------------
     # Market holdings / dividends
