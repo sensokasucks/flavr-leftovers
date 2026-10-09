@@ -120,6 +120,49 @@ class RouteTests(unittest.TestCase):
         self.assertIn("ben", lines[1])
 
 
+class CreditsSwitchOwnedByCreditsPage(unittest.TestCase):
+    def test_config_save_keeps_the_live_credits_switch(self):
+        from unittest import mock
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        state = CoreState()
+        state.config = _deep_merge(DEFAULTS, {"points": {"admin_token": TOKEN}, "credits": {"enabled": True}})
+        app = FastAPI()
+        app.include_router(admin_routes.create_admin_router(state))
+        client = TestClient(app)
+        stale = _deep_merge(state.config, {"credits": {"enabled": False, "min_message_length": 3}})
+        saved = {}
+
+        def fake_save(cfg):
+            saved.update(cfg)
+            return Path("config.yaml")
+
+        with mock.patch.object(admin_routes, "save_config", side_effect=fake_save), \
+                mock.patch.object(admin_routes, "load_config", side_effect=lambda: dict(saved or state.config)):
+            res = client.put("/api/admin/config", json={"config": stale}, headers=HEAD)
+        self.assertEqual(res.status_code, 200, res.text)
+        self.assertTrue(saved["credits"]["enabled"])           # the stale form copy didn't switch it off
+        self.assertEqual(saved["credits"]["min_message_length"], 3)
+
+
+class HealthTests(unittest.TestCase):
+    def test_health_lists_connected_platforms(self):
+        from types import SimpleNamespace
+
+        from fastapi.testclient import TestClient
+
+        from api.server import create_app
+
+        state = CoreState()
+        state.config = _deep_merge(DEFAULTS, {"points": {"admin_token": TOKEN}})
+        state.adapters = {"twitch": SimpleNamespace(connected=True), "kick": SimpleNamespace(connected=False)}
+        body = TestClient(create_app(state), base_url="http://127.0.0.1:3850").get("/api/health").json()
+        self.assertEqual(sorted(body["adapters"]), ["kick", "twitch"])
+        self.assertEqual(body["connected"], ["twitch"])
+
+
 class ChatPicturesDefault(unittest.TestCase):
     def test_pictures_on_unless_saved_off(self):
         from core.chat_style import CHAT_STYLE
