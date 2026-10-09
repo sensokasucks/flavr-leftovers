@@ -8,7 +8,6 @@ whether they chat on Kick today or YouTube tomorrow.
 from __future__ import annotations
 
 import asyncio
-import csv
 import io
 import json
 import logging
@@ -18,6 +17,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from core.models import ChatEvent, Platform
+from core.csv_safe import SafeWriter
 
 log = logging.getLogger("core.store")
 
@@ -911,7 +911,7 @@ class Store:
     def _export_chat_csv_sync(self, user_id: Optional[int] = None) -> str:
         rows = self._search_chat_sync(user_id=user_id, limit=1_000_000, offset=0)
         buf = io.StringIO()
-        w = csv.writer(buf)
+        w = SafeWriter(buf)
         w.writerow(
             [
                 "id",

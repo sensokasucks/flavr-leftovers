@@ -414,11 +414,12 @@ class Moments(Feature):
         await self.g.reply(event, f"📌 @{who} marked {clock(m['offset'])} into the stream.")
 
     def csv(self) -> str:
-        import csv as _csv
         import io
+
+        from core.csv_safe import SafeWriter
         import time as _t
         buf = io.StringIO()
-        w = _csv.writer(buf)
+        w = SafeWriter(buf)
         w.writerow(["stream", "stream_time", "clock_time", "people", "marked_by", "note"])
         for m in self.items:
             w.writerow([m.get("stream"), clock(m["offset"]), _t.strftime("%Y-%m-%d %H:%M:%S", _t.localtime(m["ts"])),
