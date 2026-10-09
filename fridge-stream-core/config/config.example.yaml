@@ -68,8 +68,9 @@ avatars:
 # off; edit it under Settings -> Game plugins.
 
 permissions:
-  # Case-insensitive. Plain names match Kick + Twitch logins only.
-  # Scope to one platform with "kick:name" / "twitch:name".
+  # Case-insensitive. Best: scope to one platform with "kick:name" / "twitch:name".
+  # Plain names match Kick + Twitch logins only, and when BOTH are on only where
+  # the name is your own channel (anyone can register it on the other platform).
   # YouTube needs the channel id ("youtube:UCxxxx") — YouTube names are
   # display names anyone can copy, so plain names never apply there.
   admin:

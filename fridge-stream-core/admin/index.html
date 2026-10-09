@@ -1204,12 +1204,12 @@
     <div class="config-grid">
       <fieldset class="cfg-card">
         <legend>Permissions</legend>
-        <p class="hint">One username per line. Matched case-insensitively across every platform.</p>
+        <p class="hint">One person per line, upper/lower case doesn't matter. Best: say the platform, like <code>kick:name</code> or <code>twitch:name</code>. A plain <code>name</code> counts on Kick and Twitch, but when both are on it only counts where it's your own channel name (someone else could take that name on the other platform). YouTube needs <code>youtube:</code> + the channel id (UC…).</p>
         <label>Admins <span class="field-help">Full control + !permit</span>
-          <textarea id="cfg-perm-admin" rows="4" placeholder="your_kick_name"></textarea>
+          <textarea id="cfg-perm-admin" rows="4" placeholder="kick:your_name&#10;twitch:your_name"></textarea>
         </label>
         <label>Mods <span class="field-help">Mod-tier commands only</span>
-          <textarea id="cfg-perm-mod" rows="3" placeholder="mod_name"></textarea>
+          <textarea id="cfg-perm-mod" rows="3" placeholder="twitch:mod_name"></textarea>
         </label>
       </fieldset>
 

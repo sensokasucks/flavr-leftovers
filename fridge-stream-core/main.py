@@ -100,7 +100,7 @@ class StreamCore:
         self.config = config
         self.bus = EventBus()
         self.metrics = MetricsAggregator(config)
-        self.perms = PermissionManager(config)
+        self.perms = PermissionManager(config, get_config=lambda: getattr(self, "state", None) and self.state.config or self.config)
 
         commands_path = ROOT / "config" / "commands.json"
         if not commands_path.exists():
@@ -257,6 +257,13 @@ class StreamCore:
                 self._config_watch_loop(), name="config-watch"
             )
 
+        loose = self.perms.ambiguous_entries()
+        if loose:
+            log.warning(
+                "Kick and Twitch are both on, so plain names in permissions only count for your own "
+                "channel. Write these as kick:name or twitch:name to keep them admin/mod: %s",
+                ", ".join(loose),
+            )
         log.info("Stream Core started")
 
     # ------------------------------------------------------------------

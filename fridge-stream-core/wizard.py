@@ -159,7 +159,16 @@ def main() -> int:
     admins = perms.get("admin") or []
     if isinstance(admins, str):
         admins = [admins]
+    admins = [a for a in admins if str(a).strip() and not str(a).startswith("YOUR_")]
+    if not admins:
+        # your own channels, tied to their platform (a plain name could be taken on the other one)
+        if kick.get("enabled") and not str(kick.get("channel_slug") or "").startswith("YOUR_"):
+            admins.append(f"kick:{kick.get('channel_slug')}")
+        if tw.get("enabled") and not str(tw.get("channel") or "").startswith("YOUR_"):
+            admins.append(f"twitch:{tw.get('channel')}")
     admin_default = ", ".join(str(a) for a in admins) if admins else ""
+    print("  Tip: write kick:name or twitch:name. A plain name with both Kick and Twitch on")
+    print("  only counts on the platform where it is your own channel.")
     admin_raw = _prompt(
         "Admin usernames (comma-separated, case-insensitive)",
         admin_default,
