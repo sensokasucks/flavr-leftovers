@@ -594,19 +594,6 @@ class Store:
         )
         self._days_table_ready = True
 
-    def _record_stream_day_sync(self, user_id: int, day: str) -> None:
-        with self._connect() as conn:
-            self._ensure_days_table(conn)
-            conn.execute(
-                "INSERT OR IGNORE INTO chatter_stream_days (user_id, day) VALUES (?,?)",
-                (user_id, day),
-            )
-            conn.commit()
-
-    async def record_stream_day(self, user_id: int, day: str | None = None) -> None:
-        stamp = day or _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
-        await self._run(self._record_stream_day_sync, user_id, stamp)
-
     def _streak_sync(self, user_id: int) -> int:
         import datetime as _dt
         with self._connect() as conn:

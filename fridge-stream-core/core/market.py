@@ -318,18 +318,6 @@ class MarketTape:
             self.save_listings()
         return True
 
-    def set_status(self, symbol: str, status: str, *, persist: bool = True) -> Optional[dict]:
-        inst = self.quote(symbol)
-        if not inst:
-            return None
-        status = str(status or "listed").lower()
-        if status not in ("listed", "hidden", "delisted"):
-            status = "listed"
-        inst["status"] = status
-        if persist:
-            self.save_listings()
-        return inst
-
     def apply_trade_impact(self, symbol: str, points: float, *, side: str) -> Optional[dict]:
         if not self.trade_impact or not points:
             return None
