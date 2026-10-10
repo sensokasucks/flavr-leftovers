@@ -48,6 +48,9 @@ class ConnectionManager:
     # themselves and catch up from chat_history.
     SEND_QUEUE_MAX = 1000
     SEND_TIMEOUT_SEC = 15.0
+    # A full queue waits this long for its sender to make room before the client counts as stuck
+    # (a burst sent with no pause: on Python 3.10 one send takes a few loop turns).
+    SEND_ROOM_WAIT_SEC = 0.25
 
     def __init__(self):
         self.active: Set[WebSocket] = set()
@@ -135,10 +138,12 @@ class ConnectionManager:
             if sender is None:
                 continue
             if not sender.offer(text):
-                # give the client's sender one chance to run (a burst with no pause in
-                # between), then cut it off if it is still that far behind
-                await asyncio.sleep(0)
-                if not sender.offer(text):
+                # a burst with no pause in between: give the client's sender a moment to make
+                # room, then cut it off if it is still that far behind (a stuck client costs
+                # this wait once, then it's gone)
+                try:
+                    await asyncio.wait_for(sender.queue.put(text), timeout=self.SEND_ROOM_WAIT_SEC)
+                except asyncio.TimeoutError:
                     self.drop_slow(ws, f"{self.SEND_QUEUE_MAX} messages behind")
 
 

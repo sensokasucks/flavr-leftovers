@@ -39,6 +39,7 @@ class RosterTests(unittest.TestCase):
                 await m.connect(ws)
             await m.broadcast({"type": "chat", "data": {}})
             await m.broadcast({"type": "credits_roster", "data": {"chatters": []}})
+            await m.flush()             # (each client's own task sends; wait for them)
             return chat, game, credits
 
         chat, game, credits = asyncio.run(go())

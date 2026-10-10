@@ -176,6 +176,11 @@ class Store:
         self._queue: Optional[asyncio.Queue] = None
         self._writer_task: Optional[asyncio.Task] = None
         self._writer_conn: Optional[sqlite3.Connection] = None
+        # Lines the writer took off the queue but hasn't handed to a write yet (it waits a
+        # moment to gather a batch), and the write that is running. stop_writer finishes both,
+        # so stopping Core never loses a line (or its points) that was already taken.
+        self._in_hand: list = []
+        self._inflight: Optional[asyncio.Future] = None
         self._dropped = 0
         self._dropped_logged = 0.0
         self._init_db()
@@ -449,6 +454,14 @@ class Store:
                 await task
             except asyncio.CancelledError:
                 pass
+        # a batch being written keeps going in its thread: let it finish before anything else
+        inflight, self._inflight = self._inflight, None
+        if inflight is not None:
+            await inflight
+        # lines taken off the queue while the writer was gathering a batch come first
+        held, self._in_hand = self._in_hand, []
+        if held:
+            await self._write(held)
         await self._drain()
         self._queue = None
         conn, self._writer_conn = self._writer_conn, None
@@ -500,15 +513,19 @@ class Store:
     async def _writer_loop(self) -> None:
         while True:
             first = await self._queue.get()
+            self._in_hand = [first]
             # gather what else arrives for a moment: one transaction for the lot
             await asyncio.sleep(CHAT_BATCH_WAIT)
-            batch = [first]
-            while len(batch) < CHAT_BATCH_MAX:
+            while len(self._in_hand) < CHAT_BATCH_MAX:
                 try:
-                    batch.append(self._queue.get_nowait())
+                    self._in_hand.append(self._queue.get_nowait())
                 except asyncio.QueueEmpty:
                     break
-            await self._write(batch)
+            batch, self._in_hand = self._in_hand, []
+            # shielded: stop_writer cancels this loop, but a started write must run to the end
+            self._inflight = asyncio.ensure_future(self._write(batch))
+            await asyncio.shield(self._inflight)
+            self._inflight = None
 
     async def _drain(self) -> None:
         if self._queue is None:

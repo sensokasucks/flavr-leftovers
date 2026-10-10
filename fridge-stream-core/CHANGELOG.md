@@ -9,6 +9,11 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Fixed
+- **A chat line (and its chat point) could be lost when Core stopped or restarted.** The chat saver had already taken the line off its queue and was waiting a quarter second to save it together with others; stopping cancelled that wait. Stopping now saves those lines first, and waits for a save that's already running instead of starting a second one next to it. Tests: `tests/test_busy_chat.py`.
+- **A burst of messages could disconnect healthy overlays too** (seen on Python 3.10, which Core uses on Windows): a fast overlay's queue filled before it got its turn to send. A full queue now waits up to a quarter second for room before the overlay counts as stuck.
+- **Core's tests no longer read your own `config/commands.json`**: the game-command allow-list tests bring their own commands, so a locally edited command list can't make them fail.
+
 ## [2026.10.10] — 2026-10-10 (and the 2026-10-07 / 10-08 releases before it)
 
 ### Changed

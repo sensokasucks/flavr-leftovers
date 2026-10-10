@@ -9,6 +9,7 @@ import asyncio
 import sqlite3
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -103,6 +104,52 @@ class BatchedWriterTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.count("SELECT COUNT(*) FROM users"), 1)
         self.assertEqual(self.count("SELECT COUNT(*) FROM chat_messages WHERE user_id=?", a["user_id"]), 112)
         self.assertEqual(self.count("SELECT points FROM users WHERE id=?", a["user_id"]), 112)
+
+    async def test_stop_while_gathering_a_batch_keeps_the_line(self):
+        # The writer has taken the line off the queue and waits CHAT_BATCH_WAIT for more.
+        # Stopping right then used to lose that line and its point.
+        self.store.start_writer()
+        self.store.submit_chat(chat("ann"))
+        for _ in range(5):
+            await asyncio.sleep(0)
+        self.assertTrue(self.store._queue.empty())      # the writer holds it now
+        await self.store.stop_writer()
+        self.assertEqual(self.count("SELECT COUNT(*) FROM chat_messages"), 1)
+        self.assertEqual(self.count("SELECT SUM(points) FROM users"), 1)
+
+    async def test_stop_while_a_batch_is_being_written(self):
+        # Stopping mid-write must let that write finish before the rest is written,
+        # never two writes at once on the writer's connection.
+        started, release = threading.Event(), threading.Event()
+        running = []
+        real = self.store._write_batch_sync
+
+        def slow(batch, keep_conn=False):
+            running.append(1)
+            self.assertEqual(len(running), 1, "two chat writes at once")
+            try:
+                if not started.is_set():
+                    started.set()
+                    release.wait(5)
+                return real(batch, keep_conn)
+            finally:
+                running.pop()
+
+        self.store._write_batch_sync = slow
+        with mock.patch.object(store_mod, "CHAT_BATCH_WAIT", 0):
+            self.store.start_writer()
+            for i in range(5):
+                self.store.submit_chat(chat(f"u{i}"))
+            await asyncio.to_thread(started.wait, 5)
+            for i in range(5, 8):
+                self.store.submit_chat(chat(f"u{i}"))       # queued behind the running write
+            stopping = asyncio.create_task(self.store.stop_writer())
+            await asyncio.sleep(0.05)
+            self.assertFalse(stopping.done())               # waits for the running write
+            release.set()
+            await stopping
+        self.assertEqual(self.count("SELECT COUNT(*) FROM chat_messages"), 8)
+        self.assertEqual(self.count("SELECT SUM(points) FROM users"), 8)
 
     async def test_full_queue_drops_database_lines_only(self):
         with mock.patch.object(store_mod, "CHAT_QUEUE_MAX", 5):
