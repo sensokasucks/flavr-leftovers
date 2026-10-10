@@ -137,7 +137,7 @@ class AlertStyleTests(unittest.TestCase):
             (root / "assets" / "alerts" / "follow.gif").write_bytes(GIF)
             (root / "assets" / "alerts" / "follow.webm").write_bytes(WEBM)
             (root / "assets" / "alerts" / "raid.mp3").write_bytes(MP3)
-            self.assertEqual(alerts.list_alert_media(overlay_dir=root)["follow"], "assets/alerts/follow.webm")  # WebM first
+            self.assertEqual(alerts.ALERT_STYLE.list_assets(overlay_dir=root)[0]["follow"], "assets/alerts/follow.webm")  # WebM first
             self.assertEqual(alerts.read_alert_settings(overlay_dir=root)["sounds"], {"raid": "assets/alerts/raid.mp3"})
             self.assertEqual(alerts.ALERT_STYLE.save_asset("subscribe", WAV, overlay_dir=root), "assets/alerts/subscribe.wav")
             self.assertEqual(alerts.ALERT_STYLE.save_asset("subscribe", PNG, overlay_dir=root), "assets/alerts/subscribe.png")

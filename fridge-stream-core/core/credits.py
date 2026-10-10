@@ -10,7 +10,7 @@ import asyncio
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -330,8 +330,7 @@ class CreditsEngine:
         return self.public_play()
 
     def apply_theme(self, body: dict[str, Any]) -> dict:
-        persist = bool(body.pop("persist", True)) if "persist" in body else True
-        body.pop("persist", None)
+        body.pop("persist", None)   # the admin route decides about saving
         body = sanitize_look(body)
         if "style_id" in body and self.cast:
             sid = self.cast.set_style(str(body.get("style_id") or "names"))
@@ -391,9 +390,3 @@ class CreditsEngine:
                 int(bool(c.is_mod)),
             ])
         return buf.getvalue()
-
-    def look_for_config(self) -> dict:
-        """Subset to write back into config.yaml credits:."""
-        out = {"enabled": self.enabled, "ignore_usernames": sorted(self.ignore)}
-        out.update(self.theme)
-        return out

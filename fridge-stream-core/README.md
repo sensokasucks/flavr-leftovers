@@ -159,11 +159,7 @@ fridge-stream-core/
 │   ├── kick.py             # Kick Pusher listener
 │   ├── twitch.py           # Twitch anonymous IRC
 │   └── youtube.py          # YouTube official API + InnerTube
-├── plugins/                # game plugins, one folder each (Core runs with none)
-│   ├── minecraft/          # talks to the Fridge Minecraft mods :3852 / :3853
-│   ├── factorio/           # Fridge Factorio Stats :3847
-│   ├── granvir/            # Fridge Granvir Stats :3855 (plugin.json only)
-│   └── openttd/            # Admin Port + Chat Fund + FridgeChatFund game script
+├── plugins/                # game plugins, one folder each; empty in git (games come from flavr-game-plugins)
 ├── api/
 │   ├── server.py           # FastAPI + WebSocket
 │   └── admin_routes.py     # points, chat export, config/commands, alert + integrations test
@@ -205,16 +201,7 @@ YouTube `video_id` changes every live session. Prefer `mode: innertube` unless y
 4. Report viewer count with `self.metrics.set_viewers(Platform.…, n)` when available
 5. Register behind `enabled` in `main.py` and add config defaults + admin form fields
 
-No changes to the command router, permissions, or Minecraft integration are required.
-
-## Migration from the old Node bridge
-
-1. Stop the old `bridge/server.js`
-2. Start Stream Core (`python main.py`)
-3. Keep the same Fabric mods and the same overlay URL
-4. Point `config.yaml` at your Kick channel + Minecraft player name
-
-The command list, permission model, and power-level math are intentionally identical so behavior stays the same while the architecture becomes modular.
+No changes to the command router, permissions, or game plugins are required.
 
 ## Development notes
 

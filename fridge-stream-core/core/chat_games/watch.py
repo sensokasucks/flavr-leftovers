@@ -7,7 +7,6 @@ import logging
 import re
 import unicodedata
 import uuid
-from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.models import ChatEvent

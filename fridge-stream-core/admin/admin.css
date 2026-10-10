@@ -643,7 +643,6 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-.cmd-form .danger-row { margin-top: 16px; }
 
 .alert-split {
   display: grid;
@@ -1119,7 +1118,7 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 @media (max-width: 900px) {
   fieldset { min-width: 0; }
   .panel table { display: block; overflow-x: auto; max-width: 100%; }
-  .row2, .row3, .live-grid, .fun-grid, .credits-layout, .alert-split, .integ-layout, .market-mc-grid { grid-template-columns: 1fr !important; }
+  .row2, .live-grid, .fun-grid, .credits-layout, .alert-split, .integ-layout, .market-mc-grid { grid-template-columns: 1fr !important; }
   .panel input, .panel select, .panel textarea { max-width: 100%; }
 }
 

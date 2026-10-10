@@ -213,21 +213,3 @@ class CommandGroups:
             self._config = config
         extra = None
         self._catalog = merge_group_catalog((self._config or {}).get("command_groups"), extra)
-
-    def is_enabled(self, group_id: str, *, integration_running: dict | None = None) -> bool:
-        running = set((integration_running or {}).keys()) if integration_running else set()
-        if integration_running:
-            running = {k for k, v in integration_running.items() if v}
-        return _norm_name(group_id) in resolve_active_groups(self._config, running)
-
-    def list_groups(self) -> list[dict]:
-        return catalog_status(self._config)
-
-    def as_config_dict(self) -> dict:
-        return {k: dict(v) for k, v in self._catalog.items()}
-
-    def active_ids(self, *, integration_running: dict | None = None) -> set[str]:
-        running = set()
-        if integration_running:
-            running = {k for k, v in integration_running.items() if v}
-        return resolve_active_groups(self._config, running)

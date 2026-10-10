@@ -128,7 +128,8 @@ What it does:
    - Kick channel slug
    - Admin / mod usernames
    - Admin dashboard token (generates a random one if still `change-me`)
-   - Whether to enable Minecraft + player name
+   - Kick / Twitch / YouTube, chat points and chat history on or off
+   - For each game plugin installed in `plugins/` (Minecraft, Granvir, OpenTTD): whether to enable it, plus its few settings
 3. Tries **Kick chatroom autodetection** (same logic as the live adapter).
 4. Writes `config/config.yaml` via `core.config.save_config`.
 
