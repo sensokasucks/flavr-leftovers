@@ -89,7 +89,7 @@ Everything the wizard sets is also on the dashboard, so skipping it is fine.
 
 ## 3. Starting and stopping
 
-Double-click **start.bat** (or **run.bat**, the same thing) whenever you stream. A black window opens and stays open; that window *is* Stream Core, so leave it alone while you stream. Closing it, or pressing **Ctrl+C** in it, stops Core.
+Double-click **START Stream Core.bat** in the main workshop folder (or **start.bat** inside `fridge-stream-core`, the same thing) whenever you stream. A black window opens and stays open; that window *is* Stream Core, so leave it alone while you stream. Closing it, or pressing **Ctrl+C** in it, stops Core.
 
 The first lines it prints tell you what it connected to and the address of the admin dashboard. The **admin token** (the dashboard's password) is not printed in full, so it can't leak when you share your screen: double-click **`data\Open dashboard.url`** to open the dashboard already signed in. The token itself is `points.admin_token` in `config.yaml`, or, if you never set one, the one Core made for you in `data\admin_token.txt`. To have the dashboard open by itself every time Core starts, set `core.open_dashboard: true` in `config.yaml`.
 
@@ -97,7 +97,7 @@ If a chat platform can't connect when Core starts (you're not live on YouTube ye
 
 Start Core **before** Stream Rooms and before you open the overlays in OBS; they all connect to it and reconnect by themselves if it restarts.
 
-Settings changes from the dashboard apply at once; only turning a game integration on or off needs a restart.
+Settings changes from the dashboard apply at once. The few that need a restart (turning a game integration on or off, Core's port or log level) make a **Restart Core now** bar appear at the top of the dashboard; press it and Core stops and starts again by itself in a few seconds (overlays and Stream Rooms reconnect on their own). If you started Core some other way than the START file, the bar tells you to close the window and start it again instead.
 
 ## 4. The admin dashboard
 
@@ -124,7 +124,11 @@ Things that help everywhere:
 
 ![Searching settings](images/sc-search.png)
 
-**Status** shows what's running: which chat platforms are connected, the command groups that are on, whether points and the chat log are on, and the game integrations. It refreshes itself every ten seconds.
+**Status** shows what's running: each chat platform with "Connected · last message 14 s ago", or, when it isn't connected, the reason in plain words (no YouTube video set, the stream isn't live yet, Kick blocked the lookup…) with a link to the setting to fix; the command groups that are on; whether points and the chat log are on; and the game integrations. It refreshes itself every ten seconds. **Live controls** shows the same line for any platform that needs a look.
+
+When nothing is switched on yet (first run), Live controls says so and links straight to **Connect Kick, Twitch or YouTube**.
+
+Buttons answer next to themselves: giving points says "Gave 50 points to Bob (now 1,250)", and if something fails (Core not running, wrong token) you get the reason in plain words instead of nothing. **Reload from disk** buttons ask first when you have unsaved edits, because they throw them away.
 
 ![Status](images/sc-status.png)
 
@@ -138,7 +142,7 @@ All three are off until you turn them on. Go to **Settings → Core + chat platf
 
 ![Core + chat platforms](images/sc-cfg-platforms.png)
 
-- **Kick**: your channel slug, the part after `kick.com/`. Core finds the chat room id by itself and remembers it. **Chatter profile pictures** looks each new chatter's picture up once (so their picture appears a moment after their first message) and keeps it. Kick also sends hosts, Kicks gifts and subs, which become alerts.
+- **Kick**: your channel slug, the part after `kick.com/` (pasting the whole link works too). Core finds the chat room id by itself and remembers it. **Chatter profile pictures** looks each new chatter's picture up once (so their picture appears a moment after their first message) and keeps it. Kick also sends hosts, Kicks gifts and subs, which become alerts.
 - **Twitch**: your channel name. Core listens to chat anonymously, so reading needs no login. **BetterTTV / FrankerFaceZ / 7TV emotes** ride along with every message, so overlays and Stream Rooms show them. Cheers, raids and subs become alerts. For **Chatter profile pictures** Twitch wants to know who is asking, so connect your account (next heading).
 
 ### Connecting your Twitch account
@@ -152,7 +156,7 @@ A few things worth knowing:
 - The sign-in is kept in `data\twitch_token.json` on your PC and is sent to Twitch only. **Disconnect** tells Twitch to cancel it and deletes the file. You can also revoke it any time on Twitch under Settings → Connections (look for Stream Core).
 - Twitch cancels a sign-in itself after a long stretch without use or when you change your password; the dashboard then says so, and one more **Connect Twitch** fixes it.
 - **Advanced: use your own Twitch app** is for people who registered their own app at dev.twitch.tv. Paste its Client ID (and, for a "Confidential" app, the Client Secret). With a secret Core can fetch pictures even without the sign-in. Leave both empty to use Stream Core's built-in app, which is the normal case.
-- **YouTube**: the live video's id (the `v=` part of its address), which changes every stream. Mode **innertube** needs no API key and has no quota, so leave it on that unless you need the official API's Super Chat details. Members and Super Chats become alerts.
+- **YouTube**: the live video, which changes every stream. Paste its whole link (from the address bar, Share, or YouTube Studio; `watch?v=`, `youtu.be/…` and `/live/…` all work) or just the id. The quickest place is the **YouTube live video** box on **Live controls**: paste, press **Connect**. If you start Core before you go live, YouTube shows **retrying** and connects by itself once the stream is live. Mode **innertube** needs no API key and has no quota, so leave it on that unless you need the official API's Super Chat details. Members and Super Chats become alerts.
 
 Core can *read* all three, but it can't *post* into Kick or YouTube chat without a login. Its answers to commands ("you have 5 points") therefore show on the **replies overlay** and on Stream Rooms' reply screen, not in the platform's chat.
 
@@ -397,7 +401,7 @@ Two Fabric mods (in the `fridge-minecraft` folder) let chat reach into the game:
 - **Granvir**: the **Fridge Granvir Stats** plugin (BepInEx, port 3855) reports co-op stats; turn **Granvir** on the same way.
 - **OpenTTD**: Core joins the game's admin port and runs the **Chat Fund**: `!invest` turns points into company cash, `!companies` lists them, and two overlays show the companies and a ticker. Settings are on the Games page (host, admin port and password, points-to-pounds rate, limits).
 
-Game toggles need a Core restart; everything else applies live.
+Game toggles need a Core restart (the **Restart Core now** bar appears); everything else applies live.
 
 ## 20. Chat Credits and Reactive Image
 
@@ -438,21 +442,21 @@ Game toggles need a Core restart; everything else applies live.
 | Problem | Try this |
 |---|---|
 | The dashboard says the token is wrong | Double-click `data\Open dashboard.url`, or paste the token from `data\admin_token.txt` (or `points.admin_token` in `config.yaml`) and click **Save**. |
-| Nothing arrives from a platform | **Status**: is it connected? Settings → Core + chat platforms: is it **Enabled**, is the channel right? YouTube: the video id is new every stream. |
+| Nothing arrives from a platform | **Status** says whether it's connected and, if not, why. Settings → Core + chat platforms: is it **Enabled**, is the channel right? YouTube: the video is new every stream; paste its link on **Live controls**. |
 | Kick can't find the chat room | Open `https://kick.com/api/v2/channels/<your slug>` in a browser, find `"chatroom": {"id": …}` and put that number in `kick.chatroom_id` (Settings → Advanced). |
 | A chat command does nothing | Settings → Command groups: is its group on? Settings → Chat commands: its permission and whether another command owns the name. Try it in the **Command tester**. |
 | `!points` says points are off | Settings → Points, permissions + chat → **Chat points** on. |
 | Tomatoes don't fly | Settings → Reactions → **Reactions on**; the reaction's permission, cooldown and cost; Stream Rooms' Games tab → **Play reactions**; without Stream Rooms, add the reactions overlay. |
 | Alerts don't show | Add `/overlay/alerts.html` as a browser source; test from **Live controls**. Follows and subs need the platform connected. |
 | Credits are empty | Overlays → Credits → turn it on; the list fills as people chat. Check the roster filters under Settings → Points, permissions + chat → Chat credits. |
-| The game toggle didn't take | Minecraft, Factorio, Granvir and OpenTTD switches need a Core restart. |
+| The game toggle didn't take | Minecraft, Factorio, Granvir and OpenTTD switches need a Core restart: press **Restart Core now** in the bar at the top. |
 | Stream Rooms says it isn't connected | Start Core first; in Stream Rooms' Chat tab check **Core address** is `ws://127.0.0.1:3850/ws` and click **Retry now**. |
-| The window closed with an error | Run **start.bat** again and read the last lines. Running **install.bat** again repairs the packages without touching your settings. |
+| The window closed with an error | Run **START Stream Core.bat** again and read the last lines. Running **install.bat** again repairs the packages without touching your settings. |
 
 ## 24. Quick reference
 
 - **Ports**: Core 3850 (dashboard, overlays, Stream Rooms); Minecraft mods 3852 and 3853; Factorio bridge 3847; Granvir 3855.
-- **Go-live checklist**: start Core (start.bat), start Stream Rooms, open OBS with the overlays, check **Status**, keep **Live controls** open.
+- **Go-live checklist**: start Core (START Stream Core.bat), paste the YouTube live link on **Live controls** if you stream there, start Stream Rooms, open OBS with the overlays, check **Status**, keep **Live controls** open.
 - **Mid-stream**: **Live controls** for the curtain, test alerts, chat games and credits; the **Run** tab of Chat games for polls, trivia and the request queue.
 - **Ending**: **Live controls → Roll credits** (or Play once), then close the curtain.
 - **Viewer commands**: `!help`, `!points`, `!claim`, `!predict`, `!duel`, `!slots`, `!heist`, `!1`/`!2`/`!3`, `!rate`, `!request`, `!queue`, `!clip`, `!answer`, `!seat`, `!swap`, `!streak`, `!tomato`, `!sign`, `!highfive`, `!nothrow` / `!throwok`.

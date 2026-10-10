@@ -38,11 +38,21 @@ if not exist "config\config.yaml" (
 
 echo Starting Fridge Stream Core with .venv...
 echo Admin hub: http://127.0.0.1:3850/admin/
+echo Signed in: double-click data\Open dashboard.url
 echo Press Ctrl+C to stop.
 echo.
 
+REM The dashboard Restart button ends Core with code 75: start it again.
+set "STREAM_CORE_SUPERVISED=1"
+:run_core
 ".venv\Scripts\python.exe" -u main.py
 set EXITCODE=%ERRORLEVEL%
+if "%EXITCODE%"=="75" (
+  echo.
+  echo Restarting Stream Core...
+  echo.
+  goto run_core
+)
 
 echo.
 if not %EXITCODE%==0 (

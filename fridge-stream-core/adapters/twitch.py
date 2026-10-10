@@ -21,6 +21,7 @@ from adapters.twitch_emotes import ThirdPartyEmotes, parse_twitch_emotes, strip_
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
+from core.platform_links import twitch_channel
 
 log = logging.getLogger("adapters.twitch")
 
@@ -194,7 +195,7 @@ class TwitchAdapter(BaseAdapter):
     def __init__(self, config: dict, bus: EventBus, metrics: MetricsAggregator):
         super().__init__(config, bus, metrics)
         cfg = config.get("twitch", {})
-        self.channel = (cfg.get("channel") or "").strip().lstrip("#").lower()
+        self.channel = twitch_channel(cfg.get("channel") or "")
         self._task: Optional[asyncio.Task] = None
         self._stop = asyncio.Event()
         self._writer: Optional[asyncio.StreamWriter] = None

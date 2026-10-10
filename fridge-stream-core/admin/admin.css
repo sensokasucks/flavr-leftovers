@@ -1181,3 +1181,24 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 .rf-card .rf-past .config-actions { margin-top: 10px; }
 .toolbar label.check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .toolbar label.check input { min-width: 0; flex: none; }
+
+/* Result line next to a button ("Gave 50 points to Bob (now 1,250).") */
+.action-msg { min-height: 1.2em; margin: 4px 0; color: var(--accent); }
+.action-msg.bad { color: var(--danger); }
+.action-msg:empty { display: none; }
+
+/* Status: why a chat platform isn't connected */
+.platform-why { display: block; color: var(--danger); margin-top: 2px; }
+.platform-why.warn { color: var(--warn); }
+.platform-ok { color: var(--muted); }
+
+/* "Restart Core" banner, shown only when a saved setting needs it */
+.restart-banner { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px;
+  margin: 0 0 12px; border: 1px solid var(--warn); border-radius: 8px; color: var(--text); }
+.restart-banner[hidden] { display: none; }
+.restart-banner .why { flex: 1 1 260px; }
+
+/* Live controls: YouTube live video box */
+.yt-live-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.yt-live-row input { flex: 1 1 240px; min-width: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

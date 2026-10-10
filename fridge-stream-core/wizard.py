@@ -21,6 +21,7 @@ if str(ROOT) not in sys.path:
 
 from core import plugin_manifest  # noqa: E402
 from core.config import ConfigError, DEFAULTS, load_config, save_config  # noqa: E402
+from core.platform_links import kick_slug, twitch_channel, youtube_video_id  # noqa: E402
 
 
 def _prompt(label: str, default: str = "") -> str:
@@ -35,6 +36,34 @@ def _prompt_yes_no(label: str, default: bool = False) -> bool:
     if not raw:
         return default
     return raw in ("y", "yes", "1", "true")
+
+
+def _prompt_int(label: str, default: int, lo: int = 1, hi: int = 65535) -> int:
+    """Ask until the answer is a whole number in range (a typo no longer ends the wizard)."""
+    while True:
+        raw = _prompt(label, str(default))
+        try:
+            val = int(str(raw).strip())
+        except ValueError:
+            print(f"  Please type a number between {lo} and {hi}.")
+            continue
+        if lo <= val <= hi:
+            return val
+        print(f"  Please type a number between {lo} and {hi}.")
+
+
+def _as_int(raw, default: int) -> int:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return default
+
+
+def _start_file_name() -> str:
+    """The START file people should double-click: the workshop-root one when it's there."""
+    if (ROOT.parent / "START Stream Core.bat").is_file():
+        return '"START Stream Core.bat" (in the main workshop folder)'
+    return "start.bat (in the fridge-stream-core folder)"
 
 
 def _split_usernames(raw: str) -> list[str]:
@@ -85,10 +114,10 @@ def main() -> int:
     use_kick = _prompt_yes_no("Enable Kick chat?", default=bool(kick.get("enabled")))
     kick["enabled"] = use_kick
     if use_kick:
-        slug = _prompt(
-            "  Kick channel slug (kick.com/THIS_PART)",
+        slug = kick_slug(_prompt(
+            "  Kick channel slug (kick.com/THIS_PART, or paste the link)",
             str(kick.get("channel_slug") or ""),
-        ).lstrip("@").strip()
+        ))
         if not slug:
             slug = kick.get("channel_slug") or DEFAULTS["kick"]["channel_slug"]
         kick["channel_slug"] = slug
@@ -124,10 +153,10 @@ def main() -> int:
     use_tw = _prompt_yes_no("Enable Twitch chat?", default=bool(tw.get("enabled")))
     tw["enabled"] = use_tw
     if use_tw:
-        tw["channel"] = _prompt(
-            "  Twitch channel (twitch.tv/THIS_PART)",
+        tw["channel"] = twitch_channel(_prompt(
+            "  Twitch channel (twitch.tv/THIS_PART, or paste the link)",
             str(tw.get("channel") or "").lstrip("#"),
-        ).lstrip("#").strip() or "YOUR_TWITCH_CHANNEL"
+        )) or "YOUR_TWITCH_CHANNEL"
     cfg["twitch"] = tw
 
     # YouTube
@@ -140,10 +169,11 @@ def main() -> int:
             str(yt.get("mode") or "innertube"),
         ).strip().lower() or "innertube"
         yt["mode"] = mode if mode in ("innertube", "official", "auto") else "innertube"
-        yt["video_id"] = _prompt(
-            "  Live video ID (changes every stream)",
+        raw_video = _prompt(
+            "  Live video link or ID (changes every stream; you can also paste it on Live controls later)",
             str(yt.get("video_id") or ""),
         ).strip()
+        yt["video_id"] = youtube_video_id(raw_video) or raw_video
         if yt["mode"] in ("official", "auto"):
             yt["api_key"] = _prompt(
                 "  YouTube Data API key (official mode)",
@@ -187,13 +217,14 @@ def main() -> int:
     token = str(points.get("admin_token") or "")
     if not token or token in ("change-me", "YOUR_ADMIN_TOKEN"):
         token = secrets.token_urlsafe(16)
-        print(f"  Generated admin token for /admin dashboard: {token}")
-        print("  (copy this – you will paste it into the dashboard header)")
+        print(f"  Made an admin token (the dashboard's password), starting {token[:4]}…")
+        print("  It's saved in config.yaml as points.admin_token. You don't need to copy it:")
+        print("  data\\Open dashboard.url (made when Core starts) opens the dashboard signed in.")
     else:
         print(f"  Existing admin token kept (starts with {token[:4]}…)")
         if _prompt_yes_no("  Generate a new admin token?", default=False):
             token = secrets.token_urlsafe(16)
-            print(f"  New token: {token}")
+            print(f"  New token made (starts with {token[:4]}…, saved in config.yaml).")
     points["admin_token"] = token
     points["enabled"] = _prompt_yes_no(
         "Enable chat points? (!points / per-message awards)",
@@ -252,7 +283,7 @@ def main() -> int:
         ot["enabled"] = use_ot
         if use_ot:
             ot["host"] = _prompt("OpenTTD Admin Port host", str(ot.get("host") or "127.0.0.1"))
-            ot["admin_port"] = int(_prompt("Admin port", str(ot.get("admin_port") or 3977)) or 3977)
+            ot["admin_port"] = _prompt_int("Admin port", _as_int(ot.get("admin_port"), 3977))
             ot["admin_password"] = _prompt("Admin password (server admin_password)", str(ot.get("admin_password") or ""))
             ot.setdefault("pounds_per_point", 1000)
             ot.setdefault("use_gamescript", True)
@@ -270,10 +301,16 @@ def main() -> int:
     print()
     print(f"Saved configuration to:\n  {path}")
     print()
+    port = _as_int(core.get("port"), 3850)
     print("Next steps:")
-    print("  1. Double-click start.bat  (or run.bat)")
-    print("  2. Open http://127.0.0.1:3850/admin/ and paste your admin token")
-    print("  3. Add overlay Webpage sources in XSplit / OBS (see README)")
+    print(f"  1. Double-click {_start_file_name()} to start Stream Core.")
+    print("  2. Open the dashboard: double-click data\\Open dashboard.url in the")
+    print(f"     fridge-stream-core folder (or http://127.0.0.1:{port}/admin/ and paste the token).")
+    if tw.get("enabled"):
+        print("  3. Settings → Core + chat platforms → Connect Twitch, so Twitch chatters get pictures.")
+    if yt.get("enabled"):
+        print("  -  Each YouTube stream has a new video: paste its link on Live controls when you go live.")
+    print("  -  Add the chat overlay to OBS: Sources & overlays → Copy (Browser source).")
     print()
     return 0
 

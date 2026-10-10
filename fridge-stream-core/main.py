@@ -127,6 +127,8 @@ class StreamCore:
         self.games = {}
         self.state = CoreState()
         self.state.config = config
+        # what Core started with: saves compare against it to say what needs a restart
+        self.state.boot_config = copy.deepcopy(config)
         self.state.metrics = self.metrics
         self.state.router = self.router
         self.state.adapters = self.adapters
@@ -1542,6 +1544,17 @@ async def _run() -> None:
         log.info("Shutdown signal received")
         stop_event.set()
 
+    restart = {"wanted": False}
+
+    def _request_restart():
+        """Dashboard Restart button: stop cleanly, then come back (see core/restart.py)."""
+        log.warning("Restart requested from the dashboard")
+        restart["wanted"] = True
+        # let the HTTP answer go out first
+        loop.call_later(0.5, stop_event.set)
+
+    core.state.request_restart = _request_restart
+
     for sig in (signal.SIGINT, signal.SIGTERM):
         try:
             loop.add_signal_handler(sig, _signal_handler)
@@ -1561,15 +1574,29 @@ async def _run() -> None:
 
     server.should_exit = True
     await core.stop()
+    if restart["wanted"]:
+        # free the port before the next Core binds it
+        try:
+            await asyncio.wait_for(serve_task, timeout=5)
+        except (asyncio.TimeoutError, Exception):
+            pass
     for t in pending:
         t.cancel()
+    return restart["wanted"]
 
 
 def main():
+    from core.restart import RESTART_EXIT_CODE, can_restart
+
     try:
-        asyncio.run(_run())
+        again = asyncio.run(_run())
     except KeyboardInterrupt:
-        pass
+        again = False
+    if again:
+        _ok, how = can_restart()
+        if how == "exec":
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+        sys.exit(RESTART_EXIT_CODE)
 
 
 if __name__ == "__main__":

@@ -67,6 +67,14 @@ Save rules:
 - [ ] Search (`/`) indexes nav items (+ `data-keywords`), sub-page pills, labels, legends and credits editor chips; a new setting with a `<label>` is searchable with no extra work.
 - [ ] Element ids used by admin.js are unchanged by layout work — move markup, don't rename ids.
 
+## Feedback and restarts (review batch 4)
+
+- [ ] Status and Live controls show each platform's `platformLine()` ("Connected · last message …" or `last_error` + link to the setting) from `/api/admin/status`. Live controls lists platforms that need a look; with nothing on it shows `firstRunHint()`.
+- [ ] Live controls "YouTube live video" card (`#live-yt-card`, shown while YouTube is on) → `POST /api/admin/platforms/youtube/video`, any YouTube link. Pasted links are cleaned in the UI (`cleanYouTube` / `cleanKick` / `cleanTwitch`), on save (`clean_platform_fields`) and in the adapters (`core/platform_links.py`). Tests: `tests/test_status_feedback.py`.
+- [ ] Saves return `restart_needed` (from `core/restart.py`, compared with `state.boot_config`) and only mention a restart then; `#restart-banner` with **Restart Core now** while the list isn't empty. `POST /api/admin/restart`: exit code 75 under the START .bat loop (`STREAM_CORE_SUPERVISED=1`), re-exec on Linux/macOS, else 409 with what to do. Port change asks first.
+- [ ] User page buttons (points, link, merge, notes), credits play buttons and CSV downloads (`downloadFile`) never fail silently: result or plain error next to the button.
+- [ ] "Reload from disk" buttons (`RELOAD_BUTTONS`) confirm when their section is dirty (capture-phase click guard).
+
 ## Accessibility (2026-10)
 
 - [ ] `:focus-visible` outline on every control; `html.hc` high-contrast theme (header `#hc-toggle`, `prefers-contrast: more`, remembered in localStorage).
