@@ -28,5 +28,6 @@ manifests `core/plugin_manifest.py`, contract `core/plugin_api.py`. Spec: [docs/
 
 - [ ] `python -m pytest -q` from `fridge-stream-core` (also runs `plugins/*/tests` of installed games).
 - [ ] The game repo's tests still pass against this Core (`python -m pytest -q` in flavr-game-plugins with `STREAM_CORE_DIR` set).
+- [ ] Both repos' **Tests** GitHub Actions run is green on the pull request (`.github/workflows/tests.yml`: Windows + Python 3.10, Linux + 3.12 / 3.13; flavr-game-plugins tests against Core `main`).
 - [ ] Start Core with `STREAM_CORE_PLUGINS_DIR` pointing at an empty folder: dashboard loads, Settings → Game plugins shows the empty message.
 - [ ] Settings → Game plugins card, Market sub-page, Status row and Sources entries for each installed plugin.
