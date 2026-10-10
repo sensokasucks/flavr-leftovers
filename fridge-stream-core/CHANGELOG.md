@@ -9,6 +9,8 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.10.10] — 2026-10-10 (and the 2026-10-07 / 10-08 releases before it)
+
 ### Changed
 - **User manual brought up to date** (`docs/manual/MANUAL.md` / `.html`): a "What's new (October 2026)" section, the Chatter profile pictures card and shared hide list, highlighted and paid messages, the Chat overlay and Red flags menu entries, and games as plugins (how to add one from flavr-game-plugins). Outdated screenshots are kept and marked with a `picture outdated` comment.
 - **Dashboard tidy.**
