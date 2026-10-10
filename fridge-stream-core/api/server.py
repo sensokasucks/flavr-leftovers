@@ -247,9 +247,12 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     @app.get("/api/health")
     async def health():
+        adapters = core_state.adapters or {}
         return {
             "ok": True,
-            "adapters": list(core_state.adapters.keys()) if core_state.adapters else [],
+            "adapters": list(adapters.keys()),
+            # for the overlays' "why is this empty" line in a normal browser tab
+            "connected": [n for n, a in adapters.items() if getattr(a, "connected", False)],
             "games": list(core_state.games.keys()) if core_state.games else [],
         }
 

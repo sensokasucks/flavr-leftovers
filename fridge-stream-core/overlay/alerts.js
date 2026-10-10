@@ -202,6 +202,7 @@
   loadSettings();
   setInterval(loadSettings, 4000);
 
+  const hint = window.FridgeHint || { set() {}, count() {} };
   let ws;
   let retryMs = 1000;
 
@@ -210,14 +211,19 @@
     ws = new WebSocket(proto + "://" + location.host + "/ws");
     ws.onopen = () => {
       retryMs = 1000;
+      hint.set("core", "Connected to Core, waiting for an alert (Alerts page → Fire test)");
     };
     ws.onmessage = (ev) => {
       try {
         const msg = JSON.parse(ev.data);
-        if (msg.type === "alert" && msg.data) show(msg.data);
+        if (msg.type === "alert" && msg.data) {
+          hint.count("alerts");
+          show(msg.data);
+        }
       } catch (_) {}
     };
     ws.onclose = () => {
+      hint.set("core", "Can't reach Core at " + location.host + " (is it running?), retrying");
       setTimeout(connect, retryMs);
       retryMs = Math.min(retryMs * 1.5, 10000);
     };

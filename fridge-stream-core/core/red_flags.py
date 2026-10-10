@@ -7,7 +7,7 @@ off every overlay and out of Stream Rooms: their chat is not broadcast, they get
 reactions, commands, points, credits or alerts. Their messages are still saved in the
 chat log (when it is on) so the Chat history tab can show what they wrote.
 
-Config (``red_flags:`` in config.yaml, its own card on the Chat history tab)::
+Config (``red_flags:`` in config.yaml, its own page, People → Red flags)::
 
   enabled: true      off = nobody is hidden and nobody new is flagged (the list is kept)
   skip_mods: true    moderators and the streamer never get flagged by a phrase

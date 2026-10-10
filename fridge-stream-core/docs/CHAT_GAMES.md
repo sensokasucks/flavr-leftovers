@@ -55,7 +55,7 @@ In a mood's effects, `{emote}` stands for the emote the crowd used most. Core sh
 
 ### Your seat
 
-These seat commands are chat reactions. Edit them in Config → Reactions.
+These seat commands are chat reactions. Edit them in Settings → Reactions.
 
 | Chat | What happens |
 |------|--------------|

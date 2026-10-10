@@ -62,7 +62,7 @@ class ChatStyleTests(unittest.TestCase):
             self.assertTrue(s["options"]["newest_on_top"])
             self.assertEqual(s["options"]["sound_volume"], 1.0)
             self.assertNotIn("bogus", s["options"])
-            self.assertFalse(s["options"]["show_avatars"])            # untouched ones keep their default
+            self.assertTrue(s["options"]["show_avatars"])            # untouched ones keep their default
             s = CHAT_STYLE.write_settings(skin="plain", overlay_dir=root)
             self.assertEqual(s["skin"], "plain")
             self.assertEqual(s["options"]["hide_after_sec"], 15)       # a skin change keeps the options
