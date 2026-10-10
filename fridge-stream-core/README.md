@@ -205,6 +205,7 @@ No changes to the command router, permissions, or game plugins are required.
 
 ## Development notes
 
+- Tests run automatically on every pull request and every push to main (GitHub Actions, `.github/workflows/tests.yml`: Windows + Python 3.10 like Sen's PC, and Linux + Python 3.12 / 3.13). Run them yourself with `python -m pytest -q` from `fridge-stream-core`.
 - All platform usernames are lower-cased for permission checks so Kick and future YouTube share one admin/mod list.
 - `!permit <user> [minutes]` still works (admin only) and is handled inside Core.
 - Channel-point / Super-Chat cost fields already exist on commands; real deduction will live in the adapters when those APIs are wired up.
