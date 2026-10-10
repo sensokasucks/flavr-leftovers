@@ -206,14 +206,6 @@ img.badge {
 /* Twitch "Gigantify an Emote": the last emote is drawn big */
 .msg.gigantified .message .emote:last-of-type { height: calc(var(--chat-emote-size) * 3); }
 
-/* denser layout when many messages */
-.msg.compact {
-  font-size: 14px;
-}
-.msg.compact .emote {
-  height: 22px;
-}
-
 /* ============================================================
    Skin: plain — the neutral base most chat CSS packs expect:
    no fade, no shadow, white text, one line per message

@@ -4146,13 +4146,6 @@
     if (window.CreditsStyleEditor) CreditsStyleEditor.fill(t || {});
   }
 
-  function collectCreditsTheme() {
-    if (window.CreditsStyleEditor) {
-      return { ...CreditsStyleEditor.collect(), persist: true };
-    }
-    return { persist: true };
-  }
-
   function renderCreditsRoster(r) {
     r = r || {};
     if ($("live-crd-count")) $("live-crd-count").textContent = (r.count || 0) + " names";
@@ -4345,19 +4338,6 @@
         initCreditsTab(true);
       } catch (e) {
         if ($("crd-play-state")) $("crd-play-state").textContent = "Clear failed: " + readableActionError(e);
-      }
-    };
-  }
-  if ($("crd-save-look")) {
-    $("crd-save-look").onclick = async () => {
-      try {
-        await api("/api/admin/credits/theme", {
-          method: "PUT",
-          body: JSON.stringify(collectCreditsTheme()),
-        });
-        $("crd-look-status").textContent = "Saved";
-      } catch (e) {
-        $("crd-look-status").textContent = String(e.message || e);
       }
     };
   }

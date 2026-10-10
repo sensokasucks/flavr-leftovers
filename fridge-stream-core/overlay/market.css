@@ -281,13 +281,4 @@ body.bare .stage {
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 10px;
 }
-.preview-tag {
-  position: absolute;
-  top: 8px;
-  right: 10px;
-  font-size: 10px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--gold-dim);
-}
 .hidden { display: none !important; }
