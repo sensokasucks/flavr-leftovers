@@ -390,9 +390,3 @@ class CreditsEngine:
                 int(bool(c.is_mod)),
             ])
         return buf.getvalue()
-
-    def look_for_config(self) -> dict:
-        """Subset to write back into config.yaml credits:."""
-        out = {"enabled": self.enabled, "ignore_usernames": sorted(self.ignore)}
-        out.update(self.theme)
-        return out

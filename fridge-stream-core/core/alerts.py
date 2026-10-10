@@ -243,11 +243,6 @@ ALERT_STYLE = OverlayStyle(
 )
 
 
-def list_alert_media(overlay_dir: Optional[Path] = None) -> dict[str, str]:
-    """Existing per-kind GIF/WebM files so the overlay never 404-probes."""
-    return ALERT_STYLE.list_assets(overlay_dir)[0]
-
-
 def read_alert_settings(overlay_dir: Optional[Path] = None) -> dict[str, Any]:
     """skin, css_version, options (sound_volume), media {kind: url}, sounds {kind: url}."""
     return ALERT_STYLE.read_settings(overlay_dir)

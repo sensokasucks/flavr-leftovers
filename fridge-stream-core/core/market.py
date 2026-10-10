@@ -617,9 +617,3 @@ class MarketTape:
             "points": buf,
             "last": (inst or {}).get("price"),
         }
-
-
-def session_bucket(ts: float | None = None, size_sec: int = 300) -> int:
-    """Group ticks into size_sec windows (default 5 min) for overlay candles later."""
-    t = ts if ts is not None else _now()
-    return int(math.floor(t / size_sec) * size_sec)

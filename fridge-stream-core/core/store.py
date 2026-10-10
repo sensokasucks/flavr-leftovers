@@ -399,11 +399,6 @@ class Store:
             (user_id, *row),
         )
 
-    def _log_chat_sync(self, event: ChatEvent, user_id: int) -> None:
-        with self._connect() as conn:
-            self._log_chat_in(conn, _chat_row(event), user_id)
-            conn.commit()
-
     def _award_in(self, conn: sqlite3.Connection, user_id: int, delta: int, reason: str, source: str) -> int:
         now = time.time()
         row = conn.execute("SELECT points FROM users WHERE id=?", (user_id,)).fetchone()

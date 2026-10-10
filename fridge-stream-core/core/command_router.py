@@ -57,9 +57,6 @@ class CommandRouter:
     def known_groups(self) -> set:
         return {(c.group or "core").lower() for c in self.definitions.values()}
 
-    def unique_commands(self) -> List[CommandDefinition]:
-        return list(self.definitions.values())
-
     def reload(
         self,
         path: Path | str | None = None,

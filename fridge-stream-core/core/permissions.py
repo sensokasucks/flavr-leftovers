@@ -153,9 +153,6 @@ class PermissionManager:
         if key:
             self._temp_permits[key] = time.time() + minutes * 60
 
-    def clear_temp(self, username: str) -> None:
-        self._temp_permits.pop(str(username or "").lower().strip().lstrip("@"), None)
-
     def _is_temp_permitted(self, user: ChatUser | str) -> bool:
         now = time.time()
         for key in self._temp_keys(user):
@@ -190,10 +187,3 @@ class PermissionManager:
             return False
 
         return self.is_mod(user)
-
-    def effective_level(self, user: ChatUser | str) -> PermissionLevel:
-        if self.is_admin(user):
-            return PermissionLevel.ADMIN
-        if self.is_mod(user):
-            return PermissionLevel.MOD
-        return PermissionLevel.PUBLIC
