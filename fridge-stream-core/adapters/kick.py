@@ -639,5 +639,5 @@ class KickAdapter(BaseAdapter):
             reply_to=kick_reply_to(data),
         )
 
-        log.info("[Kick] %s: %s", user.username, content)
+        log.debug("[Kick] %s: %s", user.username, content)
         await self._emit(event)

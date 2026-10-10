@@ -210,6 +210,8 @@ class StreamCore:
         self.recent_replies_max = 20
 
     async def start(self) -> None:
+        # Chat lines are written to the database in batches by one task
+        self.store.start_writer()
         # Wire chat → command router + overlay broadcast
         self.bus.on_chat(self._on_chat)
         self.state.recent_chat = self.recent_chat
@@ -530,7 +532,7 @@ class StreamCore:
                 break
             except asyncio.TimeoutError:
                 try:
-                    self.credits.save_if_dirty()
+                    await self.credits.save_if_dirty_async()
                 except Exception:
                     log.exception("credits persist failed")
 
@@ -574,6 +576,10 @@ class StreamCore:
 
         for name in list(self.adapters):
             await self._stop_platform(name)
+        try:
+            await self.store.stop_writer()   # writes what is still queued
+        except Exception:
+            log.exception("chat writer stop failed")
         self.avatars.stop()
         for game in self.games.values():
             await game.stop()
@@ -669,18 +675,12 @@ class StreamCore:
         # Mark command flag before logging so history knows
         is_cmd = self.router.parse_message(event)
 
-        # Persist chat + award in-house points
+        # Persist chat + award in-house points: queued for the batched database writer, so the
+        # platform's read loop never waits for the disk (core/store.py start_writer)
         try:
-            result = await self.store.process_chat(event)
-            if result.get("awarded"):
-                log.debug(
-                    "points +%s → user %s (bal %s)",
-                    result["awarded"],
-                    result["user_id"],
-                    result.get("balance"),
-                )
+            self.store.submit_chat(event)
         except Exception:
-            log.exception("store.process_chat failed")
+            log.exception("store.submit_chat failed")
 
         # Chat reactions (emoji anywhere; !commands the router doesn't own), then chat games
         # (they watch every message for combos / hype; commands nobody else took)
@@ -1155,9 +1155,9 @@ class StreamCore:
         """A red-flagged chatter: saved in the chat log (when it is on), shown nowhere, no points."""
         self.router.parse_message(event)      # marks is_command for the log
         try:
-            await self.store.process_chat(event, award=False, flagged=True)
+            self.store.submit_chat(event, award=False, flagged=True)
         except Exception:
-            log.exception("store.process_chat failed")
+            log.exception("store.submit_chat failed")
         if flagged.get("new"):
             u = event.user
             await self.hide_flagged(event.platform.value, str(u.id or ""), u.username, u.display_name)

@@ -287,19 +287,9 @@ class AvatarStore:
             if status != 200 or not body or len(body) > MAX_BYTES or not sniff(body):
                 self._failed[key] = time.time()
                 return
-            png = to_png(body)
-            data, ext = (png, "png") if png else (body, sniff(body))
-            folder = self.root / platform
-            folder.mkdir(parents=True, exist_ok=True)
-            stem = safe_id(user_id)
-            file_name = f"{stem}.{ext}"
-            for old in folder.glob(f"{stem}.*"):
-                if old.name != file_name:
-                    try:
-                        old.unlink()
-                    except OSError:
-                        pass
-            (folder / file_name).write_bytes(data)
+            # Pillow and the disk work run in a worker thread: a raid brings hundreds of
+            # new pictures at once and the event loop must keep reading chat
+            file_name = await asyncio.to_thread(self._store_file, platform, user_id, body)
             old = self._index.get(key) or {}
             self._index[key] = {"url": url, "file": file_name, "ts": time.time(),
                                 "login": login or old.get("login") or "", "name": name or old.get("name") or ""}
@@ -315,6 +305,23 @@ class AvatarStore:
             log.debug("avatar download for %s failed: %s", key, e)
         finally:
             self._pending.discard(key)
+
+    def _store_file(self, platform: str, user_id: str, body: bytes) -> str:
+        """Convert and write one picture (runs in a worker thread). Returns the file name."""
+        png = to_png(body)
+        data, ext = (png, "png") if png else (body, sniff(body))
+        folder = self.root / platform
+        folder.mkdir(parents=True, exist_ok=True)
+        stem = safe_id(user_id)
+        file_name = f"{stem}.{ext}"
+        for old in folder.glob(f"{stem}.*"):
+            if old.name != file_name:
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+        (folder / file_name).write_bytes(data)
+        return file_name
 
     @staticmethod
     async def _fetch_http(url: str) -> tuple[int, bytes]:

@@ -8,6 +8,7 @@ whether they chat on Kick today or YouTube tomorrow.
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 import io
 import json
 import logging
@@ -125,6 +126,27 @@ FLAGGED_SQL = (
 # platform_user_id for identities created from an alert that only had a name
 NAME_ID_PREFIX = "name:"
 
+# Chat writer: wait this long after the first queued line to gather more, write at most
+# CHAT_BATCH_MAX per transaction, and keep at most CHAT_QUEUE_MAX waiting (then lines are
+# dropped from the database, never from the overlays).
+CHAT_BATCH_WAIT = 0.25
+CHAT_BATCH_MAX = 500
+CHAT_QUEUE_MAX = 50_000
+
+
+def _chat_row(event: ChatEvent) -> tuple:
+    """chat_messages columns after user_id."""
+    return (
+        event.platform.value,
+        event.user.id,
+        event.user.username,
+        event.user.display_name,
+        event.message,
+        event.message_id or None,
+        1 if event.is_command else 0,
+        event.timestamp,
+    )
+
 
 class Store:
     def __init__(
@@ -144,6 +166,18 @@ class Store:
         self.configure_chat_log(chat_log_cfg)
         self._last_award: dict[int, float] = {}  # user_id -> last award time
         self._lock = asyncio.Lock()
+        self._write_lock = asyncio.Lock()   # one chat batch, or one link / merge, at a time
+        # (platform, platform user id) -> [user id, username, display name, last_seen written];
+        # repeat chatters do no database lookup at all. Cleared when identities move (link / merge).
+        self._uid_cache: dict[tuple[str, str], list] = {}
+        self._uid_cache_max = 50_000
+        self._days_seen: set[tuple[int, str]] = set()   # (user id, day) already in chatter_stream_days
+        # Chat writer: chat lines queue up and one task writes them in batches (start_writer)
+        self._queue: Optional[asyncio.Queue] = None
+        self._writer_task: Optional[asyncio.Task] = None
+        self._writer_conn: Optional[sqlite3.Connection] = None
+        self._dropped = 0
+        self._dropped_logged = 0.0
         self._init_db()
 
     def configure_chat_log(self, cfg: dict | None) -> None:
@@ -156,6 +190,9 @@ class Store:
         conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
+        # WAL + NORMAL: a commit no longer waits for the disk (still crash-safe for the database;
+        # at worst the last moment of chat is lost on a power cut)
+        conn.execute("PRAGMA synchronous=NORMAL")
         return conn
 
     def _init_db(self) -> None:
@@ -199,57 +236,107 @@ class Store:
         username: str,
         display_name: str,
     ) -> int:
-        now = time.time()
         with self._connect() as conn:
-            row = conn.execute(
-                "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
-                (platform, platform_user_id),
-            ).fetchone()
-            if not row and not platform_user_id.startswith(NAME_ID_PREFIX):
-                # Claim an identity an alert created by name (e.g. a Kick sub before
-                # their first chat line) so the points land on this viewer.
-                placeholder = NAME_ID_PREFIX + (username or "").lower()
-                row = conn.execute(
-                    "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
-                    (platform, placeholder),
-                ).fetchone()
-                if row:
-                    conn.execute(
-                        "UPDATE identities SET platform_user_id=? WHERE platform=? AND platform_user_id=?",
-                        (platform_user_id, platform, placeholder),
-                    )
-            if row:
-                uid = int(row["user_id"])
+            uid = self._get_or_create_in(conn, platform, platform_user_id, username, display_name)
+            conn.commit()
+        return uid
+
+    def _remember_uid(self, platform: str, platform_user_id: str, uid: int, username: str,
+                      display_name: str, now: float) -> None:
+        if len(self._uid_cache) >= self._uid_cache_max:
+            self._uid_cache.clear()
+        self._uid_cache[(platform, platform_user_id)] = [uid, username, display_name, now]
+
+    def forget_identities(self) -> None:
+        """Identities moved between users (link / merge): look everyone up again."""
+        self._uid_cache.clear()
+
+    def _get_or_create_in(
+        self,
+        conn: sqlite3.Connection,
+        platform: str,
+        platform_user_id: str,
+        username: str,
+        display_name: str,
+    ) -> int:
+        """User id for an identity, created when new. No commit (the caller's transaction)."""
+        now = time.time()
+        key = (platform, platform_user_id)
+        hit = self._uid_cache.get(key)
+        if hit is not None:
+            uid, old_name, old_display, written = hit
+            # names changed, or last_seen is more than a minute old: refresh the row
+            if old_name != username or old_display != (display_name or username) or now - written > 60:
                 conn.execute(
                     "UPDATE identities SET username=?, display_name=?, last_seen=? "
                     "WHERE platform=? AND platform_user_id=?",
                     (username, display_name or username, now, platform, platform_user_id),
                 )
-                # Keep primary display name fresh if empty
-                conn.execute(
-                    "UPDATE users SET display_name=CASE WHEN display_name='' "
-                    "THEN ? ELSE display_name END, updated_at=? WHERE id=?",
-                    (display_name or username, now, uid),
-                )
-                conn.commit()
-                return uid
-
-            cur = conn.execute(
-                "INSERT INTO users (display_name, points, created_at, updated_at) VALUES (?,?,?,?)",
-                (display_name or username, 0, now, now),
-            )
-            uid = int(cur.lastrowid)
-            conn.execute(
-                "INSERT INTO identities (user_id, platform, platform_user_id, username, display_name, last_seen) "
-                "VALUES (?,?,?,?,?,?)",
-                (uid, platform, platform_user_id, username, display_name or username, now),
-            )
-            conn.commit()
+                hit[1], hit[2], hit[3] = username, display_name or username, now
             return uid
+        uid = self._get_or_create_uncached(conn, platform, platform_user_id, username, display_name, now)
+        self._remember_uid(platform, platform_user_id, uid, username, display_name or username, now)
+        return uid
+
+    def _get_or_create_uncached(
+        self,
+        conn: sqlite3.Connection,
+        platform: str,
+        platform_user_id: str,
+        username: str,
+        display_name: str,
+        now: float,
+    ) -> int:
+        row = conn.execute(
+            "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
+            (platform, platform_user_id),
+        ).fetchone()
+        if not row and not platform_user_id.startswith(NAME_ID_PREFIX):
+            # Claim an identity an alert created by name (e.g. a Kick sub before
+            # their first chat line) so the points land on this viewer.
+            placeholder = NAME_ID_PREFIX + (username or "").lower()
+            row = conn.execute(
+                "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
+                (platform, placeholder),
+            ).fetchone()
+            if row:
+                conn.execute(
+                    "UPDATE identities SET platform_user_id=? WHERE platform=? AND platform_user_id=?",
+                    (platform_user_id, platform, placeholder),
+                )
+        if row:
+            uid = int(row["user_id"])
+            conn.execute(
+                "UPDATE identities SET username=?, display_name=?, last_seen=? "
+                "WHERE platform=? AND platform_user_id=?",
+                (username, display_name or username, now, platform, platform_user_id),
+            )
+            # Keep primary display name fresh if empty
+            conn.execute(
+                "UPDATE users SET display_name=CASE WHEN display_name='' "
+                "THEN ? ELSE display_name END, updated_at=? WHERE id=?",
+                (display_name or username, now, uid),
+            )
+            return uid
+
+        cur = conn.execute(
+            "INSERT INTO users (display_name, points, created_at, updated_at) VALUES (?,?,?,?)",
+            (display_name or username, 0, now, now),
+        )
+        uid = int(cur.lastrowid)
+        conn.execute(
+            "INSERT INTO identities (user_id, platform, platform_user_id, username, display_name, last_seen) "
+            "VALUES (?,?,?,?,?,?)",
+            (uid, platform, platform_user_id, username, display_name or username, now),
+        )
+        return uid
 
     async def get_or_create_user(
         self, platform: str, platform_user_id: str, username: str, display_name: str = ""
     ) -> int:
+        hit = self._uid_cache.get((platform, platform_user_id))
+        if hit is not None and hit[1] == username:
+            return int(hit[0])   # a repeat chatter: no database trip
         return await self._run(
             self._get_or_create_user_sync, platform, platform_user_id, username, display_name
         )
@@ -305,101 +392,225 @@ class Store:
     # Chat logging + points
     # ------------------------------------------------------------------
 
+    def _log_chat_in(self, conn: sqlite3.Connection, row: tuple, user_id: int) -> None:
+        conn.execute(
+            "INSERT INTO chat_messages "
+            "(user_id, platform, platform_user_id, username, display_name, message, message_id, is_command, timestamp) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (user_id, *row),
+        )
+
     def _log_chat_sync(self, event: ChatEvent, user_id: int) -> None:
         with self._connect() as conn:
-            conn.execute(
-                "INSERT INTO chat_messages "
-                "(user_id, platform, platform_user_id, username, display_name, message, message_id, is_command, timestamp) "
-                "VALUES (?,?,?,?,?,?,?,?,?)",
-                (
-                    user_id,
-                    event.platform.value,
-                    event.user.id,
-                    event.user.username,
-                    event.user.display_name,
-                    event.message,
-                    event.message_id or None,
-                    1 if event.is_command else 0,
-                    event.timestamp,
-                ),
-            )
+            self._log_chat_in(conn, _chat_row(event), user_id)
             conn.commit()
 
-    def _award_points_sync(self, user_id: int, delta: int, reason: str, source: str) -> int:
+    def _award_in(self, conn: sqlite3.Connection, user_id: int, delta: int, reason: str, source: str) -> int:
         now = time.time()
+        row = conn.execute("SELECT points FROM users WHERE id=?", (user_id,)).fetchone()
+        if not row:
+            return 0
+        new_bal = int(row["points"]) + delta
+        if new_bal < 0:
+            new_bal = 0
+            delta = new_bal - int(row["points"])
+        conn.execute(
+            "UPDATE users SET points=?, updated_at=? WHERE id=?",
+            (new_bal, now, user_id),
+        )
+        conn.execute(
+            "INSERT INTO points_ledger (user_id, delta, balance_after, reason, source, created_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (user_id, delta, new_bal, reason, source, now),
+        )
+        return new_bal
+
+    def _award_points_sync(self, user_id: int, delta: int, reason: str, source: str) -> int:
         with self._connect() as conn:
-            row = conn.execute("SELECT points FROM users WHERE id=?", (user_id,)).fetchone()
-            if not row:
-                return 0
-            new_bal = int(row["points"]) + delta
-            if new_bal < 0:
-                new_bal = 0
-                delta = new_bal - int(row["points"])
-            conn.execute(
-                "UPDATE users SET points=?, updated_at=? WHERE id=?",
-                (new_bal, now, user_id),
-            )
-            conn.execute(
-                "INSERT INTO points_ledger (user_id, delta, balance_after, reason, source, created_at) "
-                "VALUES (?,?,?,?,?,?)",
-                (user_id, delta, new_bal, reason, source, now),
-            )
+            bal = self._award_in(conn, user_id, delta, reason, source)
             conn.commit()
-            return new_bal
+            return bal
+
+    # --- chat lines: queued, written in batches by one task -----------------------------
+
+    def start_writer(self) -> None:
+        """Start the chat writer. Until then (tests, tools) process_chat writes straight away."""
+        if self._writer_task and not self._writer_task.done():
+            return
+        self._queue = asyncio.Queue(maxsize=CHAT_QUEUE_MAX)
+        self._writer_task = asyncio.create_task(self._writer_loop(), name="chat-db-writer")
+
+    async def stop_writer(self) -> None:
+        """Write what is still queued, then stop."""
+        task, self._writer_task = self._writer_task, None
+        if task:
+            task.cancel()
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+        await self._drain()
+        self._queue = None
+        conn, self._writer_conn = self._writer_conn, None
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    def submit_chat(self, event: ChatEvent, award: bool = True, flagged: bool = False) -> None:
+        """Queue a chat line for the writer and return at once (the chat read loop never waits
+        for the disk). Without a running writer (tests, tools; Core always starts one) the
+        line is written straight away."""
+        item = self._chat_item(event, award, flagged, None)
+        if self._queue is None:
+            self._write_batch_sync([item])
+            return
+        self._put(item)
 
     async def process_chat(self, event: ChatEvent, award: bool = True, flagged: bool = False) -> dict:
         """Ensure user exists, optionally log message, maybe award chat points
         (``flagged``: a red-flagged chatter, logged even with ``chat_log.only_flagged``;
-        ``award`` False: they earn nothing)."""
-        platform = event.platform.value
-        uid = await self.get_or_create_user(
-            platform,
-            event.user.id,
-            event.user.username,
-            event.user.display_name,
-        )
+        ``award`` False: they earn nothing). Waits until the line is written."""
+        if self._queue is None:
+            item = self._chat_item(event, award, flagged, None)
+            return (await self._run(self._write_batch_sync, [item]))[0]
+        fut = asyncio.get_running_loop().create_future()
+        self._put(self._chat_item(event, award, flagged, fut))
+        return await fut
+
+    def _chat_item(self, event: ChatEvent, award: bool, flagged: bool, fut) -> tuple:
+        # copied now: the event object is shared with the rest of the chat pipeline
+        return (event.platform.value, str(event.user.id), event.user.username or "",
+                event.user.display_name or "", _chat_row(event), bool(award), bool(flagged), fut)
+
+    def _put(self, item: tuple) -> None:
+        try:
+            self._queue.put_nowait(item)
+        except asyncio.QueueFull:
+            self._dropped += 1
+            now = time.time()
+            if now - self._dropped_logged > 60:
+                self._dropped_logged = now
+                log.warning("Chat database is behind: %d chat lines not saved so far", self._dropped)
+            fut = item[-1]
+            if fut is not None and not fut.done():
+                fut.set_result({"user_id": None, "awarded": 0, "balance": None, "logged": False})
+
+    async def _writer_loop(self) -> None:
+        while True:
+            first = await self._queue.get()
+            # gather what else arrives for a moment: one transaction for the lot
+            await asyncio.sleep(CHAT_BATCH_WAIT)
+            batch = [first]
+            while len(batch) < CHAT_BATCH_MAX:
+                try:
+                    batch.append(self._queue.get_nowait())
+                except asyncio.QueueEmpty:
+                    break
+            await self._write(batch)
+
+    async def _drain(self) -> None:
+        if self._queue is None:
+            return
+        while not self._queue.empty():
+            batch = []
+            while len(batch) < CHAT_BATCH_MAX and not self._queue.empty():
+                batch.append(self._queue.get_nowait())
+            await self._write(batch)
+
+    async def _write(self, batch: list) -> None:
+        try:
+            async with self._write_lock:
+                results = await self._run(self._write_batch_sync, batch, True)
+        except Exception as exc:
+            log.exception("Writing %d chat lines failed", len(batch))
+            results = [{"user_id": None, "awarded": 0, "balance": None, "logged": False, "error": str(exc)}] * len(batch)
+        for item, res in zip(batch, results):
+            fut = item[-1]
+            if fut is not None and not fut.done():
+                fut.set_result(res)
+
+    def _write_batch_sync(self, batch: list, keep_conn: bool = False) -> list[dict]:
+        """One transaction for many chat lines: user lookups, chat log, chat points, stream days."""
+        if keep_conn:
+            if self._writer_conn is None:
+                self._writer_conn = self._connect()
+            conn = self._writer_conn
+        else:
+            conn = self._connect()
+        results: list[dict] = []
+        day = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+        try:
+            for platform, pid, username, display, row, award, flagged, _fut in batch:
+                try:
+                    results.append(self._process_one(conn, platform, pid, username, display, row,
+                                                     award, flagged, day))
+                except sqlite3.Error as exc:
+                    # one bad line (a user merged away mid-batch ...) must not lose the others
+                    log.warning("Chat line not saved: %s", exc)
+                    self.forget_identities()
+                    results.append({"user_id": None, "awarded": 0, "balance": None, "logged": False})
+            conn.commit()
+        except Exception:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            raise
+        finally:
+            if not keep_conn:
+                conn.close()
+        return results
+
+    def _process_one(self, conn, platform, pid, username, display, row, award, flagged, day) -> dict:
+        uid = self._get_or_create_in(conn, platform, pid, username, display)
         logged = self.log_chat and (flagged or not self.log_only_flagged)
         if logged:
-            await self._run(self._log_chat_sync, event, uid)
-
+            self._log_chat_in(conn, row, uid)
         awarded = 0
         balance = None
         if award and self.enabled and self.per_message > 0:
             now = time.time()
-            last = self._last_award.get(uid, 0)
-            if now - last >= self.cooldown_sec:
-                balance = await self._run(
-                    self._award_points_sync,
-                    uid,
-                    self.per_message,
-                    "chat message",
-                    "chat",
-                )
+            if now - self._last_award.get(uid, 0) >= self.cooldown_sec:
+                balance = self._award_in(conn, uid, self.per_message, "chat message", "chat")
                 self._last_award[uid] = now
                 awarded = self.per_message
-
-        await self.record_stream_day(uid)
+        if (uid, day) not in self._days_seen:
+            self._ensure_days_table(conn)
+            conn.execute("INSERT OR IGNORE INTO chatter_stream_days (user_id, day) VALUES (?,?)", (uid, day))
+            if len(self._days_seen) > 200_000:
+                self._days_seen.clear()
+            self._days_seen.add((uid, day))
         return {"user_id": uid, "awarded": awarded, "balance": balance, "logged": logged}
+
+    _days_table_ready = False
+
+    def _ensure_days_table(self, conn: sqlite3.Connection) -> None:
+        if self._days_table_ready:
+            return
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS chatter_stream_days (
+                user_id INTEGER NOT NULL,
+                day TEXT NOT NULL,
+                PRIMARY KEY (user_id, day)
+            )
+            """
+        )
+        self._days_table_ready = True
 
     def _record_stream_day_sync(self, user_id: int, day: str) -> None:
         with self._connect() as conn:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS chatter_stream_days (
-                    user_id INTEGER NOT NULL,
-                    day TEXT NOT NULL,
-                    PRIMARY KEY (user_id, day)
-                )
-                """
-            )
+            self._ensure_days_table(conn)
             conn.execute(
                 "INSERT OR IGNORE INTO chatter_stream_days (user_id, day) VALUES (?,?)",
                 (user_id, day),
             )
+            conn.commit()
 
     async def record_stream_day(self, user_id: int, day: str | None = None) -> None:
-        import datetime as _dt
-        stamp = day or _dt.datetime.utcnow().strftime("%Y-%m-%d")
+        stamp = day or _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
         await self._run(self._record_stream_day_sync, user_id, stamp)
 
     def _streak_sync(self, user_id: int) -> int:
@@ -686,14 +897,19 @@ class Store:
         username: str = "",
         display_name: str = "",
     ) -> dict:
-        return await self._run(
-            self._link_identity_sync,
-            target_user_id,
-            platform,
-            platform_user_id,
-            username,
-            display_name,
-        )
+        async with self._write_lock:
+            self.forget_identities()
+            try:
+                return await self._run(
+                    self._link_identity_sync,
+                    target_user_id,
+                    platform,
+                    platform_user_id,
+                    username,
+                    display_name,
+                )
+            finally:
+                self.forget_identities()
 
     def _merge_users_sync(self, keep_id: int, absorb_id: int) -> dict:
         if keep_id == absorb_id:
@@ -724,7 +940,13 @@ class Store:
             return {"ok": True, "user_id": keep_id, "balance": new_bal}
 
     async def merge_users(self, keep_id: int, absorb_id: int) -> dict:
-        return await self._run(self._merge_users_sync, keep_id, absorb_id)
+        # not while a chat batch is being written: it may still name the absorbed user
+        async with self._write_lock:
+            self.forget_identities()
+            try:
+                return await self._run(self._merge_users_sync, keep_id, absorb_id)
+            finally:
+                self.forget_identities()
 
     # ------------------------------------------------------------------
     # Queries for dashboard

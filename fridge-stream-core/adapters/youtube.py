@@ -392,7 +392,7 @@ class YouTubeAdapter(BaseAdapter):
                 paid = None
             currency = ffe.get("currency")
             is_paid = True
-        log.info("[YouTube] %s: %s", user.username, text)
+        log.debug("[YouTube] %s: %s", user.username, text)
         await self._emit(
             ChatEvent(
                 platform=Platform.YOUTUBE,
@@ -720,7 +720,7 @@ class YouTubeAdapter(BaseAdapter):
             badges=badges,
             profile_image_url=best_photo(renderer.get("authorPhoto") or {}) or None,
         )
-        log.info("[YouTube] %s: %s", user.username, text)
+        log.debug("[YouTube] %s: %s", user.username, text)
         await self._emit(
             ChatEvent(
                 platform=Platform.YOUTUBE,
