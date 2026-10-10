@@ -87,13 +87,39 @@ class ConflictTests(unittest.TestCase):
         self.assertIsNotNone(r.find("ping"))
 
 
+# Minecraft-style game commands with allow-lists, written to a temp file so the test never
+# depends on config/commands.json (that's also the streamer's own, locally edited file).
+ALLOW_LIST_COMMANDS = {
+    "give": {"aliases": ["item"], "permission": "public", "args": ["item", "qty?"],
+             "allowedValues": ["diamond", "iron_ingot", "bread", "torch"],
+             "defaultQty": 1, "maxQty": 64, "template": "give {player} {arg1} {qty}",
+             "group": "minecraft", "handler": "game"},
+    "spawn": {"aliases": ["summon"], "permission": "public", "args": ["entity", "qty?"],
+              "allowedValues": ["creeper", "zombie", "skeleton", "chicken"],
+              "defaultQty": 1, "maxQty": 8, "template": "execute at {player} run summon {arg1} ~ ~1 ~",
+              "qtyTemplate": "execute at {player} run summon {arg1} ~ ~1 ~",
+              "group": "minecraft", "handler": "game"},
+    "effect": {"aliases": ["potion"], "permission": "public", "args": ["effect", "seconds?"],
+               "allowedValues": ["speed", "regeneration", "night_vision"],
+               "defaultSeconds": 30, "maxSeconds": 120,
+               "template": "effect give {player} {arg1} {seconds} 1 true",
+               "group": "minecraft", "handler": "game"},
+}
+
+
 class GameCommandAllowListTests(unittest.TestCase):
-    """The shipped Minecraft commands only pass listed ids into the game command."""
+    """Game commands with an allow-list only pass listed ids into the game command."""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.commands_path = Path(tmp.name) / "commands.json"
+        self.commands_path.write_text(json.dumps(ALLOW_LIST_COMMANDS), encoding="utf-8")
 
     def _run(self, text):
         from core.models import ChatEvent, ChatUser, Platform
 
-        r = CommandRouter(ROOT / "config" / "commands.json",
+        r = CommandRouter(self.commands_path,
                           PermissionManager({"permissions": {"admin": [], "mod": []}}),
                           default_player="Steve")
         r.set_enabled_groups({"core", "minecraft"})
