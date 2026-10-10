@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Dict, List, Set
+from typing import Any, Awaitable, Callable, List
 
 from .models import ChatEvent, ChatReply, ExecuteRequest, MetricsSnapshot
 

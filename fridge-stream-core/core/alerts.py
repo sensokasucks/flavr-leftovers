@@ -11,7 +11,6 @@ alert-box CSS (Nerd Or Die, OWN3D, SE packs, OBS Custom CSS) can drop in.
 from __future__ import annotations
 
 import json
-import re
 import time
 import uuid
 from pathlib import Path

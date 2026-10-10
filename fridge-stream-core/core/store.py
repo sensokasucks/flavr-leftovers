@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import datetime as _dt
 import io
-import json
 import logging
 import sqlite3
 import time
@@ -400,11 +399,6 @@ class Store:
             (user_id, *row),
         )
 
-    def _log_chat_sync(self, event: ChatEvent, user_id: int) -> None:
-        with self._connect() as conn:
-            self._log_chat_in(conn, _chat_row(event), user_id)
-            conn.commit()
-
     def _award_in(self, conn: sqlite3.Connection, user_id: int, delta: int, reason: str, source: str) -> int:
         now = time.time()
         row = conn.execute("SELECT points FROM users WHERE id=?", (user_id,)).fetchone()
@@ -599,19 +593,6 @@ class Store:
             """
         )
         self._days_table_ready = True
-
-    def _record_stream_day_sync(self, user_id: int, day: str) -> None:
-        with self._connect() as conn:
-            self._ensure_days_table(conn)
-            conn.execute(
-                "INSERT OR IGNORE INTO chatter_stream_days (user_id, day) VALUES (?,?)",
-                (user_id, day),
-            )
-            conn.commit()
-
-    async def record_stream_day(self, user_id: int, day: str | None = None) -> None:
-        stamp = day or _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
-        await self._run(self._record_stream_day_sync, user_id, stamp)
 
     def _streak_sync(self, user_id: int) -> int:
         import datetime as _dt
