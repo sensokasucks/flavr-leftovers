@@ -39,7 +39,7 @@
     if ($("token-change")) $("token-change").hidden = true;
     if (!tokenNag) {
       tokenNag = 1;
-      setStatus("Paste the admin token: it's printed when Stream Core starts, and saved in data/admin_token.txt (or set points.admin_token in config.yaml).", false);
+      setStatus("Paste the admin token, or open the dashboard with the \"Open dashboard\" shortcut in Stream Core's data folder (it signs you in). The token is points.admin_token in config.yaml, or data/admin_token.txt.", false);
       $("token").focus();
     }
   }
@@ -162,6 +162,17 @@
 
   // Token
   // "change-me" is never accepted any more — paste the real token.
+  // A sign-in link (…/admin/#token=…, made by Core at start) stores the token and drops it
+  // from the address bar, so it doesn't stay on screen or in history.
+  (function tokenFromLink() {
+    const m = /(?:^#|&)token=([^&]+)/.exec(location.hash || "");
+    if (!m) return;
+    try {
+      localStorage.setItem(tokenKey, decodeURIComponent(m[1]).trim());
+    } catch (e) { /* storage blocked: the box below still works */ }
+    const rest = (location.hash || "").replace(/(^#|&)token=[^&]+/, "$1").replace(/^#&/, "#").replace(/^#$/, "");
+    history.replaceState(null, "", location.pathname + location.search + rest);
+  })();
   $("token").value = localStorage.getItem(tokenKey) || "";
   $("save-token").onclick = () => {
     localStorage.setItem(tokenKey, $("token").value.trim());
@@ -589,7 +600,8 @@
       const chips = [];
       for (const [name, p] of Object.entries(s.platforms || {})) {
         if (!p.configured_enabled && !p.running) continue;
-        chips.push(pill(!!p.running, escapeHtml(name) + (p.running ? "" : " stopped")));
+        const word = p.running ? "" : p.state === "retrying" ? " retrying" : " stopped";
+        chips.push(pill(!!p.running, escapeHtml(name) + word));
       }
       for (const [name, g] of Object.entries(s.games || {})) {
         if (!g.configured_enabled && !g.running) continue;
@@ -716,12 +728,14 @@
         const run = p.running;
         const want = p.configured_enabled;
         let note = "";
-        if (want && !run) note = " (enabled but not connected — check the channel, then Reconnect)";
+        if (want && !run && !p.last_error) note = " (enabled but not connected — check the channel, then Reconnect)";
         if (!want && !run) note = " (disabled)";
-        html += `<li><strong>${name}</strong> ${run ? pill(true, "running") : pill(false, "stopped")}
+        const state = run ? pill(true, "running") : p.state === "retrying" ? pill(false, "retrying") : pill(false, "stopped");
+        html += `<li><strong>${name}</strong> ${state}
           ${want ? pill(true, "config on") : pill(false, "config off")}
-          ${p.detail ? `<span class="muted">${p.detail}</span>` : ""}
+          ${p.detail ? `<span class="muted">${escapeHtml(p.detail)}</span>` : ""}
           <span class="muted">${note}</span>
+          ${want && p.last_error ? `<span class="muted" style="color:var(--danger)">${escapeHtml(p.last_error)}</span>` : ""}
           ${want ? `<button class="platform-reconnect" data-platform="${name}">Reconnect</button>` : ""}</li>`;
       }
       html += `</ul></div>`;
@@ -2477,7 +2491,8 @@
         sub_points: num($("cfg-pts-sub").value, 500),
         follow_points: num($("cfg-pts-follow").value, 250),
         gift_points: num($("cfg-pts-gift").value, 1000),
-        admin_token: $("cfg-pts-token").value.trim() || "change-me",
+        // empty = keep the token in use (Core never blanks or resets it from this form)
+        admin_token: $("cfg-pts-token").value.trim(),
       },
       chat_log: {
         enabled: $("cfg-chatlog-enabled") ? $("cfg-chatlog-enabled").checked : false,
@@ -2529,7 +2544,11 @@
     // nothing is written until Save, so: do it, and offer Undo instead of asking first
     const before = collectConfigFromForm();
     const wasDirty = $("cfg-savebar") && $("cfg-savebar").classList.contains("dirty");
+    // the admin token is not a setting to reset: resetting it would lock every page out
+    const keepToken = $("cfg-pts-token").value;
     fillConfigForm(lastDefaults, lastDefaults);
+    $("cfg-pts-token").value = keepToken;
+    syncTokenHint();
     setCfgDirty(true);
     setCfgStatus("Form reset to defaults — click Save & apply to write disk");
     undoToast("Form reset to built-in defaults (not saved).", () => {
@@ -2570,10 +2589,20 @@
     if (!el || !$("cfg-pts-token")) return;
     const v = $("cfg-pts-token").value.trim();
     el.textContent = (!v || v === "change-me")
-      ? "Not set: Stream Core uses the random token it printed at startup (data/admin_token.txt). Type your own here to replace it; saving switches this page to it."
-      : "Your own token. Saving applies it at once and switches this page to it.";
+      ? "Not set: Stream Core uses the random token it made for you (in data/admin_token.txt). Type your own here to replace it; saving switches this page to it. Leaving it empty keeps the current one."
+      : "Your own token. Saving applies it at once and switches this page to it. Clearing the box keeps it (the token can't be removed from here).";
   }
   if ($("cfg-pts-token")) $("cfg-pts-token").addEventListener("input", syncTokenHint);
+  // hidden by default: streamers often share the dashboard on screen
+  if ($("cfg-pts-token-show")) {
+    $("cfg-pts-token-show").onclick = () => {
+      const f = $("cfg-pts-token");
+      const show = f.type === "password";
+      f.type = show ? "text" : "password";
+      $("cfg-pts-token-show").textContent = show ? "Hide" : "Show";
+      $("cfg-pts-token-show").setAttribute("aria-pressed", show ? "true" : "false");
+    };
+  }
 
   // Save bar: flag unsaved edits, Ctrl/Cmd+S saves while Config is open.
   function setCfgDirty(dirty) {

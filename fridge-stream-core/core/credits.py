@@ -344,11 +344,12 @@ class CreditsEngine:
 
     def roster_csv(self) -> str:
         """Unique chatters as CSV (same columns as standalone Chat Credits)."""
-        import csv
         import io
 
+        from core.csv_safe import SafeWriter
+
         buf = io.StringIO()
-        writer = csv.writer(buf)
+        writer = SafeWriter(buf)
         writer.writerow(["platform", "username", "display_name", "messages", "first_seen", "mod"])
         for c in self.list_chatters(self.theme.get("sort") or "first_seen"):
             writer.writerow([

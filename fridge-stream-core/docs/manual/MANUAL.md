@@ -91,7 +91,9 @@ Everything the wizard sets is also on the dashboard, so skipping it is fine.
 
 Double-click **start.bat** (or **run.bat**, the same thing) whenever you stream. A black window opens and stays open; that window *is* Stream Core, so leave it alone while you stream. Closing it, or pressing **Ctrl+C** in it, stops Core.
 
-The first lines it prints tell you what it connected to and, if you never set a token, the **admin token** it generated (also saved in `data\admin_token.txt`).
+The first lines it prints tell you what it connected to and the address of the admin dashboard. The **admin token** (the dashboard's password) is not printed in full, so it can't leak when you share your screen: double-click **`data\Open dashboard.url`** to open the dashboard already signed in. The token itself is `points.admin_token` in `config.yaml`, or, if you never set one, the one Core made for you in `data\admin_token.txt`. To have the dashboard open by itself every time Core starts, set `core.open_dashboard: true` in `config.yaml`.
+
+If a chat platform can't connect when Core starts (you're not live on YouTube yet, the network is down, Kick blocks the lookup), Core keeps trying by itself; the **Status** page shows **retrying** and why.
 
 Start Core **before** Stream Rooms and before you open the overlays in OBS; they all connect to it and reconnect by themselves if it restarts.
 
@@ -158,7 +160,7 @@ If you edit `config\config.yaml` by hand while Core runs, it notices and reconne
 
 ## 6. Admins, mods and permissions
 
-**Settings → Points, permissions + chat → Permissions** lists your **admins** and **mods**. Plain names match Kick and Twitch logins (case doesn't matter). YouTube names are display names anyone can copy, so a YouTube admin or mod needs the channel id, written as `youtube:UC…`; Core prints the id in its window the first time a YouTube chatter with that name talks.
+**Settings → Points, permissions + chat → Permissions** lists your **admins** and **mods**. Plain names match Kick and Twitch logins (case doesn't matter). If you have **both** Kick and Twitch on, a plain name only counts on the platform where it is your own channel name, because anyone could register that name on the other platform; write everyone else as `kick:name` or `twitch:name` (the console lists the names that need it when Core starts). YouTube names are display names anyone can copy, so a YouTube admin or mod needs the channel id, written as `youtube:UC…`; Core prints the id in its window the first time a YouTube chatter with that name talks.
 
 What the roles mean: every command, reaction and game has a permission (**public**, **mod** or **admin**), and some can also ask for **sub** or **VIP**. Mods and admins pass every check. Admins also pay nothing for reactions unless you turn that off.
 
@@ -416,6 +418,7 @@ Game toggles need a Core restart; everything else applies live.
 | `config\cast\*.json` | Movie-style credits layouts. |
 | `data\stream_core.db` | Points, users, linked accounts, the chat log, stream attendance. Back this folder up if you care about points. |
 | `data\admin_token.txt` | The generated admin token, when you didn't set one. |
+| `data\Open dashboard.url` | Shortcut that opens the dashboard signed in (rewritten at each start). |
 | `data\twitch_token.json` | Your Twitch sign-in (see section 5). Delete it, or press **Disconnect**, to forget it. |
 | `data\kick_avatars.json`, `twitch_avatars.json`, `chat_games.json`, `reactions_optout.json` | Caches and small state files. |
 | `overlay\assets\alerts\`, `overlay\assets\chat\` | Your alert pictures, videos and sounds; the chat overlay's background, badge pictures and sounds. |
@@ -425,7 +428,7 @@ Game toggles need a Core restart; everything else applies live.
 ## 22. Safety
 
 - Core listens on **127.0.0.1** only and refuses requests that come from other web sites or that name another host, so a page you visit can't talk to it. Only turn that off (**Settings → Advanced**) if you serve it on your LAN on purpose.
-- The **admin token** is the dashboard's password. Change it under **Settings → Points, permissions + chat → Admin token**; the dashboard switches to the new one as you save.
+- The **admin token** is the dashboard's password. Change it under **Settings → Points, permissions + chat → Admin token** (hidden; **Show** reveals it); the dashboard switches to the new one as you save. Leaving the box empty, or **Reset form to defaults**, keeps the current token.
 - Nothing posts into your chat: Core only reads (the Twitch sign-in asks for permission to post so that a later version can answer commands in chat, but today's Core never does). Alerts, replies and boards are overlays on your own stream.
 - The Twitch sign-in never leaves your PC except to talk to Twitch, and **Disconnect** cancels it at Twitch too.
 - Game bridges (the Minecraft mods, the Factorio bridge) only accept calls from Core.
@@ -434,7 +437,7 @@ Game toggles need a Core restart; everything else applies live.
 
 | Problem | Try this |
 |---|---|
-| The dashboard says the token is wrong | Paste the token from `data\admin_token.txt` (or `points.admin_token` in `config.yaml`) and click **Save**. |
+| The dashboard says the token is wrong | Double-click `data\Open dashboard.url`, or paste the token from `data\admin_token.txt` (or `points.admin_token` in `config.yaml`) and click **Save**. |
 | Nothing arrives from a platform | **Status**: is it connected? Settings → Core + chat platforms: is it **Enabled**, is the channel right? YouTube: the video id is new every stream. |
 | Kick can't find the chat room | Open `https://kick.com/api/v2/channels/<your slug>` in a browser, find `"chatroom": {"id": …}` and put that number in `kick.chatroom_id` (Settings → Advanced). |
 | A chat command does nothing | Settings → Command groups: is its group on? Settings → Chat commands: its permission and whether another command owns the name. Try it in the **Command tester**. |

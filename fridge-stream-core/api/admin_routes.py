@@ -27,7 +27,7 @@ from core.config import (
 )
 from core import plugin_manifest
 from core.command_groups import catalog_status
-from core.local_guard import resolve_admin_token, token_matches
+from core.local_guard import is_placeholder_token, resolve_admin_token, token_matches
 from core.models import ChatEvent, ChatUser, Platform
 from core.alerts import (
     SKINS,
@@ -238,6 +238,23 @@ def _core_base(cfg: dict) -> str:
     return f"http://{core.get('host', '127.0.0.1')}:{int(core.get('port', 3850))}"
 
 
+def keep_admin_token(incoming: dict, live: dict) -> None:
+    """Swap an empty / placeholder points.admin_token in a config save for the live one."""
+    current = ((live or {}).get("points") or {}).get("admin_token")
+    pts = incoming.get("points")
+    if not isinstance(pts, dict):
+        if isinstance((live or {}).get("points"), dict):
+            incoming["points"] = copy.deepcopy(live["points"])
+        return
+    if is_placeholder_token(pts.get("admin_token")):
+        pts = dict(pts)
+        if current is None:
+            pts.pop("admin_token", None)
+        else:
+            pts["admin_token"] = current
+        incoming["points"] = pts
+
+
 def create_admin_router(core_state) -> APIRouter:
     router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -264,7 +281,7 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(
                 401,
                 "Invalid or missing X-Admin-Token. Use points.admin_token from config.yaml, "
-                "or the generated token in data/admin_token.txt (printed at startup).",
+                "or the generated token in data/admin_token.txt (data/Open dashboard.url signs you in).",
             )
 
     # ------------------------------------------------------------------
@@ -302,11 +319,20 @@ def create_admin_router(core_state) -> APIRouter:
 
         # Config intent vs live
         platforms = {}
+        core = getattr(core_state, "core", None)
         for key in ("kick", "twitch", "youtube"):
             section = cfg.get(key) or {}
+            info = core.platform_info(key) if core is not None and hasattr(core, "platform_info") else {}
+            running = key in adapters_live
+            state = info.get("state") or ("connected" if running else "stopped")
             platforms[key] = {
                 "configured_enabled": bool(section.get("enabled")),
-                "running": key in adapters_live,
+                # "running" = the adapter is up and not stuck retrying
+                "running": running and state != "retrying",
+                "state": state if running else "stopped",
+                "connected": bool(info.get("connected")) if running else False,
+                "last_error": str(info.get("last_error") or ""),
+                "last_message_at": info.get("last_message_at"),
                 "detail": section.get("channel_slug")
                 or section.get("channel")
                 or section.get("video_id")
@@ -518,6 +544,10 @@ def create_admin_router(core_state) -> APIRouter:
         if "command_groups" not in incoming:
             if isinstance(live.get("command_groups"), dict):
                 incoming["command_groups"] = live["command_groups"]
+        # The admin token is never blanked or reset from the form: an empty or placeholder
+        # value ("Reset form to defaults", a cleared box) keeps the token in use, or every
+        # dashboard page would be locked out on the next call.
+        keep_admin_token(incoming, live)
         # Reactions / chat games / picture settings are owned by their own pages; a stale form copy must not undo them
         for owned in ("reactions", "chat_games", "avatars", "red_flags"):
             if isinstance(live.get(owned), dict):

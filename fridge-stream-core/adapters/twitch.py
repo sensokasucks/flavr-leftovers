@@ -8,6 +8,7 @@ Optional Helix viewer polling can be added later with a client id + token.
 from __future__ import annotations
 
 import asyncio
+import codecs
 import logging
 import random
 import re
@@ -25,6 +26,11 @@ log = logging.getLogger("adapters.twitch")
 
 HOST = "irc.chat.twitch.tv"
 PORT = 6667
+# A dead link (Wi-Fi blip, router reset, PC asleep) sends no FIN, so a read with no timeout
+# waits forever. After IDLE_PING seconds of silence we PING Twitch ourselves; no answer
+# within PONG_TIMEOUT means the link is dead and we reconnect.
+IDLE_PING = 60.0
+PONG_TIMEOUT = 20.0
 
 PRIVMSG_RE = re.compile(
     r"^(?:@(?P<tags>[^ ]+) )?:(?P<nick>[^!]+)![^ ]+ PRIVMSG #(?P<chan>[^ ]+) :(?P<msg>.*)$"
@@ -33,6 +39,25 @@ ROOMSTATE_RE = re.compile(r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv ROOMSTATE #")
 USERNOTICE_RE = re.compile(
     r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv USERNOTICE #(?P<chan>[^ ]+)(?: :(?P<msg>.*))?$"
 )
+
+
+class IrcLineReader:
+    """Bytes off the socket → complete IRC lines.
+
+    Decodes with an incremental UTF-8 decoder, so an emoji (or any multi-byte character)
+    split across two reads is kept whole instead of being dropped.
+    """
+
+    def __init__(self) -> None:
+        self._decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        self._buf = ""
+
+    def feed(self, data: bytes) -> list[str]:
+        self._buf += self._decoder.decode(data)
+        if "\r\n" not in self._buf:
+            return []
+        *lines, self._buf = self._buf.split("\r\n")
+        return lines
 
 
 def _parse_tags(raw: str) -> dict[str, str]:
@@ -182,6 +207,7 @@ class TwitchAdapter(BaseAdapter):
     async def start(self) -> None:
         if not self.channel or self.channel.startswith("your_"):
             log.warning("Twitch channel not set — adapter disabled")
+            self._set_stopped("No Twitch channel set. Type your channel name under Settings → Core + chat platforms.")
             return
         self._running = True
         self._stop.clear()
@@ -190,6 +216,7 @@ class TwitchAdapter(BaseAdapter):
 
     async def stop(self) -> None:
         self._running = False
+        self._set_stopped()
         self._stop.set()
         self.emotes3p.stop()
         self.avatars.stop()
@@ -212,7 +239,7 @@ class TwitchAdapter(BaseAdapter):
         nick = f"justinfan{random.randint(10000, 99999)}"
         while self._running:
             try:
-                reader, writer = await asyncio.open_connection(HOST, PORT)
+                reader, writer = await asyncio.wait_for(asyncio.open_connection(HOST, PORT), timeout=20.0)
                 self._writer = writer
                 writer.write(
                     (
@@ -223,20 +250,26 @@ class TwitchAdapter(BaseAdapter):
                 )
                 await writer.drain()
                 log.info("Twitch IRC connected as %s on #%s", nick, self.channel)
+                self._set_connected()
                 backoff = 3.0
-                buf = ""
-                while self._running:
-                    data = await reader.read(4096)
-                    if not data:
-                        break
-                    buf += data.decode("utf-8", "ignore")
-                    while "\r\n" in buf:
-                        line, buf = buf.split("\r\n", 1)
-                        await self._on_line(writer, line)
+                await self._read_loop(reader, writer)
+                if self._running:
+                    raise ConnectionError("Twitch closed the chat connection")
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                log.warning("Twitch IRC error: %s — retry in %.1fs", e, backoff)
+                reason = str(e) or type(e).__name__
+                if isinstance(e, (asyncio.TimeoutError, OSError)) and not str(e):
+                    reason = "can't reach Twitch chat (network down?)"
+                self._set_retrying(f"Twitch chat disconnected: {reason}. Retrying in {backoff:.0f} s.")
+                log.warning("Twitch IRC error: %s — retry in %.1fs", reason, backoff)
+            finally:
+                if self._writer is not None:
+                    try:
+                        self._writer.close()
+                    except Exception:
+                        pass
+                    self._writer = None
             if not self._running:
                 break
             try:
@@ -246,12 +279,34 @@ class TwitchAdapter(BaseAdapter):
                 pass
             backoff = min(backoff * 1.5, 30.0)
 
+    async def _read_loop(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
+        """Read lines until the socket closes; raise when the link goes silent."""
+        lines = IrcLineReader()
+        pinged = False
+        while self._running:
+            try:
+                data = await asyncio.wait_for(reader.read(4096), timeout=PONG_TIMEOUT if pinged else IDLE_PING)
+            except asyncio.TimeoutError:
+                if pinged:
+                    raise ConnectionError("no answer from Twitch for a while (connection went silent)")
+                writer.write(b"PING :keepalive\r\n")
+                await writer.drain()
+                pinged = True
+                continue
+            if not data:
+                return
+            pinged = False  # anything at all means the link is alive
+            for line in lines.feed(data):
+                await self._on_line(writer, line)
+
     async def _on_line(self, writer: asyncio.StreamWriter, line: str) -> None:
         if not line:
             return
         if line.startswith("PING"):
             writer.write(b"PONG :tmi.twitch.tv\r\n")
             await writer.drain()
+            return
+        if " PONG " in line[:40] or line.startswith("PONG"):
             return
         rs = ROOMSTATE_RE.match(line)
         if rs:

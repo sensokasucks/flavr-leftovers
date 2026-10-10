@@ -11,7 +11,7 @@ Home: `core/store.py`. DB: `data/stream_core.db`.
 - [ ] Admin token (`points.admin_token` / `X-Admin-Token`) still gates `/admin`.
 - [ ] Admin → Users & Points: search, adjust points, link cross-platform identities, export CSV.
 - [ ] Chat History tab is separate from the live overlay. `chat_log.enabled` default **false**.
-- [ ] CSV export still works for users and for chat history.
+- [ ] CSV export still works for users and for chat history. Every CSV export writes through `core/csv_safe.py` `SafeWriter` (cells starting with `= + - @` get a leading `'`). Tests: `tests/test_csv_safe.py`.
 - [ ] Market trades and dividends use this same points ledger (`source=market` / `source=dividend`). Do not add a second cash book.
 - [ ] OpenTTD `!invest` debits this ledger. Do not invent a parallel points file.
 - [ ] Red flags (`core/red_flags.py`, list in table `red_flagged` in this same DB): a flagged chatter's chat is never broadcast, never in `recent_chat`, gets no reactions / commands / games / points / credits / alerts, but **is** still logged. Flagging sends `chat_user_hidden` once. `red_flags` is owned by its card (admin config save keeps it). `enabled: false` hides nobody but keeps the list. Mods/streamer skipped by default. **Check past chat** (`POST /red-flags/check-past`) only lists who would be flagged; nobody is flagged until the streamer confirms (`POST /red-flags/apply-past`, source `past`). It skips people already flagged and, with `skip_mods`, Core's own mods/admins, the streamer's channel and anyone seen with a mod badge since start (the log keeps no badges).

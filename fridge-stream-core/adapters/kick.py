@@ -148,6 +148,23 @@ def kick_event_alert(event_name: str, data: dict[str, Any]) -> Optional[dict[str
     return None
 
 
+# Chatroom lookup failed (Kick down, Cloudflare 403, network): try again after this many
+# seconds, doubling up to LOOKUP_RETRY_MAX
+LOOKUP_RETRY_FIRST = 15.0
+LOOKUP_RETRY_MAX = 120.0
+
+
+def _opt_int(raw: Any, name: str) -> Optional[int]:
+    """A numeric id from config, or None. A typo is logged instead of stopping Core."""
+    if raw in (None, "", 0, "0"):
+        return None
+    try:
+        return int(str(raw).strip())
+    except (TypeError, ValueError):
+        log.warning("%s should be a number, got %r: ignoring it", name, raw)
+        return None
+
+
 class KickAdapter(BaseAdapter):
     platform = Platform.KICK
 
@@ -156,12 +173,11 @@ class KickAdapter(BaseAdapter):
         kick_cfg = config.get("kick", {})
         self.slug: str = (kick_cfg.get("channel_slug") or "").strip().lstrip("@")
         # Optional manual override if Kick's REST API keeps returning 403
-        raw_id = kick_cfg.get("chatroom_id")
-        self.chatroom_id: Optional[int] = int(raw_id) if raw_id not in (None, "", 0, "0") else None
+        self.chatroom_id: Optional[int] = _opt_int(kick_cfg.get("chatroom_id"), "kick.chatroom_id")
         # The channel's own id (not the chatroom's): Kicks arrive on its Pusher channel. Found by
         # the viewer poll, or set kick.channel_id by hand.
-        raw_ch = kick_cfg.get("channel_id")
-        self.channel_id: Optional[int] = int(raw_ch) if raw_ch not in (None, "", 0, "0") else None
+        self.channel_id: Optional[int] = _opt_int(kick_cfg.get("channel_id"), "kick.channel_id")
+        self._lookup_error = ""
         self._ws = None
         self._channel_subscribed = False
         self._logged_events: set[str] = set()
@@ -177,6 +193,7 @@ class KickAdapter(BaseAdapter):
     async def start(self) -> None:
         if not self.slug or self.slug.startswith("YOUR_"):
             log.warning("Kick channel_slug not configured – adapter disabled")
+            self._set_stopped("No Kick channel set. Type your channel name under Settings → Core + chat platforms.")
             return
 
         if not self.chatroom_id:
@@ -187,26 +204,56 @@ class KickAdapter(BaseAdapter):
         else:
             log.info("Using configured chatroom_id=%s (skipping API lookup)", self.chatroom_id)
 
-        if not self.chatroom_id:
-            log.error(
-                "Could not resolve Kick chatroom id for '%s'. "
-                "Kick/Cloudflare may be blocking API requests (403). "
-                "Set kick.chatroom_id manually in config.yaml — "
-                "open https://kick.com/api/v2/channels/%s in a browser and copy chatroom.id, "
-                "or re-run wizard.py after opening that URL once in a normal browser.",
-                self.slug,
-                self.slug,
-            )
-            return
-
         self._running = True
         self._stop_event.clear()
-        self._ws_task = asyncio.create_task(self._ws_loop(), name="kick-ws")
+        if self.chatroom_id:
+            self._ws_task = asyncio.create_task(self._ws_loop(), name="kick-ws")
+            log.info("Kick adapter started for channel '%s' (chatroom %s)", self.slug, self.chatroom_id)
+        else:
+            # Kick down, Cloudflare 403 or no network at start: keep trying in the background
+            log.error(
+                "Could not resolve Kick chatroom id for '%s' (%s). Retrying in the background. "
+                "If it keeps failing, set kick.chatroom_id by hand: "
+                "open https://kick.com/api/v2/channels/%s in a browser and copy chatroom.id.",
+                self.slug,
+                self._lookup_error or "lookup failed",
+                self.slug,
+            )
+            self._set_retrying(self._lookup_message())
+            self._ws_task = asyncio.create_task(self._lookup_then_connect(), name="kick-lookup")
         self._viewer_task = asyncio.create_task(self._viewer_loop(), name="kick-viewers")
-        log.info("Kick adapter started for channel '%s' (chatroom %s)", self.slug, self.chatroom_id)
+
+    def _lookup_message(self) -> str:
+        why = self._lookup_error or "the lookup failed"
+        return (
+            f"Can't find the Kick chat room for '{self.slug}' ({why}). "
+            "Retrying by itself; or set the chatroom id under Settings → Advanced."
+        )
+
+    async def _lookup_then_connect(self) -> None:
+        delay = LOOKUP_RETRY_FIRST
+        while self._running and not self.chatroom_id:
+            try:
+                await asyncio.wait_for(self._stop_event.wait(), timeout=delay)
+                return
+            except asyncio.TimeoutError:
+                pass
+            delay = min(delay * 2, LOOKUP_RETRY_MAX)
+            if self.chatroom_id:  # the viewer poll found it meanwhile
+                break
+            cid = await self._resolve_chatroom_id(self.slug)
+            if cid:
+                self.chatroom_id = cid
+                self._persist_chatroom_id(cid)
+                log.info("Kick chatroom found on retry: %s", cid)
+                break
+            self._set_retrying(self._lookup_message())
+        if self._running and self.chatroom_id:
+            await self._ws_loop()
 
     async def stop(self) -> None:
         self._running = False
+        self._set_stopped()
         self._stop_event.set()
         for task in (self._ws_task, self._viewer_task):
             if task and not task.done():
@@ -291,6 +338,8 @@ class KickAdapter(BaseAdapter):
         ]
 
         saw_403 = False
+        self._lookup_error = ""
+        errors: list[str] = []
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
             for headers in header_variants:
                 for url in urls:
@@ -302,9 +351,11 @@ class KickAdapter(BaseAdapter):
                             continue
                         if r.status_code == 404:
                             log.error("Kick channel '%s' not found (404)", slug)
+                            self._lookup_error = "Kick says there is no channel with that name"
                             return None
                         if r.status_code != 200:
                             log.debug("Kick %s → HTTP %s", url, r.status_code)
+                            errors.append(f"Kick answered {r.status_code}")
                             continue
                         try:
                             data = r.json()
@@ -316,7 +367,12 @@ class KickAdapter(BaseAdapter):
                             return cid
                     except Exception as e:
                         log.debug("Lookup failed for %s: %s", url, e)
+                        errors.append("can't reach kick.com")
 
+        if saw_403:
+            self._lookup_error = "Kick blocked the lookup (403)"
+        elif errors:
+            self._lookup_error = errors[-1]
         if saw_403:
             log.warning(
                 "Kick/Cloudflare blocked chatroom lookup for '%s' (403). "
@@ -370,6 +426,12 @@ class KickAdapter(BaseAdapter):
                 if r.status_code != 200:
                     return
                 data = r.json()
+                if not self.chatroom_id:
+                    cid = self._extract_chatroom_id(data)
+                    if cid:
+                        self.chatroom_id = cid
+                        self._persist_chatroom_id(cid)
+                        log.info("Kick chatroom id %s found by the viewer poll", cid)
                 if not self.channel_id and data.get("id"):
                     try:
                         self.channel_id = int(data["id"])
@@ -405,6 +467,7 @@ class KickAdapter(BaseAdapter):
                     max_size=2**22,
                 ) as ws:
                     log.info("Kick Pusher connected")
+                    self._set_connected()
                     backoff = 3.0
                     self._ws = ws
                     self._channel_subscribed = False
@@ -415,10 +478,12 @@ class KickAdapter(BaseAdapter):
                         await self._handle_raw(raw)
             except ConnectionClosed as e:
                 log.warning("Kick WS closed: %s – reconnecting in %.1fs", e, backoff)
+                self._set_retrying(f"Kick chat disconnected; reconnecting in {backoff:.0f} s.")
             except asyncio.CancelledError:
                 raise
             except Exception as e:
                 log.error("Kick WS error: %s – reconnecting in %.1fs", e, backoff)
+                self._set_retrying(f"Kick chat error ({e}); reconnecting in {backoff:.0f} s.")
 
             if not self._running:
                 break

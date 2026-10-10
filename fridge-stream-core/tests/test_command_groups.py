@@ -87,5 +87,37 @@ class ConflictTests(unittest.TestCase):
         self.assertIsNotNone(r.find("ping"))
 
 
+class GameCommandAllowListTests(unittest.TestCase):
+    """The shipped Minecraft commands only pass listed ids into the game command."""
+
+    def _run(self, text):
+        from core.models import ChatEvent, ChatUser, Platform
+
+        r = CommandRouter(ROOT / "config" / "commands.json",
+                          PermissionManager({"permissions": {"admin": [], "mod": []}}),
+                          default_player="Steve")
+        r.set_enabled_groups({"core", "minecraft"})
+        ev = ChatEvent(platform=Platform.KICK, user=ChatUser(platform=Platform.KICK, id="1", username="viewer"),
+                       message=text)
+        self.assertTrue(r.parse_message(ev))
+        return r.try_execute(ev)
+
+    def test_injection_and_dangerous_values_refused(self):
+        for text in ("!give netherite_sword[enchantments={levels:{sharpness:255}}]",
+                     "!give command_block", "!give tnt 64", "!spawn wither",
+                     "!spawn ender_dragon", "!effect instant_damage", "!summon tnt"):
+            req, reason = self._run(text)
+            self.assertIsNone(req, text)
+            self.assertIn("invalid value", reason)
+
+    def test_listed_values_work_lowercased(self):
+        req, _ = self._run("!give Diamond 5")
+        self.assertEqual(req.template, "give Steve diamond 5")
+        req, _ = self._run("!spawn creeper")
+        self.assertIn("summon creeper", req.template)
+        req, _ = self._run("!effect speed 45")
+        self.assertEqual(req.template, "effect give Steve speed 45 1 true")
+
+
 if __name__ == "__main__":
     unittest.main()

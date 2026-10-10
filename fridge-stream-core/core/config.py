@@ -40,6 +40,8 @@ DEFAULTS: Dict[str, Any] = {
         "port": 3850,
         "command_prefix": "!",
         "log_level": "INFO",
+        # open the admin dashboard (signed in) in the browser each time Core starts
+        "open_dashboard": False,
     },
     "kick": {
         "enabled": False,  # opt-in chat platform

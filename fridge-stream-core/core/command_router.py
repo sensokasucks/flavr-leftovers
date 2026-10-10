@@ -320,6 +320,8 @@ class CommandRouter:
         if cmd.allowed_values and args:
             if args[0].lower() not in cmd.allowed_values:
                 return None, f"invalid value, allowed: {cmd.allowed_values}"
+            # the listed spelling goes into the template, never the chatter's own text
+            args = [args[0].lower()] + list(args[1:])
 
         # Render template
         ctx = {

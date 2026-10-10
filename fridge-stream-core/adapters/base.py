@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import abc
 import logging
+import time
 from typing import Optional
 
 from core.alerts import build_alert
@@ -35,6 +36,38 @@ class BaseAdapter(abc.ABC):
         self.bus = bus
         self.metrics = metrics
         self._running = False
+        # What the dashboard shows (GET /api/admin/status):
+        #   state  starting / connected / retrying / stopped
+        #   last_error  one plain sentence on why it isn't connected ("" when fine)
+        self.state = "starting"
+        self.last_error = ""
+        self.connected = False
+        self.last_message_at: Optional[float] = None
+
+    def _set_connected(self) -> None:
+        self.state = "connected"
+        self.connected = True
+        self.last_error = ""
+
+    def _set_retrying(self, reason: str) -> None:
+        """Not connected right now, will try again by itself."""
+        self.state = "retrying"
+        self.connected = False
+        self.last_error = str(reason or "").strip()
+
+    def _set_stopped(self, reason: str = "") -> None:
+        self.state = "stopped"
+        self.connected = False
+        if reason:
+            self.last_error = str(reason).strip()
+
+    def status_info(self) -> dict:
+        return {
+            "state": self.state,
+            "connected": bool(self.connected),
+            "last_error": self.last_error,
+            "last_message_at": self.last_message_at,
+        }
 
     @abc.abstractmethod
     async def start(self) -> None:
@@ -51,6 +84,9 @@ class BaseAdapter(abc.ABC):
         return False
 
     async def _emit(self, event: ChatEvent) -> None:
+        self.last_message_at = time.time()
+        if not self.connected:
+            self._set_connected()
         self.metrics.record_message()
         await self.bus.publish_chat(event)
 

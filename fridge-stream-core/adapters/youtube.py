@@ -39,6 +39,12 @@ VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
 CHAT_URL = "https://www.googleapis.com/youtube/v3/liveChat/messages"
 INNERTUBE_CHAT_URL = "https://www.youtube.com/youtubei/v1/live_chat/get_live_chat"
 
+# Not live yet / chat gone: look again after RETRY_FIRST s, doubling up to RETRY_MAX s
+RETRY_FIRST = 15.0
+RETRY_MAX = 60.0
+# this many failed polls in a row: start over (find the chat again)
+MAX_POLL_FAILURES = 5
+
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -177,10 +183,12 @@ class YouTubeAdapter(BaseAdapter):
         # reply thread id -> the Super Chat it belongs to, so replies can quote it
         self._superchats: OrderedDict[str, dict] = OrderedDict()
         self._superchats_max = 300
+        self._reached = False  # this attempt got as far as reading chat
 
     async def start(self) -> None:
         if not self.video_id and not self.live_chat_id:
             log.warning("YouTube needs video_id (or live_chat_id) — adapter disabled")
+            self._set_stopped("No YouTube live video set. Paste your live video link, then Connect.")
             return
         if self.mode == "official" and (
             not self.api_key or self.api_key.startswith("YOUR_")
@@ -191,6 +199,7 @@ class YouTubeAdapter(BaseAdapter):
             self.mode = "innertube"
         if self.mode == "innertube" and not self.video_id:
             log.warning("YouTube innertube mode needs video_id — adapter disabled")
+            self._set_stopped("No YouTube live video set (a live chat id alone needs an API key).")
             return
 
         self._running = True
@@ -205,6 +214,7 @@ class YouTubeAdapter(BaseAdapter):
 
     async def stop(self) -> None:
         self._running = False
+        self._set_stopped()
         self._stop.set()
         if self._task and not self._task.done():
             self._task.cancel()
@@ -215,10 +225,34 @@ class YouTubeAdapter(BaseAdapter):
         log.info("YouTube adapter stopped")
 
     async def _loop(self) -> None:
-        if self.mode == "official":
-            await self._loop_official()
-        else:
-            await self._loop_innertube()
+        """Keep trying until chat is reachable: Core is often started before the stream is live."""
+        delay = RETRY_FIRST
+        while self._running:
+            self._reached = False
+            try:
+                if self.mode == "official":
+                    await self._loop_official()
+                else:
+                    await self._loop_innertube()
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                reason = str(e) or type(e).__name__
+                log.warning("YouTube chat error: %s", reason)
+                self._set_retrying(f"YouTube chat error: {reason}.")
+            if not self._running:
+                break
+            if self._reached:
+                delay = RETRY_FIRST
+            why = self.last_error or "YouTube chat isn't reachable yet."
+            self._set_retrying(f"{why.rstrip('.')}. Trying again in {delay:.0f} s.")
+            log.info("YouTube: trying again in %.0fs", delay)
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=delay)
+                break
+            except asyncio.TimeoutError:
+                pass
+            delay = min(delay * 2, RETRY_MAX)
 
     # ------------------------------------------------------------------
     # Official Data API v3
@@ -228,22 +262,43 @@ class YouTubeAdapter(BaseAdapter):
         interval = 5.0
         async with httpx.AsyncClient(timeout=20.0) as client:
             if not self.live_chat_id:
-                self.live_chat_id = await self._resolve_chat_id(client)
+                try:
+                    self.live_chat_id = await self._resolve_chat_id(client)
+                except httpx.HTTPStatusError as e:
+                    code = e.response.status_code
+                    hint = " (check the API key and its daily quota)" if code in (400, 403) else ""
+                    self._set_retrying(f"YouTube API answered {code}{hint}")
+                    return
+                except httpx.HTTPError as e:
+                    self._set_retrying(f"Can't reach YouTube ({type(e).__name__})")
+                    return
                 if not self.live_chat_id:
-                    log.error(
-                        "Could not resolve YouTube liveChatId for video %s",
+                    log.warning(
+                        "Could not resolve YouTube liveChatId for video %s (not live yet?)",
                         self.video_id,
+                    )
+                    self._set_retrying(
+                        f"Video {self.video_id} has no live chat right now (not live yet, or chat is off)"
                     )
                     return
             log.info("YouTube official liveChatId=%s", self.live_chat_id)
+            self._reached = True
+            self._set_connected()
+            failures = 0
             while self._running:
                 try:
                     interval = await self._poll_official(client)
+                    failures = 0
+                    self._set_connected()
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
+                    failures += 1
                     log.warning("YouTube official poll error: %s", e)
+                    self._set_retrying(f"YouTube chat poll failed: {e}")
                     interval = 8.0
+                    if failures >= MAX_POLL_FAILURES:
+                        return
                 try:
                     await asyncio.wait_for(
                         self._stop.wait(), timeout=max(2.0, interval)
@@ -280,7 +335,7 @@ class YouTubeAdapter(BaseAdapter):
         r = await client.get(CHAT_URL, params=params)
         if r.status_code == 403:
             log.error("YouTube API 403 — check api_key / quota / liveChatId")
-            return 15.0
+            raise RuntimeError("YouTube API answered 403 (check the API key and its daily quota)")
         r.raise_for_status()
         data = r.json()
         self._page_token = data.get("nextPageToken") or ""
@@ -361,26 +416,40 @@ class YouTubeAdapter(BaseAdapter):
                 client
             )
             if not api_key or not continuation:
-                log.error(
+                log.warning(
                     "YouTube innertube bootstrap failed for video %s "
                     "(is the stream live with chat enabled?)",
                     self.video_id,
                 )
+                self._set_retrying(
+                    f"Can't open the live chat of video {self.video_id} (not live yet, chat off, or wrong video)"
+                )
                 return
             log.info("YouTube innertube ready (video=%s)", self.video_id)
+            self._reached = True
+            self._set_connected()
+            failures = 0
             while self._running:
                 try:
                     continuation, interval = await self._poll_innertube(
                         client, api_key, continuation, client_version
                     )
+                    failures = 0
+                    if not self.connected:
+                        self._set_connected()
                     if not continuation:
-                        log.warning("YouTube innertube continuation lost — stopping")
-                        break
+                        log.warning("YouTube innertube continuation lost — reconnecting")
+                        self._set_retrying("YouTube chat ended (stream over or restarted?)")
+                        return
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:
+                    failures += 1
                     log.warning("YouTube innertube poll error: %s", e)
+                    self._set_retrying(f"YouTube chat poll failed: {e}")
                     interval = 8.0
+                    if failures >= MAX_POLL_FAILURES:
+                        return
                 try:
                     await asyncio.wait_for(
                         self._stop.wait(), timeout=max(2.0, interval)
@@ -496,8 +565,7 @@ class YouTubeAdapter(BaseAdapter):
             headers={**BROWSER_HEADERS, "Content-Type": "application/json"},
         )
         if r.status_code != 200:
-            log.warning("YouTube innertube HTTP %s", r.status_code)
-            return continuation, 8.0
+            raise RuntimeError(f"YouTube answered HTTP {r.status_code}")
         data = r.json()
         next_cont = continuation
         interval = 4.0

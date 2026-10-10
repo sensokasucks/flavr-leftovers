@@ -100,7 +100,7 @@ class StreamCore:
         self.config = config
         self.bus = EventBus()
         self.metrics = MetricsAggregator(config)
-        self.perms = PermissionManager(config)
+        self.perms = PermissionManager(config, get_config=lambda: getattr(self, "state", None) and self.state.config or self.config)
 
         commands_path = ROOT / "config" / "commands.json"
         if not commands_path.exists():
@@ -122,6 +122,8 @@ class StreamCore:
         self._platform_lock = asyncio.Lock()
         # Kick chatroom ids left over from a channel we switched away from
         self._kick_stale_rooms: set[str] = set()
+        # Why a platform that is switched on isn't running (adapter gone, so keep its last word)
+        self.platform_status: dict[str, dict] = {}
         self.games = {}
         self.state = CoreState()
         self.state.config = config
@@ -221,8 +223,7 @@ class StreamCore:
         await self.plugins.start_enabled()
 
         # Start chat adapters (all opt-in — default enabled=false)
-        for name in PLATFORM_ADAPTERS:
-            await self._start_platform(name)
+        await self._start_all_platforms()
 
         self.refresh_command_groups()
         self.state.reload_commands = self.reload_commands_live
@@ -256,20 +257,40 @@ class StreamCore:
                 self._config_watch_loop(), name="config-watch"
             )
 
+        loose = self.perms.ambiguous_entries()
+        if loose:
+            log.warning(
+                "Kick and Twitch are both on, so plain names in permissions only count for your own "
+                "channel. Write these as kick:name or twitch:name to keep them admin/mod: %s",
+                ", ".join(loose),
+            )
         log.info("Stream Core started")
 
     # ------------------------------------------------------------------
     # Chat platforms (hot-applied, no restart)
     # ------------------------------------------------------------------
 
+    async def _start_all_platforms(self) -> None:
+        """One bad platform setting is logged and shown on Status; it never stops Core starting."""
+        for name in PLATFORM_ADAPTERS:
+            try:
+                await self._start_platform(name)
+            except Exception as exc:
+                log.exception("%s adapter failed to start", name)
+                self.platform_status[name] = {
+                    "state": "stopped", "connected": False, "last_message_at": None,
+                    "last_error": f"{name.title()} could not start: {exc}",
+                }
+
     async def _start_platform(self, name: str) -> None:
         section = self.config.get(name) or {}
+        self.platform_status.pop(name, None)
         if not section.get("enabled", False):
             log.info("%s adapter disabled (%s.enabled=false)", name.title(), name)
             self._platform_applied[name] = copy.deepcopy(section)
             return
-        adapter = PLATFORM_ADAPTERS[name](self.config, self.bus, self.metrics)
         try:
+            adapter = PLATFORM_ADAPTERS[name](self.config, self.bus, self.metrics)
             await adapter.start()
         finally:
             # Kick may write a resolved chatroom_id back into config while starting
@@ -277,8 +298,17 @@ class StreamCore:
         if getattr(adapter, "_running", False):
             self.adapters[name] = adapter
         else:
-            # start() already logged why (channel not set, chatroom lookup failed, ...)
+            # start() already logged why (channel not set, ...); keep it for the dashboard
+            info = adapter.status_info() if hasattr(adapter, "status_info") else {}
             await adapter.stop()
+            self.platform_status[name] = {**info, "state": "stopped", "connected": False}
+
+    def platform_info(self, name: str) -> dict:
+        """state / connected / last_error / last_message_at for one platform (Status page)."""
+        adapter = self.adapters.get(name)
+        if adapter is not None and hasattr(adapter, "status_info"):
+            return adapter.status_info()
+        return dict(self.platform_status.get(name) or {})
 
     async def _stop_platform(self, name: str) -> None:
         adapter = self.adapters.pop(name, None)
@@ -298,6 +328,16 @@ class StreamCore:
         if strip(new) != strip(old):
             return True
         return new.get("chatroom_id") not in (None, "", old.get("chatroom_id"))
+
+    def _kick_room_found_live(self, name: str, section: dict, old: dict | None) -> bool:
+        if name != "kick" or old is None:
+            return False
+        strip = lambda d: {k: v for k, v in d.items() if k != "chatroom_id"}
+        if strip(section) != strip(old):
+            return False
+        adapter = self.adapters.get("kick")
+        room = getattr(adapter, "chatroom_id", None)
+        return bool(room) and str(room) == str(section.get("chatroom_id"))
 
     def _forget_kick_room(self, section: dict, old: dict | None) -> dict:
         """Drop a chatroom_id that belongs to the previous Kick channel."""
@@ -334,12 +374,20 @@ class StreamCore:
                     section = self._forget_kick_room(section, old)
                 if name not in force and not self._platform_changed(section, old):
                     continue
+                if name not in force and self._kick_room_found_live(name, section, old):
+                    # the running adapter found (and saved) this chatroom id itself: no reconnect
+                    self._platform_applied[name] = copy.deepcopy(section)
+                    continue
                 log.info("Applying %s settings (reconnecting)", name)
                 await self._stop_platform(name)
                 try:
                     await self._start_platform(name)
-                except Exception:
+                except Exception as exc:
                     log.exception("%s adapter failed to start", name)
+                    self.platform_status[name] = {
+                        "state": "stopped", "connected": False, "last_message_at": None,
+                        "last_error": f"{name.title()} could not start: {exc}",
+                    }
                 changed.append(name)
             return {"changed": changed, "running": sorted(self.adapters)}
 
@@ -1399,6 +1447,59 @@ class StreamCore:
                 pass
 
 
+def mask_token(token: str) -> str:
+    """Enough of the token to tell which one it is, not enough to use it."""
+    token = str(token or "")
+    return (token[:4] + "…") if len(token) > 4 else "…"
+
+
+def dashboard_link(host: str, port: int, token: str) -> str:
+    shown = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
+    return f"http://{shown}:{port}/admin/#token={token}"
+
+
+def announce_dashboard(config: dict, host: str, port: int) -> str:
+    """Log the dashboard address (never the whole token) and save a sign-in shortcut.
+
+    data/Open dashboard.url opens the dashboard already signed in (the page stores the
+    token and drops it from the address bar). Returns that link, or "" without a token.
+    """
+    cfg_token = (config.get("points") or {}).get("admin_token")
+    token = resolve_admin_token(config, ROOT)
+    if not token:
+        log.error("No usable admin token — set points.admin_token in config.yaml")
+        return ""
+    link = dashboard_link(host, port, token)
+    where = "points.admin_token in config.yaml" if not is_placeholder_token(cfg_token) else "data/admin_token.txt"
+    shortcut = ROOT / "data" / "Open dashboard.url"
+    try:
+        shortcut.parent.mkdir(parents=True, exist_ok=True)
+        shortcut.write_text(f"[InternetShortcut]\r\nURL={link}\r\n", encoding="utf-8")
+        saved = f'double-click "{shortcut}" to open it signed in'
+    except OSError:
+        log.warning("Could not write %s", shortcut)
+        saved = "paste the admin token when it asks"
+    log.warning(
+        "Admin dashboard: %s — %s (token %s, full token in %s).",
+        link.split("#", 1)[0], saved, mask_token(token), where,
+    )
+    return link
+
+
+async def _open_when_up(server, link: str) -> None:
+    """core.open_dashboard: open the signed-in dashboard once the server answers."""
+    import webbrowser
+
+    for _ in range(100):
+        if getattr(server, "started", False):
+            break
+        await asyncio.sleep(0.1)
+    try:
+        webbrowser.open(link)
+    except Exception:
+        log.debug("Could not open the browser", exc_info=True)
+
+
 async def _run() -> None:
     ensure_seed_files()
     try:
@@ -1413,23 +1514,12 @@ async def _run() -> None:
         datefmt="%H:%M:%S",
     )
 
-    cfg_token = (config.get("points") or {}).get("admin_token")
-    if is_placeholder_token(cfg_token):
-        generated = resolve_admin_token(config, ROOT)
-        if generated:
-            log.warning(
-                "points.admin_token is unset or a placeholder — the admin dashboard uses the "
-                "generated token in data/admin_token.txt: %s",
-                generated,
-            )
-        else:
-            log.error("No usable admin token — set points.admin_token in config.yaml")
+    host = os.environ.get("STREAM_CORE_HOST") or config.get("core", {}).get("host", "127.0.0.1")
+    port = int(os.environ.get("STREAM_CORE_PORT") or config.get("core", {}).get("port", 3850))
+    signin_link = announce_dashboard(config, host, port)
 
     core = StreamCore(config)
     app = create_app(core.state)
-
-    host = os.environ.get("STREAM_CORE_HOST") or config.get("core", {}).get("host", "127.0.0.1")
-    port = int(os.environ.get("STREAM_CORE_PORT") or config.get("core", {}).get("port", 3850))
 
     # Start Core background work
     await core.start()
@@ -1461,6 +1551,8 @@ async def _run() -> None:
 
     serve_task = asyncio.create_task(server.serve())
     stop_task = asyncio.create_task(stop_event.wait())
+    if signin_link and (config.get("core") or {}).get("open_dashboard"):
+        asyncio.create_task(_open_when_up(server, signin_link))
 
     done, pending = await asyncio.wait(
         [serve_task, stop_task],

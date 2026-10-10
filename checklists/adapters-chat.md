@@ -21,6 +21,7 @@ Home: `fridge-stream-core/adapters/` (`kick.py`, `twitch.py`, `youtube.py`). Ove
 - [ ] Chat payloads carry `is_paid` / `paid_amount` / `paid_currency` and `highlight` (Twitch `msg-id` `highlighted-message` / `gigantified-emote-message` / `animated-message` → `"highlighted"` / `"gigantified"` / `"animated"`, else null). The overlay's `.paid` / `.highlighted` classes and Stream Rooms' bubble tints read them. Tests: `tests/test_chat_highlights.py`.
 - [ ] YouTube InnerTube: unknown actions / items / renderer fields are logged once and sampled to `data/youtube_new_fields.jsonl` (capped at 200 lines, `adapters/youtube_capture.py`). It must never stop a message from being emitted. Tests never write to the real file.
 - [ ] YouTube replies to Super Chats: `reply_to` from the reply chip (`beforeContentButtons`, panel tag `PAreply_thread`), matched to the Super Chat by the reply-thread id in its `replyButton` (last 300 kept); unknown chip icons are noted as `chip:<icon>`. Tests: `tests/test_youtube_replies.py`.
+- [ ] Adapters recover by themselves: Twitch IRC reads with a timeout, PINGs after 60 s of silence and reconnects when unanswered (`IDLE_PING` / `PONG_TIMEOUT`), and decodes with an incremental UTF-8 decoder (`IrcLineReader`); YouTube keeps looking for the live chat (15 s doubling to 60 s) when it isn't live yet or the chat ends; Kick retries a failed chatroom lookup in the background (15 s up to 2 min, the viewer poll can find it too). Each adapter reports `state` (starting / connected / retrying / stopped), `last_error`, `connected`, `last_message_at` (`BaseAdapter.status_info`), returned by `/api/admin/status` per platform; `running` is false while retrying. One adapter failing to construct or start never stops Core (`StreamCore._start_all_platforms`). Tests: `tests/test_adapter_retry.py`, `tests/test_platform_reload.py`.
 - [ ] Platform settings (Kick / Twitch / YouTube) hot-apply: admin Config save and hand edits to `config.yaml` (`core.watch_config`) reconnect only the changed platforms via `StreamCore.apply_platforms`. Status tab has a per-platform Reconnect. Game toggles and the port still need a restart. Tests: `tests/test_platform_reload.py`.
 
 ## Drop risks
@@ -32,6 +33,8 @@ Home: `fridge-stream-core/adapters/` (`kick.py`, `twitch.py`, `youtube.py`). Ove
 - Kick avatar lookups without the cache / 403 back-off (one request per message would get the IP blocked by Cloudflare).
 - Alerting once per gift-bomb recipient (Twitch `subgift` with a community gift id, YouTube redemptions) instead of once per bomb.
 - Dropping `emotes` from the chat payload or `ChatEvent` (overlay and Stream Rooms fall back to plain text silently).
+- An adapter `return`ing from its task on a failed connect while `_running` stays true (the dashboard then says running while chat never comes); retry instead and set `last_error`.
+- A socket read with no timeout (a dead link without FIN waits forever).
 
 ## After-change verify
 
