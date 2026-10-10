@@ -1,6 +1,6 @@
 # Fridge Stream Core: user manual
 
-*October 2026.*
+*October 2026 (updated 10 October).*
 
 Stream Core is the program that reads your Kick, Twitch and YouTube chat and decides what chat is allowed to do: chat commands, points, chat games, reactions, alerts and end credits. It runs in a window on your PC, you set it up in a web page (the admin dashboard), and it feeds overlays for OBS or XSplit and the 3D audience in [Stream Rooms](https://github.com/sensokasucks/stream-rooms).
 
@@ -8,7 +8,27 @@ All the pictures in this manual come from the real dashboard. Chatters in them a
 
 ![Live controls, the page to keep open while you stream](images/sc-live.png)
 
+<!-- picture outdated: taken before the YouTube live video box at the top of Live controls and the new menu (Sources & overlays under Overlays, Chat overlay, Red flags, Game plugins) -->
+
+## What's new (October 2026)
+
+Since the 7 October manual. A few pictures were taken before these changes, so some pages look a little different in the dashboard.
+
+- **Chatter profile pictures** for Kick, Twitch and YouTube are saved by Core and served to the chat overlay and Stream Rooms. Press **Connect Twitch** for Twitch pictures. **Never show a picture for** is one hide list shared with Stream Rooms (section 5).
+- **Red flags** have their own page (**People → Red flags**), with **Check past chat** to find people who said a phrase before you added it, and **Undo** after **Unflag** (section 8).
+- **Status says why** a platform isn't connected, and Core keeps retrying by itself when you start it before you're live (section 4).
+- **YouTube live video** box on **Live controls**: paste the stream's link, press **Connect** (section 5).
+- **Restart Core now** bar when a setting needs a restart (section 3). Buttons say what they did, or why they failed.
+- **Open dashboard.url** opens the dashboard signed in; the console no longer prints the whole admin token (section 3).
+- **Customise** on **Sources & overlays** builds an overlay address with the switches you pick (section 16).
+- **Highlighted messages:** Twitch "Highlight My Message" shows in a purple box on the chat overlay, gigantified emotes are drawn big, and Super Chats, Kicks and Bits are marked as paid (section 9).
+- **YouTube replies to Super Chats** show "↩ Replying to", and Twitch emotes in replies land in the right place (section 9).
+- **Games are plugins** you add yourself from a separate download (**Settings → Game plugins**, Part 5). Core runs fine without any.
+- **Safer:** admin and mod names are tied to a platform when Kick and Twitch are both on (section 6), CSV exports can't run as spreadsheet formulas, and Core keeps up with a busy chat.
+
 ## Contents
+
+- [What's new (October 2026)](#whats-new-october-2026)
 
 **Part 1: Getting started**
 
@@ -81,7 +101,7 @@ Stream Core only talks to your own PC: everything it serves is on `127.0.0.1` (p
 
 1. Install Python (above).
 2. Open the `fridge-stream-core` folder and double-click **install.bat**. It creates a private Python environment in `.venv`, installs the packages, and copies the example settings to `config\config.yaml` if you don't have one yet. Running it again later never wipes your settings.
-3. When it asks, answer **Y** to run the setup wizard. The wizard asks for your Kick channel, your admin and mod names, an admin token for the dashboard (it makes one up if you leave it), and whether Minecraft should be on. Enter keeps the value shown in brackets. You can run it again any time with `.venv\Scripts\python.exe wizard.py`.
+3. When it asks, answer **Y** to run the setup wizard. The wizard asks for your Kick channel, your admin and mod names, an admin token for the dashboard (it makes one up if you leave it), and, if you installed the Minecraft plugin, whether Minecraft should be on. Enter keeps the value shown in brackets. You can run it again any time with `.venv\Scripts\python.exe wizard.py`.
 
 The monorepo also has **INSTALL Stream Core.bat** at its root, which does the same from one folder up.
 
@@ -108,10 +128,12 @@ The menu on the left is in five groups:
 | Group | Pages |
 |---|---|
 | **On stream** | **Live controls** (everything for mid-stream), **Chat games**, **Status** |
-| **Overlays** | **Sources & overlays** (the addresses for OBS), **Credits**, **Alerts** |
+| **Overlays** | **Sources & overlays** (the addresses for OBS), **Credits**, **Alerts**, **Chat overlay** |
 | **Games** | **Integrations** (command tester, Minecraft panel), **Market** |
 | **People** | **Users & points**, **Chat history**, **Red flags** |
 | **Settings** | **Core + chat platforms**, **Game plugins**, **Points, permissions + chat**, **Reactions**, **Command groups**, **Chat commands**, **Advanced** |
+
+<!-- picture outdated: every dashboard screenshot in this manual that shows the menu was taken before this menu (it shows "Games" instead of "Game plugins", Sources & overlays under On stream, and no Chat overlay or Red flags entries) -->
 
 Things that help everywhere:
 
@@ -132,6 +154,8 @@ Buttons answer next to themselves: giving points says "Gave 50 points to Bob (no
 
 ![Status](images/sc-status.png)
 
+<!-- picture outdated: Status now gives each platform's reason in plain words ("Connected · last message 14 s ago", "retrying" ...) -->
+
 ---
 
 # Part 2: Chat
@@ -141,6 +165,8 @@ Buttons answer next to themselves: giving points says "Gave 50 points to Bob (no
 All three are off until you turn them on. Go to **Settings → Core + chat platforms**, fill in your channel, tick **Enabled** and press **Save & apply**. The platform connects straight away; no restart.
 
 ![Core + chat platforms](images/sc-cfg-platforms.png)
+
+<!-- picture outdated: taken before Connect Twitch, the Twitch "Chatter profile pictures" tick and the "Chatter profile pictures" card -->
 
 - **Kick**: your channel slug, the part after `kick.com/` (pasting the whole link works too). Core finds the chat room id by itself and remembers it. **Chatter profile pictures** looks each new chatter's picture up once (so their picture appears a moment after their first message) and keeps it. Kick also sends hosts, Kicks gifts and subs, which become alerts.
 - **Twitch**: your channel name. Core listens to chat anonymously, so reading needs no login. **BetterTTV / FrankerFaceZ / 7TV emotes** ride along with every message, so overlays and Stream Rooms show them. Cheers, raids and subs become alerts. For **Chatter profile pictures** Twitch wants to know who is asking, so connect your account (next heading).
@@ -157,6 +183,12 @@ A few things worth knowing:
 - Twitch cancels a sign-in itself after a long stretch without use or when you change your password; the dashboard then says so, and one more **Connect Twitch** fixes it.
 - **Advanced: use your own Twitch app** is for people who registered their own app at dev.twitch.tv. Paste its Client ID (and, for a "Confidential" app, the Client Secret). With a secret Core can fetch pictures even without the sign-in. Leave both empty to use Stream Core's built-in app, which is the normal case.
 - **YouTube**: the live video, which changes every stream. Paste its whole link (from the address bar, Share, or YouTube Studio; `watch?v=`, `youtu.be/…` and `/live/…` all work) or just the id. The quickest place is the **YouTube live video** box on **Live controls**: paste, press **Connect**. If you start Core before you go live, YouTube shows **retrying** and connects by itself once the stream is live. Mode **innertube** needs no API key and has no quota, so leave it on that unless you need the official API's Super Chat details. Members and Super Chats become alerts.
+
+### Chatter profile pictures
+
+A card at the bottom of **Settings → Core + chat platforms**. Core saves each chatter's picture once (in `data\avatars`) and serves it to the chat overlay, other overlays and Stream Rooms. The **Chatter profile pictures** tick on each platform decides whether Core looks pictures up at all (Twitch also needs **Connect Twitch**). **Save pictures in Core** off makes the overlays load pictures straight from Kick, Twitch and YouTube instead.
+
+**Never show a picture for** is the hide list: one name per line, `kick:name` for one platform only. Stream Rooms has the same list (**Hide pictures of**, Audience tab) and adds its names here each time it connects, so to show someone again take the name off in both places, or it comes back.
 
 Core can *read* all three, but it can't *post* into Kick or YouTube chat without a login. Its answers to commands ("you have 5 points") therefore show on the **replies overlay** and on Stream Rooms' reply screen, not in the platform's chat.
 
@@ -207,9 +239,10 @@ Core shows chat live without keeping it. If you want a record, turn on **Chat hi
 
 Every message that reaches an overlay or Stream Rooms carries:
 
-- the platform, the chatter's name, colour and badges (mod, sub, VIP) and their **profile picture** (YouTube sends it; Kick is looked up; Twitch is looked up once you connect your Twitch account, section 5);
-- **emotes** as pictures: Twitch emotes plus BetterTTV, FrankerFaceZ and 7TV, Kick emotes, and YouTube's custom emoji;
-- **who it replies to**: a message sent with Kick's or Twitch's reply button shows "↩ Replying to *Name*: what they said" on the chat overlay and in Stream Rooms. (On Twitch the "@Name" at the start of such a reply is left out, because the reply line already says who it's for. On YouTube a reply to a Super Chat shows the same way.)
+- the platform, the chatter's name, colour and badges (mod, sub, VIP) and their **profile picture** (YouTube sends it; Kick is looked up; Twitch is looked up once you connect your Twitch account, section 5), saved by Core;
+- whether it's **paid** (Super Chats, Kicks, Bits) or **highlighted** with Twitch channel points: the chat overlay draws "Highlight My Message" in Twitch's purple box and a "Gigantify an Emote" message with its emote three times bigger, and Stream Rooms gives them a purple or gold bubble;
+- **emotes** as pictures: Twitch emotes plus BetterTTV, FrankerFaceZ and 7TV (animated ones move), Kick emotes, and YouTube's custom emoji;
+- **who it replies to**: a message sent with Kick's or Twitch's reply button shows "↩ Replying to *Name*: what they said" on the chat overlay and in Stream Rooms. (On Twitch the "@Name" at the start of such a reply is left out, because the reply line already says who it's for, and the reply's emotes land in the right place. On YouTube a reply to a Super Chat shows the same way.)
 - the chatter's **title** from chat games (*Regular*, *Die-hard*, *Legend*), once they have one.
 
 ---
@@ -220,7 +253,7 @@ Every message that reaches an overlay or Stream Rooms carries:
 
 Commands start with `!` (the prefix is a setting). `!help` lists the commands that are on right now, including the reaction and chat game commands.
 
-**Settings → Command groups** turns whole sets on or off without a restart: *core* (`!help`, `!permit`, always on), *points*, *reactions*, *chat games*, *credits*, *market*, and one group per game (*minecraft*, *factorio*, *openttd*). A group tied to a feature is only on while that feature is on, so turning points off also silences `!points`.
+**Settings → Command groups** turns whole sets on or off without a restart: *core* (`!help`, `!permit`, always on), *points*, *reactions*, *chat games*, *credits*, *market*, and one group for each game plugin you installed (*minecraft*, *factorio*, *openttd*...). A group tied to a feature is only on while that feature is on, so turning points off also silences `!points`.
 
 ![Command groups](images/sc-cfg-groups.png)
 
@@ -372,6 +405,8 @@ Most overlays take switches on their address (which platforms the chat shows, th
 
 ![Sources & overlays](images/sc-sources.png)
 
+<!-- picture outdated: taken before the Customise buttons, and it still lists game overlays that now come with the game plugins -->
+
 | Overlay | Address | Notes |
 |---|---|---|
 | Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading) |
@@ -380,8 +415,8 @@ Most overlays take switches on their address (which platforms the chat shows, th
 | Replies and chat games boards | `http://127.0.0.1:3850/overlay/replies.html` | `?boards=0` hides boards, `?replies=0` shows boards only |
 | Reactions fallback | `http://127.0.0.1:3850/overlay/reactions.html` | Only needed when Stream Rooms isn't running |
 | Market ticker / board / chart | `…/overlay/market.html`, `market-board.html`, `market-chart.html?symbol=FACT`, `market-cycle.html?symbols=FRG,FACT` | |
-| Metrics overlay (Minecraft stats) | `http://127.0.0.1:3850/overlay/overlay.html` | Health, food, XP, deaths, armour, viewers, chat per minute, power, inventory; `?show=` / `?hide=` pick widgets |
-| OpenTTD companies / ticker | `…/overlay/openttd.html`, `openttd-ticker.html` | |
+| Metrics overlay (Minecraft stats, Minecraft plugin) | `http://127.0.0.1:3850/overlay/overlay.html` | Health, food, XP, deaths, armour, viewers, chat per minute, power, inventory; `?show=` / `?hide=` pick widgets |
+| OpenTTD companies / ticker | `…/overlay/openttd.html`, `openttd-ticker.html` | Only with the OpenTTD plugin installed |
 
 ![The chat overlay, with a reply line](images/sc-overlay-chat.png)
 
@@ -397,27 +432,45 @@ Stream Rooms connects to Core on its own (**Chat tab → Connect**, address `ws:
 - `!curtain open` / `close` / `reveal` (mods) and the **Stage curtain** buttons on **Live controls** run the room's curtain;
 - `!seat` and `!swap` move people.
 
+Stream Rooms also sends its **Hide pictures of** list, which Core adds to **Never show a picture for** (section 5). Red-flagged chatters (section 8) never reach Stream Rooms at all. On the Stream Rooms side, the Audience tab's **Bubbles show** decides which messages get a speech bubble in a busy chat (paid, highlighted, replies...); Core sends every message either way.
+
 Stream Rooms tells Core which effects the current room can play, so reactions never ask for something the room can't do. The full picture of the room side is in the Stream Rooms manual.
 
 ---
 
 # Part 5: Games and companion apps
 
+### Game plugins: adding a game
+
+Games don't ship with Stream Core any more. Minecraft, Factorio, Granvir and OpenTTD are **plugins**, in their own download: [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins) (its Releases page has a zip). The game-side mods and bridges are there too. Core runs fine with no plugins at all; without them there are simply no game cards, game commands or game Market listings.
+
+1. Copy the folder of each game you want into Core's `plugins` folder (so you get `plugins\minecraft\plugin.json`, for example).
+2. Restart Core. The game gets a card under **Settings → Game plugins**.
+3. Tick **Enabled (opt-in)** on its card, fill in its settings, press **Save & apply**, then **Restart Core now** in the bar at the top.
+
+To remove a game: untick it, delete its folder, restart Core. Its settings stay in `config.yaml` in case you put it back. A plugin that can't load shows the error on its card; the rest of Core keeps running. Plugins run inside Core with no sandbox, so install only plugins you trust. Writing your own is in `docs\PLUGINS.md`.
+
 ## 18. Minecraft
 
-Two Fabric mods (in the `fridge-minecraft` folder) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Game plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
+Needs the **Minecraft** plugin (above). Two Fabric mods (from flavr-game-plugins) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Game plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; they only accept a list of harmless mobs, items and effects (no Wither, TNT or command blocks); the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
 
 ![Settings → Game plugins](images/sc-cfg-games.png)
 
+<!-- picture outdated: taken when the page was called "Games" and all four games were built in; now the page is "Game plugins" and a card only shows for each plugin folder in plugins\ -->
+
 ## 19. Factorio, Granvir and OpenTTD
+
+Each needs its plugin from flavr-game-plugins (above).
 
 - **Factorio**: run the **Fridge Factorio Stats** bridge (port 3847) next to the game; it reads power, research and kills over RCON and feeds overlays of its own. In Core, turn **Factorio** on under **Settings → Game plugins**. The power and item vaults pay market dividends.
 - **Granvir**: the **Fridge Granvir Stats** plugin (BepInEx, port 3855) reports co-op stats; turn **Granvir** on the same way.
-- **OpenTTD**: Core joins the game's admin port and runs the **Chat Fund**: `!invest` turns points into company cash, `!companies` lists them, and two overlays show the companies and a ticker. Settings are on the Games page (host, admin port and password, points-to-pounds rate, limits).
+- **OpenTTD**: Core joins the game's admin port and runs the **Chat Fund**: `!invest` turns points into company cash, `!companies` lists them, and two overlays show the companies and a ticker. Settings are on its card under **Settings → Game plugins** (host, admin port and password, points-to-pounds rate, limits).
 
 Game toggles need a Core restart (the **Restart Core now** bar appears); everything else applies live.
 
 ## 20. Chat Credits and Reactive Image
+
+Both live in their own download now: [fridge-chat-credits](https://github.com/sensokasucks/fridge-chat-credits) and [flavr-reactive-image](https://github.com/sensokasucks/flavr-reactive-image).
 
 - **Fridge Chat Credits** is the standalone, lighter version of the credits roll: it listens to the platforms itself and drives the same overlay without the rest of Core. Use it when you don't need Core at all. Its look keys are the same as Core's credits, so a saved style moves between the two.
 - **Reactive Image** is a small native Windows app for an audio-reactive PNG avatar (idle, soft, speak, loud, plus custom states on hotkeys or from a tablet). Capture its window in OBS or XSplit. It doesn't talk to Core.
@@ -441,6 +494,8 @@ Game toggles need a Core restart (the **Restart Core now** bar appears); everyth
 | `data\kick_avatars.json`, `twitch_avatars.json`, `chat_games.json`, `reactions_optout.json` | Caches and small state files. |
 | `overlay\assets\alerts\`, `overlay\assets\chat\` | Your alert pictures, videos and sounds; the chat overlay's background, badge pictures and sounds. |
 | `overlay\alerts-custom.css`, `overlay\chat-custom.css` | The custom CSS you pasted for the alerts and the chat overlay. |
+| `plugins\` | Game plugins you installed, one folder each (empty to start with). |
+| `data\avatars\` | Chatters' profile pictures that Core saved. |
 | `.venv\` | Core's private Python. Delete it and run install again if Python ever gets confused. |
 
 ## 22. Safety
@@ -464,6 +519,8 @@ Game toggles need a Core restart (the **Restart Core now** bar appears); everyth
 | Alerts don't show | Add `/overlay/alerts.html` as a browser source; test from **Live controls**. Follows and subs need the platform connected. |
 | Credits are empty | Overlays → Credits → turn it on; the list fills as people chat. Check the roster filters under Settings → Points, permissions + chat → Chat credits. |
 | The game toggle didn't take | Minecraft, Factorio, Granvir and OpenTTD switches need a Core restart: press **Restart Core now** in the bar at the top. |
+| There's no card for my game | Games are plugins now: copy the game's folder from flavr-game-plugins into `plugins\` and restart Core. |
+| Someone's picture keeps coming back | Take the name off **Never show a picture for** in Core *and* off **Hide pictures of** in Stream Rooms. |
 | Stream Rooms says it isn't connected | Start Core first; in Stream Rooms' Chat tab check **Core address** is `ws://127.0.0.1:3850/ws` and click **Retry now**. |
 | The window closed with an error | Run **START Stream Core.bat** again and read the last lines. Running **install.bat** again repairs the packages without touching your settings. |
 

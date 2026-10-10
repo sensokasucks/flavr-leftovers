@@ -10,6 +10,7 @@ Dates are when the work landed in this tree.
 ## Unreleased
 
 ### Changed
+- **User manual brought up to date** (`docs/manual/MANUAL.md` / `.html`): a "What's new (October 2026)" section, the Chatter profile pictures card and shared hide list, highlighted and paid messages, the Chat overlay and Red flags menu entries, and games as plugins (how to add one from flavr-game-plugins). Outdated screenshots are kept and marked with a `picture outdated` comment.
 - **Dashboard tidy.**
   - **Red flags have their own page**, People → Red flags (it was a card above Chat history). **Unflag** now offers **Undo** for ten seconds (`POST /api/admin/red-flags/restore`).
   - **Link and merge people by name.** On a person's page, **Link another platform account** takes their name on that platform: the account Core already knows by that name joins this person, or their first chat line there does. **Merge** finds the other person by name and asks with both names and point balances. The person's page also has **Chat log**, **Download CSV** and **Red-flag**.
