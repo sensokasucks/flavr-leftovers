@@ -21,7 +21,6 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from core import plugin_manifest  # noqa: E402
-from core.command_router import CommandRouter  # noqa: E402
 from core.config import DEFAULTS, _deep_merge  # noqa: E402
 from core.permissions import PermissionManager  # noqa: E402
 from core.plugin_api import BasePlugin, HttpPlugin  # noqa: E402

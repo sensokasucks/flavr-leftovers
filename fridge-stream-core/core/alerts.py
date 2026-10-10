@@ -10,14 +10,12 @@ alert-box CSS (Nerd Or Die, OWN3D, SE packs, OBS Custom CSS) can drop in.
 
 from __future__ import annotations
 
-import json
-import re
 import time
 import uuid
 from pathlib import Path
 from typing import Any, Optional
 
-from core.overlay_style import MAX_CUSTOM_CSS_BYTES, OverlayStyle, _CSS_BLOCK  # noqa: F401
+from core.overlay_style import OverlayStyle
 
 # Canonical kinds the overlay knows how to style.
 KINDS: dict[str, dict[str, Any]] = {

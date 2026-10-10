@@ -43,7 +43,7 @@ try:
         resolve_commands_path,
         resolve_config_path,
     )
-    from core.command_groups import catalog_status, resolve_active_groups
+    from core.command_groups import resolve_active_groups
     from core.event_bus import EventBus
     from core.metrics import MetricsAggregator
     from core.permissions import PermissionManager

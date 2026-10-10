@@ -10,14 +10,13 @@ from __future__ import annotations
 import asyncio
 import datetime as _dt
 import io
-import json
 import logging
 import sqlite3
 import time
 from pathlib import Path
 from typing import Any, Optional
 
-from core.models import ChatEvent, Platform
+from core.models import ChatEvent
 from core.csv_safe import SafeWriter
 
 log = logging.getLogger("core.store")

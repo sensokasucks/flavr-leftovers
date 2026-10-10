@@ -17,7 +17,6 @@ from .models import (
     CommandDefinition,
     ExecuteRequest,
     PermissionLevel,
-    Platform,
 )
 from .permissions import PermissionManager
 
