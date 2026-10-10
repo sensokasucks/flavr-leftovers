@@ -174,6 +174,7 @@ class Store:
         # Chat writer: chat lines queue up and one task writes them in batches (start_writer)
         self._queue: Optional[asyncio.Queue] = None
         self._writer_task: Optional[asyncio.Task] = None
+        self._writing: Optional[asyncio.Future] = None   # the batch being written now (stop_writer waits for it)
         self._writer_conn: Optional[sqlite3.Connection] = None
         self._dropped = 0
         self._dropped_logged = 0.0
@@ -443,6 +444,9 @@ class Store:
                 await task
             except asyncio.CancelledError:
                 pass
+        writing, self._writing = self._writing, None
+        if writing is not None:
+            await writing           # (never raises: _write catches errors)
         await self._drain()
         self._queue = None
         conn, self._writer_conn = self._writer_conn, None
@@ -493,16 +497,23 @@ class Store:
 
     async def _writer_loop(self) -> None:
         while True:
-            first = await self._queue.get()
-            # gather what else arrives for a moment: one transaction for the lot
-            await asyncio.sleep(CHAT_BATCH_WAIT)
+            first = await self._queue.get()     # (stopped here: nothing taken, nothing lost)
             batch = [first]
-            while len(batch) < CHAT_BATCH_MAX:
-                try:
-                    batch.append(self._queue.get_nowait())
-                except asyncio.QueueEmpty:
-                    break
-            await self._write(batch)
+            try:
+                # gather what else arrives for a moment: one transaction for the lot
+                await asyncio.sleep(CHAT_BATCH_WAIT)
+            finally:
+                # also when stop_writer cancels the wait: lines already taken off the queue are
+                # written, not lost. The write itself can't be cut off halfway (shield);
+                # stop_writer waits for it before writing the rest.
+                while len(batch) < CHAT_BATCH_MAX:
+                    try:
+                        batch.append(self._queue.get_nowait())
+                    except asyncio.QueueEmpty:
+                        break
+                self._writing = asyncio.ensure_future(self._write(batch))
+            await asyncio.shield(self._writing)
+            self._writing = None
 
     async def _drain(self) -> None:
         if self._queue is None:
