@@ -130,6 +130,18 @@ red_flags:
   enabled: true
   skip_mods: true     # moderators and the streamer are never flagged by a phrase
   phrases: []         # e.g. ["free followers", "scam*"]
+  # Your own flags (People -> Red flags -> Custom flags). Each has its own phrases and
+  # chooses what happens when a chatter says one; see core/chat_flags.py for every key.
+  custom: []
+  #  - name: Giveaway entry
+  #    phrases: ["enter me", "giveaway*"]
+  #    log: true          # save every line they write in Chat history
+  #    alert: true        # show an alert ("Chat flag") with alert_text
+  #    alert_text: "{name} entered the giveaway!"
+  #    reply: ""          # say this in chat
+  #    points: 0          # give (or take, below 0) points
+  #    reaction: ""       # play a reaction (its id on the Reactions page)
+  #    hide: false        # red-flag them too
 
 # Fridge Market tape (overlays work in preview even while enabled is false).
 # Trading commands are not shipped yet — see docs/MARKET.md.

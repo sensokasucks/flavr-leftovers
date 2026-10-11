@@ -156,6 +156,7 @@ Optional methods Core uses when they exist:
 | `async state_fragment()` | keys merged into the overlay `update` payload (Minecraft: `stats`, `inventory`) |
 | `market_status()` | lines of live numbers on its Market sub-page |
 | `apply_config(config)` | after a dashboard save |
+| `async on_flag(payload)` | a chatter set off one of the streamer's custom flags (Red flags page) that has **Tell game plugins and overlays** on: `{flag: {id, name}, first, phrase, platform, message, message_id, user: {id, username, display_name, is_mod, is_subscriber}, hidden, timestamp}`. `first` = they just got the flag; `hidden` = they are red-flagged (show nothing of theirs). `ctx.bus.on_flag(handler)` gets the same. |
 | `@classmethod routes(cls, router, get_running)` | own API routes; they exist even while the game is off, `get_running()` returns the running instance or `None` |
 | `@staticmethod dividend_defaults(body, market_cfg)` | symbol / rates for `POST /api/market/dividend` from a bridge that sends none |
 

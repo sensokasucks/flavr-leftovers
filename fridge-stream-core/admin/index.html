@@ -1051,6 +1051,9 @@
       </select>
       <input id="chat-q" placeholder="Search message text…" />
       <label class="check" title="Only lines from red-flagged chatters"><input id="chat-flagged" type="checkbox" /> 🚩 only</label>
+      <select id="chat-flag" title="Only lines from chatters on one of your custom flags (Red flags page)" hidden>
+        <option value="">No flag filter</option>
+      </select>
       <button id="chat-search">Search</button>
       <button id="chat-export" title="Every saved line that matches the filters above (not only the 200 shown)">Download CSV</button>
       <span id="chat-export-msg" class="action-msg" role="status" aria-live="polite"></span>
@@ -1177,7 +1180,37 @@
           <option value="twitch">twitch</option>
           <option value="youtube">youtube</option>
         </select>
-        <button type="button" id="rf-flag" title="Red-flag this name now">Red-flag</button>
+        <select id="rf-which" title="Which flag to give them: the red flag, or one of your custom flags below">
+          <option value="red">🚩 Red flag</option>
+        </select>
+        <button type="button" id="rf-flag" title="Flag this name now">Flag</button>
+      </div>
+    </fieldset>
+
+    <!-- Custom flags (core/chat_flags.py): your own flags, each with its phrases and actions -->
+    <fieldset class="cfg-card rf-card" id="cf-card">
+      <legend>🏷️ Custom flags</legend>
+      <p class="hint">Make your own flags next to the red flag. Each one has its own phrases and chooses what happens when a chatter says one: save their chat, show an alert, answer them, give or take points, play a reaction, red-flag them too, or tell your game plugins. Chatters who get a flag are listed under it, and its name shows next to their lines in <a href="#chat">Chat history</a>.</p>
+      <div id="cf-list"></div>
+      <p id="cf-empty" class="muted">No custom flags yet.</p>
+      <div class="config-actions">
+        <button type="button" id="cf-add" title="Add a new flag (Save to use it)">Add a flag</button>
+        <button type="button" id="cf-save" class="primary">Save custom flags</button>
+        <span class="muted" id="cf-status"></span>
+      </div>
+      <div id="cf-past-box" class="rf-past" hidden>
+        <h4>Found in past chat <span class="muted" id="cf-past-count"></span></h4>
+        <p class="hint" id="cf-past-hint"></p>
+        <table id="cf-past-table">
+          <thead>
+            <tr><th><input type="checkbox" id="cf-past-all" checked title="Tick or untick everyone" /></th><th>Name</th><th>Platform</th><th>Said</th><th>Lines</th><th>First time</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <div class="config-actions">
+          <button type="button" id="cf-past-apply" class="primary">Flag ticked chatters</button>
+          <button type="button" id="cf-past-close">Close</button>
+        </div>
       </div>
     </fieldset>
   </section>

@@ -119,6 +119,16 @@ KINDS: dict[str, dict[str, Any]] = {
         "defaults": {"amount": 100, "currency": "KICKs"},
         "falls_back": "donation",
     },
+    # a custom chat flag's alert (core/chat_flags.py): the flag sets the words
+    "flag": {
+        "label": "Chat flag",
+        "title": "Chat flag",
+        "template": "{name} said {item}!",
+        "accent": "kick",
+        "needs": [],
+        "defaults": {},
+        "falls_back": "follow",
+    },
 }
 
 # Streamlabs / StreamElements class names applied to #alert-box.
@@ -135,6 +145,7 @@ KIND_CLASSES: dict[str, list[str]] = {
     "supersticker": ["sticker-alert", "superchat-alert", "donation-alert", "kind-supersticker"],
     "jewels": ["jewels-alert", "gift-alert", "donation-alert", "kind-jewels"],
     "kicks": ["kicks-alert", "donation-alert", "kind-kicks"],
+    "flag": ["flag-alert", "kind-flag"],
 }
 
 PLATFORMS = ("kick", "twitch", "youtube")

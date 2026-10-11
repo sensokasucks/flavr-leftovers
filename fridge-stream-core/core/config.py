@@ -152,6 +152,8 @@ DEFAULTS: Dict[str, Any] = {
         "enabled": True,     # off = nobody hidden, nobody new flagged (the list is kept)
         "skip_mods": True,   # moderators and the streamer never get flagged by a phrase
         "phrases": [],       # case-insensitive whole words; * = any letters ("scam*")
+        # your own flags, each with its own phrases and actions (core/chat_flags.py)
+        "custom": [],
     },
     "credits": {
         "enabled": False,  # unique-chatter end credits overlay

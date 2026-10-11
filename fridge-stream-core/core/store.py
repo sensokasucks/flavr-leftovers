@@ -112,6 +112,24 @@ CREATE TABLE IF NOT EXISTS red_flagged (
     source           TEXT NOT NULL DEFAULT 'phrase',
     flagged_at       REAL NOT NULL
 );
+
+-- Custom chat flags (core/chat_flags.py): who is on which of the streamer's own flags.
+-- flag = the flag's id in red_flags.custom; hits = matching lines seen since.
+CREATE TABLE IF NOT EXISTS chat_flagged (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    flag             TEXT NOT NULL,
+    platform         TEXT NOT NULL DEFAULT '',
+    platform_user_id TEXT NOT NULL DEFAULT '',
+    username         TEXT NOT NULL DEFAULT '',
+    display_name     TEXT NOT NULL DEFAULT '',
+    phrase           TEXT NOT NULL DEFAULT '',
+    message          TEXT NOT NULL DEFAULT '',
+    source           TEXT NOT NULL DEFAULT 'phrase',
+    hits             INTEGER NOT NULL DEFAULT 1,
+    flagged_at       REAL NOT NULL,
+    last_at          REAL NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_chat_flagged_flag ON chat_flagged(flag);
 """
 
 # chat_messages row is from a red-flagged chatter (same rule as RedFlags.is_flagged)
@@ -120,6 +138,15 @@ FLAGGED_SQL = (
     "(f.platform_user_id!='' AND f.platform_user_id=chat_messages.platform_user_id) OR "
     "(f.username!='' AND (f.username=lower(chat_messages.username) OR f.username=lower(chat_messages.display_name)))))"
 )
+
+# which custom flags (core/chat_flags.py) a chat_messages row's sender is on, same matching
+_CUSTOM_MATCH = (
+    "(g.platform='' OR g.platform=chat_messages.platform) AND ("
+    "(g.platform_user_id!='' AND g.platform_user_id=chat_messages.platform_user_id) OR "
+    "(g.username!='' AND (g.username=lower(chat_messages.username) OR g.username=lower(chat_messages.display_name))))"
+)
+FLAGS_SQL = f"(SELECT group_concat(DISTINCT g.flag) FROM chat_flagged g WHERE {_CUSTOM_MATCH})"
+FLAG_FILTER_SQL = f"EXISTS (SELECT 1 FROM chat_flagged g WHERE g.flag=? AND {_CUSTOM_MATCH})"
 
 
 # platform_user_id for identities created from an alert that only had a name
@@ -465,11 +492,12 @@ class Store:
             except Exception:
                 pass
 
-    def submit_chat(self, event: ChatEvent, award: bool = True, flagged: bool = False) -> None:
+    def submit_chat(self, event: ChatEvent, award: bool = True, flagged: bool = False, keep: bool = False) -> None:
         """Queue a chat line for the writer and return at once (the chat read loop never waits
         for the disk). Without a running writer (tests, tools; Core always starts one) the
-        line is written straight away."""
-        item = self._chat_item(event, award, flagged, None)
+        line is written straight away. ``keep``: a chatter on a custom flag that saves their
+        chat (core/chat_flags.py): logged even with the chat log off."""
+        item = self._chat_item(event, award, flagged, None, keep)
         if self._queue is None:
             self._write_batch_sync([item])
             return
@@ -486,10 +514,10 @@ class Store:
         self._put(self._chat_item(event, award, flagged, fut))
         return await fut
 
-    def _chat_item(self, event: ChatEvent, award: bool, flagged: bool, fut) -> tuple:
+    def _chat_item(self, event: ChatEvent, award: bool, flagged: bool, fut, keep: bool = False) -> tuple:
         # copied now: the event object is shared with the rest of the chat pipeline
         return (event.platform.value, str(event.user.id), event.user.username or "",
-                event.user.display_name or "", _chat_row(event), bool(award), bool(flagged), fut)
+                event.user.display_name or "", _chat_row(event), bool(award), bool(flagged), bool(keep), fut)
 
     def _put(self, item: tuple) -> None:
         try:
@@ -553,10 +581,10 @@ class Store:
         results: list[dict] = []
         day = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
         try:
-            for platform, pid, username, display, row, award, flagged, _fut in batch:
+            for platform, pid, username, display, row, award, flagged, keep, _fut in batch:
                 try:
                     results.append(self._process_one(conn, platform, pid, username, display, row,
-                                                     award, flagged, day))
+                                                     award, flagged, day, keep))
                 except sqlite3.Error as exc:
                     # one bad line (a user merged away mid-batch ...) must not lose the others
                     log.warning("Chat line not saved: %s", exc)
@@ -574,9 +602,10 @@ class Store:
                 conn.close()
         return results
 
-    def _process_one(self, conn, platform, pid, username, display, row, award, flagged, day) -> dict:
+    def _process_one(self, conn, platform, pid, username, display, row, award, flagged, day,
+                     keep: bool = False) -> dict:
         uid = self._get_or_create_in(conn, platform, pid, username, display)
-        logged = self.log_chat and (flagged or not self.log_only_flagged)
+        logged = keep or (self.log_chat and (flagged or not self.log_only_flagged))
         if logged:
             self._log_chat_in(conn, row, uid)
         awarded = 0
@@ -1036,7 +1065,10 @@ class Store:
         limit: int = 200,
         offset: int = 0,
         flagged_only: bool = False,
+        flag: str = "",
     ) -> list[dict]:
+        """``flagged_only``: red-flagged chatters' lines; ``flag``: lines from chatters on that
+        custom flag. Each row says ``flagged`` and ``flags`` (custom flag ids, comma-separated)."""
         clauses = []
         args: list[Any] = []
         if user_id:
@@ -1050,11 +1082,14 @@ class Store:
             args.append(f"%{q.lower()}%")
         if flagged_only:
             clauses.append(FLAGGED_SQL)
+        if flag:
+            clauses.append(FLAG_FILTER_SQL)
+            args.append(flag)
         where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
         args.extend([limit, offset])
         with self._connect() as conn:
             rows = conn.execute(
-                f"SELECT *, {FLAGGED_SQL} AS flagged FROM chat_messages {where} "
+                f"SELECT *, {FLAGGED_SQL} AS flagged, {FLAGS_SQL} AS flags FROM chat_messages {where} "
                 "ORDER BY timestamp DESC LIMIT ? OFFSET ?",
                 args,
             ).fetchall()
@@ -1085,8 +1120,9 @@ class Store:
         limit: int = 200,
         offset: int = 0,
         flagged_only: bool = False,
+        flag: str = "",
     ) -> list[dict]:
-        return await self._run(self._search_chat_sync, user_id, platform, q, limit, offset, flagged_only)
+        return await self._run(self._search_chat_sync, user_id, platform, q, limit, offset, flagged_only, flag)
 
     # ------------------------------------------------------------------
     # Red flags (core/red_flags.py keeps the lookup; this is the table)
@@ -1144,10 +1180,80 @@ class Store:
     async def remove_red_flag(self, flag_id: int) -> Optional[dict]:
         return await self._run(self._remove_red_flag_sync, flag_id)
 
+    # ------------------------------------------------------------------
+    # Custom chat flags (core/chat_flags.py keeps the lookup; this is the table)
+    # ------------------------------------------------------------------
+
+    def list_chat_flagged_sync(self) -> list[dict]:
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT g.*, (SELECT COUNT(*) FROM chat_messages c WHERE c.platform=g.platform "
+                "AND g.platform_user_id!='' AND c.platform_user_id=g.platform_user_id) AS messages "
+                "FROM chat_flagged g ORDER BY flagged_at DESC"
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def _add_chat_flag_sync(self, row: dict) -> dict:
+        with self._connect() as conn:
+            # one row per person per flag; a phrase said again counts a hit
+            if row["platform_user_id"]:
+                found = conn.execute(
+                    "SELECT * FROM chat_flagged WHERE flag=? AND platform=? AND platform_user_id=?",
+                    (row["flag"], row["platform"], row["platform_user_id"]),
+                ).fetchone()
+            else:
+                found = conn.execute(
+                    "SELECT * FROM chat_flagged WHERE flag=? AND platform=? AND platform_user_id='' AND username=?",
+                    (row["flag"], row["platform"], row["username"]),
+                ).fetchone()
+            now = time.time()
+            if found:
+                if row["source"] != "phrase":
+                    return dict(found)
+                conn.execute("UPDATE chat_flagged SET hits=hits+1, last_at=? WHERE id=?", (now, found["id"]))
+                conn.commit()
+                return dict(conn.execute("SELECT * FROM chat_flagged WHERE id=?", (found["id"],)).fetchone())
+            cur = conn.execute(
+                "INSERT INTO chat_flagged (flag, platform, platform_user_id, username, display_name, phrase, "
+                "message, source, hits, flagged_at, last_at) VALUES (?,?,?,?,?,?,?,?,1,?,?)",
+                (row["flag"], row["platform"], row["platform_user_id"], row["username"], row["display_name"],
+                 row["phrase"], row["message"], row["source"], now, now),
+            )
+            conn.commit()
+            return dict(conn.execute("SELECT * FROM chat_flagged WHERE id=?", (cur.lastrowid,)).fetchone())
+
+    async def add_chat_flag(self, *, flag: str, platform: str, platform_user_id: str, username: str,
+                            display_name: str, phrase: str = "", message: str = "", source: str = "phrase") -> dict:
+        row = {"flag": flag, "platform": platform, "platform_user_id": platform_user_id, "username": username,
+               "display_name": display_name[:120], "phrase": phrase[:200], "message": message[:500],
+               "source": source}
+        return await self._run(self._add_chat_flag_sync, row)
+
+    def _remove_chat_flag_sync(self, row_id: int) -> Optional[dict]:
+        with self._connect() as conn:
+            found = conn.execute("SELECT * FROM chat_flagged WHERE id=?", (row_id,)).fetchone()
+            if not found:
+                return None
+            conn.execute("DELETE FROM chat_flagged WHERE id=?", (row_id,))
+            conn.commit()
+            return dict(found)
+
+    async def remove_chat_flag(self, row_id: int) -> Optional[dict]:
+        return await self._run(self._remove_chat_flag_sync, row_id)
+
+    def _clear_chat_flag_sync(self, flag: str) -> int:
+        with self._connect() as conn:
+            cur = conn.execute("DELETE FROM chat_flagged WHERE flag=?", (flag,))
+            conn.commit()
+            return cur.rowcount
+
+    async def clear_chat_flag(self, flag: str) -> int:
+        return await self._run(self._clear_chat_flag_sync, flag)
+
     def _export_chat_csv_sync(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
-                              flagged_only: bool = False) -> str:
+                              flagged_only: bool = False, flag: str = "") -> str:
         rows = self._search_chat_sync(user_id=user_id, platform=platform, q=q, limit=1_000_000, offset=0,
-                                      flagged_only=flagged_only)
+                                      flagged_only=flagged_only, flag=flag)
         buf = io.StringIO()
         w = SafeWriter(buf)
         w.writerow(
@@ -1182,9 +1288,9 @@ class Store:
         return buf.getvalue()
 
     async def export_chat_csv(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
-                              flagged_only: bool = False) -> str:
+                              flagged_only: bool = False, flag: str = "") -> str:
         """The chat log as CSV, with the same filters as the Chat history search."""
-        return await self._run(self._export_chat_csv_sync, user_id, platform, q, flagged_only)
+        return await self._run(self._export_chat_csv_sync, user_id, platform, q, flagged_only, flag)
 
     # ------------------------------------------------------------------
     # Market holdings / dividends

@@ -342,7 +342,7 @@
     }
     if (tabId === "paid") initPaidTab();
     if (tabId === "redflags") {
-      if (!(PAGE_SAVER && PAGE_SAVER.isDirty("rf"))) loadRedFlags();
+      if (!(PAGE_SAVER && (PAGE_SAVER.isDirty("rf") || PAGE_SAVER.isDirty("cf")))) loadRedFlags();
       refreshChatLogBanner();
     }
   }
@@ -2362,6 +2362,7 @@
     const q = $("chat-q").value.trim();
     if (q) params.set("q", q);
     if ($("chat-flagged") && $("chat-flagged").checked) params.set("flagged", "1");
+    if ($("chat-flag") && $("chat-flag").value) params.set("flag", $("chat-flag").value);
     return params;
   }
 
@@ -2390,6 +2391,7 @@
         tr.innerHTML =
           `<td>${fmtTime(r.timestamp)}</td>` +
           `<td>${r.flagged ? '<span class="rf-mark" aria-label="red-flagged">🚩</span> ' : ""}` +
+          customFlagBadges(r.flags) +
           (r.user_id
             ? `<button type="button" class="link-btn chat-who" title="Open their page (points, accounts, notes)">${escapeHtml(r.display_name || r.username)}</button>`
             : escapeHtml(r.display_name || r.username)) +
@@ -2407,11 +2409,47 @@
 
   $("chat-search").onclick = loadChat;
   if ($("chat-flagged")) $("chat-flagged").onchange = loadChat;
+  if ($("chat-flag")) $("chat-flag").onchange = loadChat;
+
+  // custom flags' names by id (Red flags page), for Chat history's badges and filter
+  let cfNames = {};
+  function customFlagBadges(ids) {
+    return String(ids || "").split(",").filter((id) => id && cfNames[id])
+      .map((id) => `<span class="cf-badge" title="On your custom flag ${escapeHtml(cfNames[id])}">🏷️ ${escapeHtml(cfNames[id])}</span> `)
+      .join("");
+  }
+  function fillFlagPickers(custom) {
+    cfNames = {};
+    for (const f of custom || []) cfNames[f.id] = f.name;
+    const pick = $("chat-flag");
+    if (pick) {
+      const keep = pick.value;
+      pick.innerHTML = '<option value="">No flag filter</option>' +
+        (custom || []).map((f) => `<option value="${escapeHtml(f.id)}">🏷️ ${escapeHtml(f.name)}</option>`).join("");
+      pick.value = cfNames[keep] ? keep : "";
+      pick.hidden = !(custom || []).length;
+    }
+    const which = $("rf-which");
+    if (which) {
+      const keep = which.value;
+      which.innerHTML = '<option value="red">🚩 Red flag</option>' +
+        (custom || []).map((f) => `<option value="${escapeHtml(f.id)}">🏷️ ${escapeHtml(f.name)}</option>`).join("");
+      which.value = cfNames[keep] ? keep : "red";
+      which.hidden = !(custom || []).length;
+    }
+  }
 
   // ── Red flags (phrases + flagged chatters): own endpoint, Save button + page save bar ──
   let rfLoaded = false;
   function fillRedFlags(d) {
     if (!$("rf-card") || !d) return;
+    fillFlagPickers(d.custom);
+    if ($("cf-card") && d.custom) {
+      cfReactions = d.reactions || [];
+      cfPeople = d.custom_flagged || [];
+      if (!(PAGE_SAVER && PAGE_SAVER.isDirty("cf"))) fillCustomFlags(d.custom);
+      else drawCustomPeople();
+    }
     $("rf-enabled").checked = d.enabled !== false;
     $("rf-skip-mods").checked = d.skip_mods !== false;
     $("rf-phrases").value = (d.phrases || []).join("\n");
@@ -2421,9 +2459,11 @@
     tb.innerHTML = "";
     for (const f of list) {
       const tr = document.createElement("tr");
-      const why = f.source === "manual"
-        ? '<span class="muted">flagged by hand</span>'
-        : `said <strong>${escapeHtml(f.phrase)}</strong>${f.source === "past" ? " (found in past chat)" : ""}: <span class="muted">${escapeHtml(f.message)}</span>`;
+      const via = String(f.source || "").startsWith("flag:") ? f.source.slice(5) : "";
+      const viaName = via ? (cfNames[via] || via) : "";
+      const why = f.source === "manual" || (via && !f.phrase)
+        ? `<span class="muted">flagged by hand${viaName ? " (custom flag " + escapeHtml(viaName) + ")" : ""}</span>`
+        : `said <strong>${escapeHtml(f.phrase)}</strong>${f.source === "past" ? " (found in past chat)" : ""}${viaName ? " (custom flag " + escapeHtml(viaName) + ")" : ""}: <span class="muted">${escapeHtml(f.message)}</span>`;
       const name = f.display_name || f.username;
       tr.innerHTML =
         `<td>${escapeHtml(name)}</td>` +
@@ -2497,24 +2537,30 @@
   // "Check past chat": the saved phrases over the saved chat log; nobody is flagged until confirmed
   let rfPast = [];
   function fillPastChat(d) {
-    rfPast = d.people || [];
-    const tb = $("rf-past-table").querySelector("tbody");
+    rfPast = fillPastTable("rf", d, "", $("rf-skip-mods").checked);
+  }
+
+  /** The "Found in past chat" list (prefix "rf" = red flag, "cf" = a custom flag named `flagName`). */
+  function fillPastTable(prefix, d, flagName, skipMods) {
+    const found = d.people || [];
+    const tb = $(prefix + "-past-table").querySelector("tbody");
     tb.innerHTML = "";
     const lines = Number(d.scanned || 0).toLocaleString();
-    $("rf-past-count").textContent = rfPast.length ? `(${rfPast.length}${d.more ? "+" : ""})` : "";
+    $(prefix + "-past-count").textContent = (flagName ? `for ${flagName} ` : "") + (found.length ? `(${found.length}${d.more ? "+" : ""})` : "");
     const onlyFlagged = $("chat-log-only-flagged") && !$("chat-log-only-flagged").hidden;
-    $("rf-past-hint").textContent = (rfPast.length
-      ? `Read ${lines} saved chat lines. Untick anyone who should not be flagged (a mod quoting a phrase, say), then press Red-flag ticked chatters.`
+    $(prefix + "-past-hint").textContent = (found.length
+      ? `Read ${lines} saved chat lines. Untick anyone who should not be flagged (a mod quoting a phrase, say), then press ${prefix === "rf" ? "Red-flag" : "Flag"} ticked chatters.` +
+        (prefix === "rf" ? "" : " Only the list changes: alerts, answers, points and reactions are for live chat.")
       : `Read ${lines} saved chat lines: nobody new said one of these phrases.`) +
       (d.more ? " The list stops here; flag these, then check again for the rest." : "") +
       (onlyFlagged ? " Chat history is saved only for red-flagged chatters, so other people's old lines are not there to check." : "") +
-      ($("rf-skip-mods").checked ? " Mods and the streamer are left out when Core knows them (your mod list, your channel, or seen with a mod badge since Core started)." : "");
-    rfPast.forEach((p, i) => {
+      (skipMods ? " Mods and the streamer are left out when Core knows them (your mod list, your channel, or seen with a mod badge since Core started)." : "");
+    found.forEach((p, i) => {
       const tr = document.createElement("tr");
       const more = (p.examples || []).slice(1)
         .map((x) => `<span class="muted">${escapeHtml(x.message)}</span>`).join("");
       tr.innerHTML =
-        `<td><input type="checkbox" class="rf-past-pick" data-i="${i}" checked /></td>` +
+        `<td><input type="checkbox" class="${prefix}-past-pick" data-i="${i}" checked /></td>` +
         `<td>${escapeHtml(p.display_name || p.username)}</td>` +
         `<td>${escapeHtml(p.platform)}</td>` +
         `<td class="rf-msg"><strong>${escapeHtml(p.phrase)}</strong>: ${escapeHtml(p.message)}${more}</td>` +
@@ -2522,10 +2568,11 @@
         `<td>${fmtTime(p.timestamp)}</td>`;
       tb.appendChild(tr);
     });
-    $("rf-past-all").checked = true;
-    $("rf-past-apply").disabled = !rfPast.length;
-    $("rf-past-table").hidden = !rfPast.length;
-    $("rf-past-box").hidden = false;
+    $(prefix + "-past-all").checked = true;
+    $(prefix + "-past-apply").disabled = !found.length;
+    $(prefix + "-past-table").hidden = !found.length;
+    $(prefix + "-past-box").hidden = false;
+    return found;
   }
 
   if ($("rf-card")) {
@@ -2574,12 +2621,13 @@
       const name = $("rf-name").value.trim();
       if (!name) return;
       try {
+        const flag = $("rf-which") ? $("rf-which").value : "red";
         fillRedFlags(await api("/api/admin/red-flags/flag", {
           method: "POST",
-          body: JSON.stringify({ name, platform: $("rf-platform").value }),
+          body: JSON.stringify({ name, platform: $("rf-platform").value, flag }),
         }));
         $("rf-name").value = "";
-        $("rf-status").textContent = `${name} red-flagged.`;
+        $("rf-status").textContent = flag === "red" ? `${name} red-flagged.` : `${name} flagged: ${cfNames[flag] || flag}.`;
         loadChat();
       } catch (e) {
         $("rf-status").textContent = String(e.message || e);
@@ -2588,6 +2636,269 @@
     $("rf-name").addEventListener("keydown", (e) => {
       if (e.key === "Enter") $("rf-flag").click();
     });
+  }
+
+  // ── Custom flags: your own flags, each with phrases + actions (core/chat_flags.py) ──
+  let cfReactions = [];
+  let cfPeople = [];
+  let cfNew = 0;
+  const cfOpen = new Set();
+
+  function cfFlagHtml(f) {
+    const rx = ['<option value="">(none)</option>'].concat(cfReactions.map((r) =>
+      `<option value="${escapeHtml(r.id)}"${r.id === f.reaction ? " selected" : ""}>${escapeHtml(r.label)}</option>`));
+    if (f.reaction && !cfReactions.some((r) => r.id === f.reaction)) {
+      rx.push(`<option value="${escapeHtml(f.reaction)}" selected>${escapeHtml(f.reaction)} (not on the Reactions page)</option>`);
+    }
+    const ck = (key, label, title) =>
+      `<label class="check" title="${escapeHtml(title)}"><input type="checkbox" class="cf-${key}"${f[key] ? " checked" : ""} /> ${label}</label>`;
+    return (
+      `<summary><strong class="cf-title">${escapeHtml(f.name || "New flag")}</strong> <span class="muted cf-sum"></span></summary>` +
+      `<div class="cf-body">` +
+      `<label>Name <input type="text" class="cf-name" maxlength="40" value="${escapeHtml(f.name || "")}" placeholder="Giveaway entry" /></label>` +
+      ck("enabled", "On", "Off = this flag checks nobody (its list is kept)") +
+      ck("skip_mods", "Never flag moderators or the streamer", "A moderator or you saying a phrase doesn't get this flag") +
+      `<label>Phrases <span class="field-help">One per line, like red flag phrases: case doesn't matter, whole words only, <code>*</code> stands for any letters.</span>` +
+      `<textarea class="cf-phrases" rows="3" spellcheck="false" placeholder="enter me&#10;giveaway*">${escapeHtml((f.phrases || []).join("\n"))}</textarea></label>` +
+      `<h4>When a chatter says one</h4>` +
+      ck("log", "Save their chat in Chat history", "Every line they write from now on is saved, even with Save chat history off") +
+      ck("hide", "Red-flag them too", "They go on the red flag list: kept off every overlay and out of Stream Rooms") +
+      `<div class="cf-row">` + ck("alert", "Show an alert", "A Chat flag alert on the alerts overlay (pick its picture and sound on the Alerts page)") +
+      `<input type="text" class="cf-alert_text" maxlength="300" value="${escapeHtml(f.alert_text || "")}" placeholder="{name} said {phrase}!" title="The alert's words" /></div>` +
+      `<label>Answer them <span class="field-help">A Stream Core line on the chat and replies overlays, like command answers. Empty = no answer. {name}, {phrase}, {flag}, {message} are filled in.</span>` +
+      `<input type="text" class="cf-reply" maxlength="300" value="${escapeHtml(f.reply || "")}" placeholder="@{name} you're in!" /></label>` +
+      `<div class="cf-row"><label>Points <input type="number" class="cf-points" step="1" value="${Number(f.points || 0)}" title="Give this many points (below 0 takes them away; 0 = none)" /></label>` +
+      `<label>Play a reaction <select class="cf-reaction" title="Free for them; the reaction's cooldown still applies">${rx.join("")}</select></label></div>` +
+      ck("notify", "Tell game plugins and overlays", "Game plugins get on_flag, overlays and Stream Rooms get a chat_flag message") +
+      `<div class="cf-row">` + ck("every_time", "Every time they say one", "Off = only the first time a chatter gets this flag") +
+      `<label>at most every <input type="number" class="cf-cooldown_sec" min="0" max="86400" step="1" value="${Number(f.cooldown_sec ?? 30)}" /> s</label></div>` +
+      `<h4>Chatters with this flag <span class="muted cf-count"></span></h4>` +
+      `<table class="cf-people"><thead><tr><th>Name</th><th>Platform</th><th>Why</th><th>Times</th><th>When</th><th></th></tr></thead><tbody></tbody></table>` +
+      `<div class="config-actions">` +
+      `<button type="button" class="cf-past" title="Save the flags, then look through the saved chat history for chatters who already said one of this flag's phrases. Nobody is flagged until you say so.">Check past chat</button>` +
+      `<button type="button" class="danger cf-del" title="Delete this flag and its list (Save to make it stick)">Delete flag</button>` +
+      `</div></div>`
+    );
+  }
+
+  function cfSummary(box) {
+    const name = box.querySelector(".cf-name").value.trim() || "New flag";
+    box.querySelector(".cf-title").textContent = name;
+    const n = box.querySelector(".cf-phrases").value.split("\n").filter((x) => x.trim()).length;
+    const does = [];
+    if (box.querySelector(".cf-log").checked) does.push("saves chat");
+    if (box.querySelector(".cf-hide").checked) does.push("red-flags");
+    if (box.querySelector(".cf-alert").checked) does.push("alert");
+    if (box.querySelector(".cf-reply").value.trim()) does.push("answer");
+    if (Number(box.querySelector(".cf-points").value || 0)) does.push("points");
+    if (box.querySelector(".cf-reaction").value) does.push("reaction");
+    const people = cfPeople.filter((p) => p.flag === box.dataset.id).length;
+    box.querySelector(".cf-sum").textContent =
+      `${box.querySelector(".cf-enabled").checked ? "" : "(off) "}${n} phrase${n === 1 ? "" : "s"}` +
+      (does.length ? " · " + does.join(", ") : "") + (people ? ` · ${people} chatter${people === 1 ? "" : "s"}` : "");
+  }
+
+  function cfAddBox(f, open) {
+    const box = document.createElement("details");
+    box.className = "cf-flag";
+    box.dataset.id = f.id || "";
+    box.innerHTML = cfFlagHtml(f);
+    box.open = !!open;
+    box.addEventListener("toggle", () => {
+      if (box.dataset.id) box.open ? cfOpen.add(box.dataset.id) : cfOpen.delete(box.dataset.id);
+    });
+    box.addEventListener("input", () => cfSummary(box));
+    box.addEventListener("change", () => cfSummary(box));
+    box.querySelector(".cf-del").onclick = () => {
+      const people = cfPeople.filter((p) => p.flag === box.dataset.id).length;
+      const name = box.querySelector(".cf-name").value.trim() || "this flag";
+      if (people && !confirm(`Delete ${name}? Its list of ${people} chatter${people === 1 ? "" : "s"} goes too once you save. Red flags it gave stay.`)) return;
+      box.remove();
+      $("cf-empty").hidden = !!$("cf-list").children.length;
+    };
+    box.querySelector(".cf-past").onclick = () => cfCheckPast(box);
+    $("cf-list").appendChild(box);
+    $("cf-empty").hidden = true;
+    cfSummary(box);
+    return box;
+  }
+
+  function fillCustomFlags(custom) {
+    if (!$("cf-list")) return;
+    $("cf-list").innerHTML = "";
+    for (const f of custom || []) cfAddBox(f, cfOpen.has(f.id));
+    $("cf-empty").hidden = !!(custom || []).length;
+    drawCustomPeople();
+  }
+
+  function drawCustomPeople() {
+    for (const box of document.querySelectorAll("#cf-list .cf-flag")) {
+      const id = box.dataset.id;
+      const list = id ? cfPeople.filter((p) => p.flag === id) : [];
+      box.querySelector(".cf-count").textContent = id ? (list.length ? `(${list.length})` : "(nobody yet)") : "(save first)";
+      box.querySelector(".cf-past").disabled = false;
+      const tb = box.querySelector(".cf-people tbody");
+      tb.innerHTML = "";
+      for (const p of list) {
+        const name = p.display_name || p.username;
+        const why = p.source === "manual"
+          ? '<span class="muted">flagged by hand</span>'
+          : `said <strong>${escapeHtml(p.phrase)}</strong>${p.source === "past" ? " (found in past chat)" : ""}: <span class="muted">${escapeHtml(p.message)}</span>`;
+        const tr = document.createElement("tr");
+        tr.innerHTML =
+          `<td>${escapeHtml(name)}</td>` +
+          `<td>${escapeHtml(p.platform || "every")}</td>` +
+          `<td class="rf-msg">${why}</td>` +
+          `<td>${Number(p.hits || 1)}</td>` +
+          `<td>${fmtTime(p.flagged_at)}</td>` +
+          `<td class="rf-actions">` +
+          `<button type="button" class="cf-show" title="Show what they wrote in Chat history">Messages${p.messages ? " (" + p.messages + ")" : ""}</button> ` +
+          `<button type="button" class="cf-unflag" title="Take them off this flag's list">Unflag</button></td>`;
+        tr.querySelector(".cf-show").onclick = () => {
+          setChatPerson(null);
+          $("chat-q").value = "";
+          $("chat-platform").value = p.platform || "";
+          $("chat-flagged").checked = false;
+          if ($("chat-flag")) $("chat-flag").value = id;
+          go("chat");
+          loadChat();
+        };
+        tr.querySelector(".cf-unflag").onclick = async () => {
+          try {
+            const d = await api(`/api/admin/red-flags/custom/${p.id}`, { method: "DELETE" });
+            fillRedFlags(d);
+            $("cf-status").textContent = `${name} is off ${cfNames[id] || id}.`;
+            undoToast(`${name} unflagged.`, async () => {
+              try {
+                fillRedFlags(await api("/api/admin/red-flags/custom/restore", {
+                  method: "POST", body: JSON.stringify({ removed: d.removed || p }),
+                }));
+                $("cf-status").textContent = `${name} is back on ${cfNames[id] || id}.`;
+              } catch (e) {
+                $("cf-status").textContent = String(e.message || e);
+              }
+            });
+          } catch (e) {
+            $("cf-status").textContent = String(e.message || e);
+          }
+        };
+        tb.appendChild(tr);
+      }
+      box.querySelector(".cf-people").hidden = !list.length;
+      cfSummary(box);
+    }
+  }
+
+  function readCustomFlags() {
+    return [...document.querySelectorAll("#cf-list .cf-flag")].map((box) => {
+      const v = (cls) => box.querySelector(".cf-" + cls);
+      return {
+        id: box.dataset.id || "",
+        name: v("name").value.trim(),
+        enabled: v("enabled").checked,
+        skip_mods: v("skip_mods").checked,
+        phrases: v("phrases").value.split("\n"),
+        log: v("log").checked,
+        hide: v("hide").checked,
+        alert: v("alert").checked,
+        alert_text: v("alert_text").value,
+        reply: v("reply").value,
+        points: Number(v("points").value || 0),
+        reaction: v("reaction").value,
+        notify: v("notify").checked,
+        every_time: v("every_time").checked,
+        cooldown_sec: Number(v("cooldown_sec").value || 0),
+      };
+    });
+  }
+
+  async function saveCustomFlags() {
+    if (!rfLoaded || !$("cf-card")) return;
+    const custom = readCustomFlags();
+    const unnamed = custom.findIndex((f) => !f.name);
+    if (unnamed >= 0) {
+      $("cf-status").textContent = "Give every flag a name first.";
+      const box = document.querySelectorAll("#cf-list .cf-flag")[unnamed];
+      box.open = true;
+      box.querySelector(".cf-name").focus();
+      throw new Error("unnamed flag");
+    }
+    try {
+      const d = await api("/api/admin/red-flags", { method: "PUT", body: JSON.stringify({ custom }) });
+      if (PAGE_SAVER) PAGE_SAVER.sections.forEach((s) => { if (s.key === "cf") s.dirty = false; });
+      // new flags got their ids: keep the ones that were open, open
+      [...document.querySelectorAll("#cf-list .cf-flag")].forEach((box, i) => {
+        if (box.open && d.custom && d.custom[i]) cfOpen.add(d.custom[i].id);
+      });
+      fillRedFlags(d);
+      fillCustomFlags(d.custom);
+      $("cf-status").textContent = "Saved. New chat is checked against these flags.";
+      return d;
+    } catch (e) {
+      $("cf-status").textContent = String(e.message || e);
+      throw e;
+    }
+  }
+
+  // Check past chat for one custom flag (same list + tick boxes as the red flag's)
+  let cfPast = [];
+  let cfPastFlag = "";
+  async function cfCheckPast(box) {
+    const btn = box.querySelector(".cf-past");
+    btn.disabled = true;
+    try {
+      const idx = [...document.querySelectorAll("#cf-list .cf-flag")].indexOf(box);
+      const d = await saveCustomFlags();
+      const flag = d && d.custom && d.custom[idx];
+      if (!flag) return;
+      $("cf-status").textContent = `Checking past chat for ${flag.name}…`;
+      const res = await api("/api/admin/red-flags/check-past", { method: "POST", body: JSON.stringify({ flag: flag.id }) });
+      cfPastFlag = flag.id;
+      cfPast = fillPastTable("cf", res, flag.name, flag.skip_mods);
+      $("cf-status").textContent = "";
+      $("cf-past-box").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    } catch (e) {
+      if (String(e.message) !== "unnamed flag") $("cf-status").textContent = String(e.message || e);
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  if ($("cf-card")) {
+    $("cf-add").onclick = () => {
+      cfNew += 1;
+      const box = cfAddBox({ name: "", enabled: true, skip_mods: true, log: true, notify: true,
+        alert_text: "{name} said {phrase}!", cooldown_sec: 30 }, true);
+      drawCustomPeople();
+      box.querySelector(".cf-name").focus();
+    };
+    $("cf-save").onclick = () => saveCustomFlags().catch(() => {});
+    $("cf-past-all").onchange = () => {
+      for (const b of document.querySelectorAll(".cf-past-pick")) b.checked = $("cf-past-all").checked;
+    };
+    $("cf-past-close").onclick = () => {
+      $("cf-past-box").hidden = true;
+      cfPast = [];
+    };
+    $("cf-past-apply").onclick = async () => {
+      const people = [...document.querySelectorAll(".cf-past-pick")]
+        .filter((b) => b.checked).map((b) => cfPast[Number(b.dataset.i)]);
+      if (!people.length) {
+        $("cf-status").textContent = "Nobody ticked.";
+        return;
+      }
+      try {
+        const d = await api("/api/admin/red-flags/apply-past", {
+          method: "POST", body: JSON.stringify({ people, flag: cfPastFlag }),
+        });
+        fillRedFlags(d);
+        $("cf-past-box").hidden = true;
+        cfPast = [];
+        $("cf-status").textContent = `${d.flagged_now} flagged from past chat: ${cfNames[cfPastFlag] || cfPastFlag}.`;
+      } catch (e) {
+        $("cf-status").textContent = String(e.message || e);
+      }
+    };
   }
   $("chat-export").onclick = () => downloadCsv(chatFilters(), $("chat-export-msg"));
 
@@ -5552,6 +5863,8 @@
         button: "chat-opt-save" },
       { key: "rf", page: "redflags", sub: "", name: "Red flags",
         fields: ["rf-enabled", "rf-skip-mods", "rf-phrases"], button: "rf-save", save: saveRedFlags },
+      { key: "cf", page: "redflags", sub: "", name: "Custom flags", scope: "#cf-list",
+        clicks: "#cf-add, .cf-del", button: "cf-save", save: saveCustomFlags },
       { key: "mkt-set", page: "market", sub: "listings", name: "Market settings", group: "mkt-set",
         scope: "#mkt-switches", button: "mkt-save" },
       { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-set",

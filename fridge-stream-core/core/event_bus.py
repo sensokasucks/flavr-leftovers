@@ -23,6 +23,7 @@ ReplyHandler = Callable[[ChatReply], Awaitable[None]]
 AlertHandler = Callable[[dict], Awaitable[None]]
 UserUpdateHandler = Callable[[dict], Awaitable[None]]
 RemovedHandler = Callable[[dict], Awaitable[None]]
+FlagHandler = Callable[[dict], Awaitable[None]]
 
 
 class EventBus:
@@ -34,6 +35,7 @@ class EventBus:
         self._alert_handlers: List[AlertHandler] = []
         self._user_update_handlers: List[UserUpdateHandler] = []
         self._removed_handlers: List[RemovedHandler] = []
+        self._flag_handlers: List[FlagHandler] = []
         self._lock = asyncio.Lock()
 
     def on_chat(self, handler: ChatHandler) -> None:
@@ -60,6 +62,17 @@ class EventBus:
     def on_chat_removed(self, handler: RemovedHandler) -> None:
         """A mod deleted a message, timed out / banned a chatter, or cleared the chat."""
         self._removed_handlers.append(handler)
+
+    def on_flag(self, handler: FlagHandler) -> None:
+        """A chatter set off one of the streamer's custom chat flags (core/chat_flags.py)."""
+        self._flag_handlers.append(handler)
+
+    async def publish_flag(self, payload: dict[str, Any]) -> None:
+        for h in list(self._flag_handlers):
+            try:
+                await h(payload)
+            except Exception:
+                log.exception("flag handler error")
 
     async def publish_chat_removed(self, payload: dict[str, Any]) -> None:
         for h in list(self._removed_handlers):
