@@ -263,7 +263,8 @@ class CoreRecordsPaid(unittest.TestCase):
         self.addCleanup(tmp.cleanup)
         core.store = Store(Path(tmp.name) / "t.db")
         core.red_flags = RedFlags(core.store, {})
-        core.state.config = {"red_flags": {"phrases": ["buy viewers"]}}
+        core.state.config = {"red_flags": {"phrases": ["buy viewers"]},
+                             "points": {"enabled": True, "jewels_points": 40}}
         sent: list = []
 
         class WS:
@@ -293,6 +294,8 @@ class CoreRecordsPaid(unittest.TestCase):
             await core._on_chat(chat("hi", "just chatting", platform=Platform.TWITCH, highlight="highlighted"))
             await core._on_alert({**build_alert(kind="subscribe", username="ed", platform="twitch"),
                                   "source": "platform"})
+            await core._on_alert({**build_alert(kind="member_gift", username="gus", platform="youtube", qty=3),
+                                  "source": "platform"})
             await core._on_alert({**build_alert(kind="kicks", username="cy", platform="kick", amount=50,
                                                 currency="KICKs"), "source": "platform"})
             await core._on_alert(build_alert(kind="superchat", username="test", is_test=True))
@@ -310,6 +313,7 @@ class CoreRecordsPaid(unittest.TestCase):
             ("otter", "jewels", None, "Star", "", False),
             ("bo", "powerup", None, "Gigantified emote", "hello", False),
             ("ed", "subscribe", None, "", "", False),
+            ("gus", "member_gift", None, "", "", False),
             ("cy", "kicks", 50.0, "", "", False),
             ("spam", "bits", 500.0, "", "cheer500", True),
         ])
@@ -323,6 +327,9 @@ class CoreRecordsPaid(unittest.TestCase):
         sticker = next(a for a in alerts if a["kind"] == "supersticker")
         self.assertEqual((sticker["image"], sticker["amount_fmt"], sticker["message"]), ("https://x/cat.png", "2.00 USD", ""))
         self.assertFalse([a for a in alerts if a["username"] == "spam"])
+        # a YouTube gift pays points.jewels_points to its sender (set to 40 here; default 0)
+        self.assertEqual(next(a for a in alerts if a["kind"] == "jewels").get("points_awarded"), 40)
+        self.assertEqual(rows[5]["qty"], 3)
 
 
 if __name__ == "__main__":

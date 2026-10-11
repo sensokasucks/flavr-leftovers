@@ -119,6 +119,7 @@ DEFAULTS: Dict[str, Any] = {
         "sub_points": 500,       # per sub / resub (live platform events only)
         "follow_points": 250,    # once per viewer
         "gift_points": 1000,     # to the gifter, per sub gifted
+        "jewels_points": 0,      # per YouTube gift bought with Jewels (0 = none)
         "admin_token": "change-me",
     },
     "market": {

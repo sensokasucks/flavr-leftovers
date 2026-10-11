@@ -378,6 +378,9 @@ class CastBoard:
             "supersticker": "donors",
             "jewels": "donors",
             "kicks": "donors",
+            "member": "gifted",
+            "member_milestone": "gifted",
+            "member_gift": "gifted",
         }.get((kind or "").lower())
         if bucket:
             self.tags[bucket].add(key)

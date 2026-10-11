@@ -20,7 +20,8 @@ PLATFORMS = [["kick", "Kick"], ["twitch", "Twitch"], ["youtube", "YouTube"]]
 ALERT_KINDS = [["follow", "Follow"], ["subscribe", "Sub / member"], ["resub", "Resub"], ["gift", "Gifted subs"],
                ["raid", "Raid"], ["host", "Host"], ["bits", "Bits"], ["superchat", "Super Chat"],
                ["supersticker", "Super Sticker"], ["jewels", "YouTube gift"], ["kicks", "KICKs"],
-               ["donation", "Donation"]]
+               ["donation", "Donation"], ["member", "YouTube member"], ["member_milestone", "Member milestone"],
+               ["member_gift", "Gifted memberships"]]
 METRIC_MODULES = ["health", "food", "xp", "deaths", "armor", "viewers", "cpm", "power", "effects", "inventory"]
 
 
