@@ -6,6 +6,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="animate-lite.css" />
   <link rel="stylesheet" href="alerts.css" />
   <link rel="stylesheet" id="alerts-custom-css" href="alerts-custom.css" />
 </head>
@@ -13,6 +14,8 @@
   <!--
     DOM matches Streamlabs Alert Box + StreamElements AlertBox so existing
     overlay CSS can target the same ids/classes. See ALERTS.md.
+    #alert-box also gets layout-*, platform-*, tier-*, "animated fadeIn" and data-kind /
+    data-platform / data-amount / data-currency / data-tier while an alert shows.
   -->
   <div id="wrap" class="widget-AlertBox">
     <div id="idle-hint">Waiting for an alert</div>
@@ -24,8 +27,10 @@
       </div>
       <div id="alert-text-wrap" class="alertbox-message">
         <div class="alert-kind" id="alert-kind"></div>
-        <div id="alert-message" class="alertbox-message-text alert-text"></div>
-        <div id="alert-user-message" class="alertbox-message-message alert-message"></div>
+        <div id="alert-text">
+          <div id="alert-message" class="alertbox-message-text alert-text"></div>
+          <div id="alert-user-message" class="alertbox-message-message alert-message"></div>
+        </div>
         <div class="alert-meta" id="alert-meta"></div>
       </div>
     </div>

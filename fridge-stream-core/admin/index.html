@@ -804,6 +804,19 @@
             <label class="check"><input type="radio" name="alert-skin" id="alert-skin-card" value="card" /> Card</label>
             <label class="check"><input type="radio" name="alert-skin" id="alert-skin-custom" value="custom" /> Custom CSS only</label>
           </div>
+          <label style="margin-top:10px">Tier amounts <span class="field-help">where <code>tier-2</code>, <code>tier-3</code> and <code>tier-4</code> start; bits and KICKs count 100 to 1.00</span>
+            <input id="alert-opt-tiers" type="text" maxlength="40" placeholder="5,20,100" />
+          </label>
+          <div class="form-row css-slot-row">
+            <label>Stylesheet
+              <select id="alert-css-slot"><option value="">Main (every source)</option></select>
+            </label>
+            <input id="alert-css-newname" type="text" maxlength="40" placeholder="new name, e.g. money" />
+            <button id="alert-css-new" type="button">Add stylesheet</button>
+            <button id="alert-css-del" type="button" disabled>Delete</button>
+          </div>
+          <p class="hint">Extra stylesheets give one OBS source its own look: add <code>css=name</code> to its address
+            (Sources &amp; overlays → Customise → Saved stylesheet).</p>
           <label>Custom CSS
             <textarea id="alert-css" rows="10" spellcheck="false" placeholder="Paste Streamlabs / StreamElements CSS here…"></textarea>
           </label>
@@ -825,7 +838,14 @@
               <code>#alert-user-message</code>
               <code>.name</code>
               <code>.amount</code>
-              · GIFs: <code>overlay/assets/alerts/follow.gif</code>
+              <code>#alert-text</code>
+              <code>[data-token="name"]</code>
+              <code>.platform-twitch</code>
+              <code>.tier-3</code>
+              <code>.layout-side</code>
+              <code>.animated.fadeIn</code>
+              <code>[data-kind="bits"]</code>
+              · GIFs: <code>overlay/assets/alerts/follow.gif</code> · full list in <code>overlay/ALERTS.md</code>
             </p>
           </details>
         </fieldset>
@@ -914,6 +934,16 @@
         </fieldset>
         <fieldset class="cfg-card">
           <legend>Custom CSS</legend>
+          <div class="form-row css-slot-row">
+            <label>Stylesheet
+              <select id="chat-css-slot"><option value="">Main (every source)</option></select>
+            </label>
+            <input id="chat-css-newname" type="text" maxlength="40" placeholder="new name, e.g. twitch" />
+            <button id="chat-css-new" type="button">Add stylesheet</button>
+            <button id="chat-css-del" type="button" disabled>Delete</button>
+          </div>
+          <p class="hint">Extra stylesheets give one OBS source its own look: add <code>css=name</code> to its address
+            (Sources &amp; overlays → Customise → Saved stylesheet).</p>
           <label>Custom CSS
             <textarea id="chat-css" rows="10" spellcheck="false" placeholder="Paste Streamlabs / StreamElements chat CSS here…"></textarea>
           </label>

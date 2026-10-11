@@ -7,6 +7,8 @@ Each styled overlay has three things in ``overlay/``:
     classes so packs drop in).
   - ``<name>-settings.json``: skin, a css_version stamp the page polls so a save applies live,
     and small options (hide messages after N s, sound volume, ...).
+  - ``<name>-css/<slot>.css``: extra saved stylesheets ("money", "twitch"); a page picks one
+    with ``?css=<slot>`` so each OBS source can have its own look.
   - ``assets/<name>/``: pictures, videos and sounds by slot name (``follow.gif``, ``raid.webm``,
     ``message.mp3``, ``badge-mod.png``). Uploaded from the dashboard or dropped in by hand;
     the page gets the list of what exists so it never probes for missing files.
@@ -24,11 +26,14 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from core.css_templates import fill_placeholders
+
 log = logging.getLogger("core.overlay_style")
 
 OVERLAY_DIR = Path(__file__).resolve().parent.parent / "overlay"
 MAX_CUSTOM_CSS_BYTES = 256_000
 MAX_ASSET_BYTES = 15 * 1024 * 1024
+MAX_CSS_SLOTS = 30
 _CSS_BLOCK = re.compile(r"<\s*/?\s*script|<\s*/?\s*style|javascript:|expression\s*\(", re.IGNORECASE)
 _SLOT_RE = re.compile(r"[^a-z0-9_-]+")
 
@@ -86,6 +91,9 @@ class OverlayStyle:
     def settings_path(self, overlay_dir: Optional[Path] = None) -> Path:
         return self._root(overlay_dir) / f"{self.name}-settings.json"
 
+    def css_slots_dir(self, overlay_dir: Optional[Path] = None) -> Path:
+        return self._root(overlay_dir) / f"{self.name}-css"
+
     def assets_dir(self, overlay_dir: Optional[Path] = None) -> Path:
         return self._root(overlay_dir) / "assets" / self.name
 
@@ -106,7 +114,8 @@ class OverlayStyle:
             except (OSError, TypeError, ValueError):
                 pass
         media, sounds = self.list_assets(overlay_dir)
-        return {"skin": skin, "css_version": css_version, "options": options, "media": media, "sounds": sounds}
+        return {"skin": skin, "css_version": css_version, "options": options, "media": media, "sounds": sounds,
+                "css_slots": self.list_css_slots(overlay_dir)}
 
     def clean_options(self, raw: Any) -> dict[str, Any]:
         """Keep only known options, coerced to the default's type and clamped to its range."""
@@ -151,11 +160,23 @@ class OverlayStyle:
         return self.read_settings(overlay_dir)
 
     # ── custom CSS ──────────────────────────────────────────
-    def read_css(self, overlay_dir: Optional[Path] = None) -> str:
-        path = self.css_path(overlay_dir)
+    @staticmethod
+    def _slot_name(slot: Optional[str]) -> str:
+        """"" for the default stylesheet, else a clean slot name."""
+        name = clean_slot(slot or "")
+        return "" if name in ("", "default") else name
+
+    def _css_file(self, slot: Optional[str], overlay_dir: Optional[Path]) -> Path:
+        name = self._slot_name(slot)
+        if not name:
+            return self.css_path(overlay_dir)
+        return self.css_slots_dir(overlay_dir) / f"{name}.css"
+
+    def read_css(self, overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> str:
+        path = self._css_file(slot, overlay_dir)
         return path.read_text(encoding="utf-8") if path.is_file() else ""
 
-    def write_css(self, css: str, overlay_dir: Optional[Path] = None) -> dict[str, Any]:
+    def write_css(self, css: str, overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> dict[str, Any]:
         if not isinstance(css, str):
             raise ValueError("css must be a string")
         raw = css.replace("\r\n", "\n")
@@ -163,10 +184,45 @@ class OverlayStyle:
             raise ValueError("Custom CSS is too large (max 256 KB)")
         if _CSS_BLOCK.search(raw):
             raise ValueError("Custom CSS cannot contain script/style tags or expressions")
-        path = self.css_path(overlay_dir)
+        if slot and not self._slot_name(slot) and clean_slot(slot) != "default":
+            raise ValueError("Give the stylesheet a name made of letters, numbers, - or _.")
+        name = self._slot_name(slot)
+        if name and name not in self.list_css_slots(overlay_dir) and len(self.list_css_slots(overlay_dir)) >= MAX_CSS_SLOTS:
+            raise ValueError(f"That's the most saved stylesheets ({MAX_CSS_SLOTS}). Delete one first.")
+        # a Streamlabs / StreamElements template's {font_size} / {{fontSize}} get real values
+        raw, filled = fill_placeholders(raw)
+        path = self._css_file(slot, overlay_dir)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(raw, encoding="utf-8")
-        return self.write_settings(bump_css=True, overlay_dir=overlay_dir)
+        # a slot's version is its file time; the default sheet bumps css_version as before
+        out = self.write_settings(bump_css=not name, overlay_dir=overlay_dir)
+        out["placeholders_filled"] = filled
+        return out
+
+    def list_css_slots(self, overlay_dir: Optional[Path] = None) -> dict[str, int]:
+        """{slot: version} for the saved extra stylesheets (the version changes on every save)."""
+        folder = self.css_slots_dir(overlay_dir)
+        out: dict[str, int] = {}
+        if not folder.is_dir():
+            return out
+        for path in sorted(folder.glob("*.css")):
+            name = self._slot_name(path.stem)
+            if name and name == path.stem:
+                try:
+                    out[name] = int(path.stat().st_mtime * 1000)
+                except OSError:
+                    continue
+        return out
+
+    def delete_css_slot(self, slot: str, overlay_dir: Optional[Path] = None) -> bool:
+        name = self._slot_name(slot)
+        if not name:
+            return False
+        path = self.css_slots_dir(overlay_dir) / f"{name}.css"
+        if not path.is_file():
+            return False
+        path.unlink()
+        return True
 
     # ── assets (pictures, videos, sounds) ───────────────────
     def list_assets(self, overlay_dir: Optional[Path] = None) -> tuple[dict[str, str], dict[str, str]]:

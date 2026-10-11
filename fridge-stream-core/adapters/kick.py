@@ -70,6 +70,9 @@ BROWSER_HEADERS = {
 }
 
 
+# mod actions on the chatroom channel (names from Kick's web client; payloads logged once)
+KICK_REMOVE_EVENTS = ("App\\Events\\MessageDeletedEvent", "App\\Events\\UserBannedEvent",
+                      "App\\Events\\ChatroomClearEvent")
 KICK_SUB_EVENTS = ("App\\Events\\SubscriptionEvent", "App\\Events\\GiftedSubscriptionsEvent")
 
 
@@ -107,6 +110,19 @@ KICK_TIP_EVENTS = ("KicksGifted",)
 
 def _event_short(event_name: str) -> str:
     return event_name.rsplit("\\", 1)[-1]
+
+
+def kick_removed(event_name: str, data: dict) -> dict:
+    """Kick mod action → ``_emit_removed`` kwargs ({} when there is nothing to take away)."""
+    if event_name.endswith("ChatroomClearEvent"):
+        return {"everything": True}
+    if event_name.endswith("MessageDeletedEvent"):
+        m = data.get("message") if isinstance(data.get("message"), dict) else {}
+        return {"message_id": str(m.get("id") or "")} if m.get("id") else {}
+    if event_name.endswith("UserBannedEvent"):
+        u = data.get("user") if isinstance(data.get("user"), dict) else {}
+        return {"user_id": str(u.get("id") or ""), "username": str(u.get("username") or u.get("slug") or "")}
+    return {}
 
 
 def kick_event_alert(event_name: str, data: dict[str, Any]) -> Optional[dict[str, Any]]:
@@ -542,6 +558,17 @@ class KickAdapter(BaseAdapter):
                     return
             if isinstance(data, dict):
                 await self._on_chat_message(data)
+            return
+
+        if event_name in KICK_REMOVE_EVENTS:
+            data = msg.get("data")
+            if isinstance(data, str):
+                try:
+                    data = json.loads(data)
+                except json.JSONDecodeError:
+                    return
+            if isinstance(data, dict):
+                await self._emit_removed(**kick_removed(event_name, data))
             return
 
         if _event_short(event_name) in KICK_HOST_EVENTS + KICK_TIP_EVENTS:

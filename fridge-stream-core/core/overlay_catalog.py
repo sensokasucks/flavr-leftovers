@@ -17,6 +17,10 @@ from __future__ import annotations
 from typing import Any
 
 PLATFORMS = [["kick", "Kick"], ["twitch", "Twitch"], ["youtube", "YouTube"]]
+ALERT_KINDS = [["follow", "Follow"], ["subscribe", "Sub / member"], ["resub", "Resub"], ["gift", "Gifted subs"],
+               ["raid", "Raid"], ["host", "Host"], ["bits", "Bits"], ["superchat", "Super Chat"],
+               ["supersticker", "Super Sticker"], ["jewels", "YouTube gift"], ["kicks", "KICKs"],
+               ["donation", "Donation"]]
 METRIC_MODULES = ["health", "food", "xp", "deaths", "armor", "viewers", "cpm", "power", "effects", "inventory"]
 
 
@@ -78,6 +82,13 @@ OVERLAYS: list[dict[str, Any]] = [
             _tri("top", "Newest message on top"),
             _tri("avatars", "Chatter profile pictures"),
             _tri("sound", "Sounds"),
+            _select("template", "Free chat template", [["", "None"], ["streamlabs", "Streamlabs Chat Box CSS"],
+                                                       ["streamelements", "StreamElements chat CSS"],
+                                                       ["jchat", "jChat / Chat Is This CSS"]],
+                    help_text="Starts from Custom CSS only and leaves out the K / T / Y letters and pictures"),
+            _text("in", "Line entrance (StreamElements template)", "", "An animate.css name, e.g. bounceIn", "fadeInUp"),
+            _text("css", "Saved stylesheet", "", "Name of a stylesheet saved on the Chat overlay page; empty = the main one",
+                  "twitch"),
             _bool("preview", "Preview with made-up chatters", False, "For testing the look while chat is quiet"),
         ],
         "settings": [{"label": "Skin, custom CSS, pictures and sounds", "hash": "#chatlook"}],
@@ -90,6 +101,33 @@ OVERLAYS: list[dict[str, Any]] = [
         "params": [
             _select("skin", "Skin", [["", "Dashboard setting"], ["classic", "Classic"], ["card", "Card"],
                                      ["custom", "Custom CSS only"]]),
+            _multi("platforms", "Only these platforms", PLATFORMS, "Empty = every platform"),
+            _select("group", "Only a group", [["", "Every alert"], ["money", "Money and tips"],
+                                              ["subs", "Subs and memberships"], ["community", "Follows, raids, hosts"]]),
+            _multi("kinds", "Only these alerts", ALERT_KINDS, "Empty = the group above, or every alert"),
+            _multi("hide", "Never these alerts", ALERT_KINDS),
+            _num("min", "Smallest money alert", "", "Super Chats, stickers and tips below this are skipped", 0, None, 0.5),
+            _num("min_bits", "Smallest cheer (bits)", "", "", 0, None, 1),
+            _num("min_kicks", "Smallest KICKs", "", "", 0, None, 1),
+            _bool("tests", "Show test alerts", True, "Untick so Fire test only shows on other sources"),
+            _num("duration", "Seconds on screen", "", "Empty = dashboard setting", 1.5, 60, 0.5),
+            _bool("sound", "Sounds", True),
+            _num("volume", "Volume (%)", "", "Empty = dashboard setting", 0, 100, 5),
+            _bool("image", "Picture", True),
+            _bool("message", "Viewer's message", True),
+            _select("layout", "Layout", [["", "Picture above text"], ["side", "Picture beside text"],
+                                         ["banner", "Text over the picture"]]),
+            _select("align", "Position", [["", "Centre"], ["left", "Left"], ["right", "Right"]]),
+            _text("in", "Entrance animation", "", "An animate.css name, e.g. bounceIn, slideInLeft", "fadeIn"),
+            _select("letters", "Letter animation", [["", "None"], ["wiggle", "Wiggle"], ["rubberBand", "Rubber band"],
+                                                       ["tada", "Tada"], ["pulse", "Pulse"]],
+                    help_text="Every letter of the name and amount moves; packs can use their own names"),
+            _text("out", "Exit animation", "", "e.g. fadeOut, slideOutRight", "fadeOut"),
+            _text("tiers", "Tier amounts", "", "Where tier-2, tier-3 and tier-4 start; empty = dashboard setting",
+                  "5,20,100"),
+            _num("queue", "Most alerts waiting", "", "Extra ones are dropped; empty = 50", 1, 200, 1),
+            _text("css", "Saved stylesheet", "", "Name of a stylesheet saved on the Alerts page; empty = the main one",
+                  "money"),
             _bool("preview", "Preview mode", False, "Shows \"waiting for an alert\" so you can place the source"),
         ],
         "settings": [{"label": "Test alerts, skin, custom CSS, pictures and sounds", "hash": "#alerts"}],

@@ -245,6 +245,9 @@ class StreamCore:
 
         # Late user info (Kick profile pictures) → overlays + recent chat history
         self.bus.on_user_update(self._on_user_update)
+
+        # Mod deletes / timeouts / bans / clears → overlays mark the lines .deleted and drop them
+        self.bus.on_chat_removed(self._on_chat_removed)
         self.state.fire_alert = self.fire_alert
         self.state.recent_alerts = self.recent_alerts
 
@@ -1205,6 +1208,27 @@ class StreamCore:
             except Exception:
                 log.exception("chat_user_hidden WS broadcast failed")
         return len(gone)
+
+    async def _on_chat_removed(self, payload: dict) -> None:
+        """The platform took chat away: drop it from the catch-up history and tell the overlays
+        (``chat_removed``: platform + message_id, or user_id / username, or all)."""
+        plat = str(payload.get("platform") or "")
+        mid = str(payload.get("message_id") or "")
+        uid = str(payload.get("user_id") or "")
+        name = str(payload.get("username") or "")
+        if payload.get("all"):
+            gone = [i for i in self.recent_chat if i.get("platform") == plat]
+        elif mid:
+            gone = [i for i in self.recent_chat if i.get("platform") == plat and str(i.get("message_id") or "") == mid]
+        else:
+            gone = matching_recent(self.recent_chat, plat, uid, name)
+        for item in gone:
+            self.recent_chat.remove(item)
+        if self.state.ws_manager:
+            try:
+                await self.state.ws_manager.broadcast({"type": "chat_removed", "data": payload})
+            except Exception:
+                log.exception("chat_removed WS broadcast failed")
 
     async def _on_user_update(self, payload: dict) -> None:
         """{"platform", "id", "username", "profile_image_url"} → WS ``type:user_update``.

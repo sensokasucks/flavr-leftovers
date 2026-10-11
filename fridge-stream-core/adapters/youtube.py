@@ -153,6 +153,19 @@ def official_member_alert(snippet: dict, author: dict) -> tuple[bool, Optional[d
     return False, None
 
 
+def youtube_removed(action: dict) -> dict:
+    """A mod deleted a message (or everything someone said) → ``_emit_removed`` kwargs."""
+    for key in ("markChatItemAsDeletedAction", "removeChatItemAction"):
+        target = (action.get(key) or {}).get("targetItemId")
+        if target:
+            return {"message_id": str(target)}
+    for key in ("markChatItemsByAuthorAsDeletedAction", "removeChatItemByAuthorAction"):
+        channel = (action.get(key) or {}).get("externalChannelId")
+        if channel:
+            return {"user_id": str(channel)}
+    return {}
+
+
 class YouTubeAdapter(BaseAdapter):
     platform = Platform.YOUTUBE
 
@@ -627,6 +640,10 @@ class YouTubeAdapter(BaseAdapter):
     async def _on_innertube_action(self, action: dict) -> None:
         self.scout.check_action(action)
         self._note_gift_sender(action)
+        removed = youtube_removed(action)
+        if removed:
+            await self._emit_removed(**removed)
+            return
         item = (action.get("addChatItemAction") or {}).get("item")
         if not item:
             replay = action.get("replayChatItemAction") or {}

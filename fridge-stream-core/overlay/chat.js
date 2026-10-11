@@ -4,7 +4,8 @@
 
   // URL options: ?platform=kick | ?platforms=kick,twitch | omit = all
   //   ?badges=0 hides the K / T / Y platform letters, ?skin=classic|plain|custom,
-  //   ?hide=12 (seconds, 0 = keep), ?avatars=1, ?sound=0, ?top=1 (newest on top), ?preview=1
+  //   ?hide=12 (seconds, 0 = keep), ?avatars=1, ?sound=0, ?top=1 (newest on top), ?preview=1,
+  //   ?template=streamlabs|streamelements|jchat (a free template's CSS), ?css=<saved stylesheet>
   const params = new URLSearchParams(location.search);
   const platformFilter = new Set();
   // A typo (?platform=twich) used to filter out everything: unknown names are ignored, and
@@ -29,8 +30,18 @@
   hint.set("filter",
     (platformFilter.size ? "showing " + [...platformFilter].join(" + ") + " only" : "showing every platform") +
     (unknownPlatforms.length ? " (unknown: " + unknownPlatforms.join(", ") + ")" : ""));
-  const showPlatformBadge = params.get("badges") !== "0";
-  const skinParam = (params.get("skin") || "").trim().toLowerCase();
+  // ?template=streamlabs|streamelements|jchat: a free template's CSS is the whole look, so the
+  // page starts from "Custom CSS only" and leaves out what those templates never had
+  // (the K / T / Y letters, profile pictures) unless the URL turns them back on
+  const TEMPLATES = { streamlabs: "streamlabs", sl: "streamlabs", streamelements: "streamelements", se: "streamelements",
+                      jchat: "jchat", chatis: "jchat", chatisthis: "jchat" };
+  const template = TEMPLATES[(params.get("template") || "").trim().toLowerCase().replace(/[^a-z]/g, "")] || "";
+  if (template) document.body.classList.add("template", "template-" + template);
+  const showPlatformBadge = params.has("badges") ? params.get("badges") !== "0" : !template;
+  const skinParam = (params.get("skin") || "").trim().toLowerCase() || (template ? "custom" : "");
+  const seIn = (params.get("in") || "fadeInUp").replace(/[^A-Za-z]/g, "") || "fadeInUp";
+  if (template === "streamelements") document.documentElement.style.setProperty("--chat-row-in", seIn);
+  const cssSlot = (params.get("css") || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40);
   const preview = params.get("preview") === "1" || params.get("preview") === "true";
   const SKINS = ["classic", "plain", "custom"];
 
@@ -51,7 +62,7 @@
       hide: hide != null && Number.isFinite(hide) ? hide : options.hide_after_sec,
       max: Math.max(1, Number(options.max_messages) || 30),
       top: urlBool("top") ?? !!options.newest_on_top,
-      avatars: urlBool("avatars") ?? !!options.show_avatars,
+      avatars: urlBool("avatars") ?? (template ? false : !!options.show_avatars),
       sound: urlBool("sound") ?? true,
     };
   }
@@ -68,6 +79,8 @@
   const EMOTE_URL = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
 
   const PLATFORM_LABEL = { kick: "K", twitch: "T", youtube: "Y" };
+  const BADGE_ICON = { broadcaster: "broadcaster-icon", mod: "moderator-icon", vip: "vip-icon", sub: "subscriber-icon",
+                       og: "og-icon", founder: "founder-icon" };
   const BADGE_LABEL = { broadcaster: "Host", mod: "Mod", vip: "VIP", sub: "Sub", og: "OG", founder: "Founder" };
 
   function escapeHtml(s) {
@@ -149,8 +162,10 @@
     const items = keys.map((k) => {
       const pic = mediaMap["badge-" + k];
       const label = BADGE_LABEL[k] || k;
-      if (pic) return `<img class="badge ${k}" src="${escapeHtml(pic)}" alt="${label}" title="${label}" />`;
-      return `<span class="badge ${k}">${label}</span>`;
+      // "<type>-icon" is the class Streamlabs and StreamElements give their badge pictures
+      const icon = BADGE_ICON[k] || k + "-icon";
+      if (pic) return `<img class="badge ${k} ${icon}" src="${escapeHtml(pic)}" alt="${label}" title="${label}" />`;
+      return `<span class="badge ${k} ${icon}">${label}</span>`;
     });
     return `<span class="badges">${items.join("")}</span>`;
   }
@@ -213,11 +228,19 @@
     const textHtml = renderMessageHtml(data.message, data.emotes);
 
     const row = document.createElement("div");
-    row.className = "msg message-row";
+    // Core's .msg, StreamElements' .message-row and jChat's .chat_line on the one row
+    row.className = "msg message-row chat_line";
+    // StreamElements rows play an animate.css entrance: "animated fadeInUp" (?in= picks another)
+    if (template === "streamelements") row.classList.add("animated", seIn);
     if (data.platform) row.dataset.platform = data.platform;
-    if (data.message_id) row.dataset.id = data.message_id;
+    if (data.message_id) {
+      row.dataset.id = data.message_id;
+      row.dataset.msgid = data.message_id;     // StreamElements' name for it
+    }
     row.dataset.from = login;
     row.dataset.sender = login;
+    row.dataset.nick = login;
+    row.dataset.time = String(Date.now());
     if (user.id != null) row.dataset.userId = String(user.id);
     if (data.is_paid) row.classList.add("paid");
     // Twitch channel-point styles: .highlighted (Highlight My Message), .gigantified, .animated
@@ -231,16 +254,22 @@
       replyHtml = `<div class="reply">↩ Replying to <b>${escapeHtml(String(r.user))}</b>` +
         (quote ? `: ${escapeHtml(quote)}${String(r.message || "").length > 80 ? "…" : ""}` : "") + `</div>`;
     }
+    // templates lay a row out as name + message only (tables, flex rows): the reply quote goes
+    // inside the message there instead of on its own line
+    const inlineReply = template && replyHtml ? replyHtml.replace(/^<div class="reply">/, '<span class="reply">').replace(/<\/div>$/, " </span>") : "";
+    if (inlineReply) replyHtml = "";
     row.innerHTML =
       replyHtml +
       avatarHtml(user) +
-      `<span class="meta" style="color:${escapeHtml(color)}">` +
+      `<span class="meta user-box user_info" style="color:${escapeHtml(color)}">` +
         platformBadge(data.platform) +
         badgesHtml(user) +
-        `<span class="name user">${name}</span>` +
+        // Streamlabs colours .meta; jChat colours .nick itself (only there, so a Streamlabs
+        // template's own .name colour still wins)
+        `<span class="name user user-name nick"${template === "jchat" ? ` style="color:${escapeHtml(color)}"` : ""}>${name}</span>` +
         `<span class="colon">:</span>` +
       `</span>` +
-      `<span class="message text">${textHtml}</span>`;
+      `<span class="message text user-message">${inlineReply}${textHtml}</span>`;
 
     const eff = effective();
     if (eff.top) logEl.prepend(row);
@@ -293,6 +322,25 @@
     });
   }
 
+  // a mod deleted a message, timed out / banned someone or cleared chat on the platform:
+  // the lines get .deleted (what Streamlabs templates style) and leave a moment later
+  function removeLines(data) {
+    const plat = String(data.platform || "");
+    const mid = String(data.message_id || "");
+    const uid = String(data.user_id || "");
+    const name = String(data.username || "").toLowerCase();
+    Array.from(logEl.children).forEach((row) => {
+      if (plat && row.dataset.platform !== plat) return;
+      const hit = data.all ||
+        (mid && row.dataset.id === mid) ||
+        (!mid && uid && row.dataset.userId === uid) ||
+        (!mid && name && String(row.dataset.from || "").toLowerCase() === name);
+      if (!hit || row.classList.contains("deleted")) return;
+      row.classList.add("deleted");
+      setTimeout(() => row.remove(), 450);
+    });
+  }
+
   // Made-up chatters for the dashboard preview when there is no chat yet
   function showSample() {
     const rows = [
@@ -301,6 +349,7 @@
       { platform: "youtube", user: { username: "marblemoth", display_name: "MarbleMoth", color: "#ff4e45" }, message: "love the podium lights" },
       { platform: "twitch", user: { username: "velvet_vole", display_name: "velvet_vole", color: "#e0a040", is_vip: true }, message: "this is what the chat overlay looks like", reply_to: { user: "MarbleMoth", message: "love the podium lights" } },
       { platform: "twitch", user: { username: "oat_otter", display_name: "oat_otter", color: "#7fd1ff" }, message: "this one was highlighted with channel points", highlight: "highlighted" },
+      { platform: "youtube", user: { username: "gold_goose", display_name: "GoldGoose", color: "#ffd166" }, message: "[$5.00] keep it up!", is_paid: true },
     ];
     historyLoading = true;
     rows.forEach(appendMessage);
@@ -317,11 +366,18 @@
       if (s.media && typeof s.media === "object") mediaMap = s.media;
       if (s.sounds && typeof s.sounds === "object") soundMap = s.sounds;
       document.body.classList.toggle("newest-top", !!effective().top);
+      // templates fade lines out after {message_hide_delay}; 0 = never (a day)
+      const hideSec = Number(effective().hide) || 0;
+      document.documentElement.style.setProperty("--chat-hide-delay", hideSec > 0 ? hideSec + "s" : "86400s");
       document.documentElement.style.setProperty("--chat-bg-image", mediaMap.background ? `url("${mediaMap.background}")` : "none");
-      const ver = s.css_version || 0;
-      if (customLink && ver !== lastCssVer) {
-        lastCssVer = ver;
-        customLink.href = "chat-custom.css?v=" + ver;
+      // ?css=twitch loads the saved stylesheet "twitch" instead of the main custom CSS
+      const slots = s.css_slots || {};
+      const useSlot = cssSlot && cssSlot !== "default" && slots[cssSlot] != null;
+      const ver = useSlot ? slots[cssSlot] : (s.css_version || 0);
+      const href = (useSlot ? "chat-css/" + cssSlot + ".css" : "chat-custom.css") + "?v=" + ver;
+      if (customLink && href !== lastCssVer) {
+        lastCssVer = href;
+        customLink.href = href;
       }
     } catch (_) {}
   }
@@ -335,6 +391,8 @@
     ws.onopen = () => {
       retryMs = 1000;
       hint.set("core", "Connected to Core");
+      // Core sends chat_history only when there is some: the preview fills in made-up chatters
+      if (preview) setTimeout(() => { if (!logEl.children.length) showSample(); }, 1200);
     };
     ws.onmessage = (ev) => {
       try {
@@ -346,6 +404,7 @@
         else if (msg.type === "chat_history" && msg.data) loadHistory(msg.data);
         else if (msg.type === "user_update" && msg.data) userUpdate(msg.data);
         else if (msg.type === "chat_user_hidden" && msg.data) removeUser(msg.data);
+        else if (msg.type === "chat_removed" && msg.data) removeLines(msg.data);
       } catch (_) {}
     };
     ws.onclose = () => {

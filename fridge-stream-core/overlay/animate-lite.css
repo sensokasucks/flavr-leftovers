@@ -1,0 +1,80 @@
+/* Stream Core — keyframes under the animate.css names (fadeIn, fadeInRight, bounceIn, flipInX,
+   rubberBand ...). Free chat and alert templates name these in their CSS and expect the widget page
+   to have loaded animate.css; the chat and alerts overlays load this small copy instead.
+   Only @keyframes here: which element plays one is up to each page's CSS (and yours). */
+
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes fadeInUp { from { opacity: 0; transform: translate3d(0, 100%, 0); } to { opacity: 1; transform: none; } }
+@keyframes fadeInDown { from { opacity: 0; transform: translate3d(0, -100%, 0); } to { opacity: 1; transform: none; } }
+@keyframes fadeOutUp { from { opacity: 1; } to { opacity: 0; transform: translate3d(0, -100%, 0); } }
+@keyframes fadeOutDown { from { opacity: 1; } to { opacity: 0; transform: translate3d(0, 100%, 0); } }
+@keyframes slideInUp { from { transform: translate3d(0, 100vh, 0); } to { transform: none; } }
+@keyframes slideInDown { from { transform: translate3d(0, -100vh, 0); } to { transform: none; } }
+@keyframes slideInLeft { from { transform: translate3d(-100vw, 0, 0); } to { transform: none; } }
+@keyframes slideInRight { from { transform: translate3d(100vw, 0, 0); } to { transform: none; } }
+@keyframes slideOutUp { to { transform: translate3d(0, -100vh, 0); } }
+@keyframes slideOutDown { to { transform: translate3d(0, 100vh, 0); } }
+@keyframes slideOutLeft { to { transform: translate3d(-100vw, 0, 0); } }
+@keyframes slideOutRight { to { transform: translate3d(100vw, 0, 0); } }
+@keyframes zoomIn { from { opacity: 0; transform: scale3d(0.3, 0.3, 0.3); } 50% { opacity: 1; } }
+@keyframes zoomOut { from { opacity: 1; } 50% { opacity: 0; transform: scale3d(0.3, 0.3, 0.3); } to { opacity: 0; } }
+@keyframes bounceIn {
+  from { opacity: 0; transform: scale3d(0.3, 0.3, 0.3); }
+  40% { transform: scale3d(1.1, 1.1, 1.1); }
+  70% { opacity: 1; transform: scale3d(0.97, 0.97, 0.97); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes bounceOut {
+  20% { transform: scale3d(0.9, 0.9, 0.9); }
+  50% { opacity: 1; transform: scale3d(1.1, 1.1, 1.1); }
+  to { opacity: 0; transform: scale3d(0.3, 0.3, 0.3); }
+}
+
+@keyframes fadeInLeft { from { opacity: 0; transform: translate3d(-100%, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes fadeInRight { from { opacity: 0; transform: translate3d(100%, 0, 0); } to { opacity: 1; transform: none; } }
+@keyframes fadeOutLeft { from { opacity: 1; } to { opacity: 0; transform: translate3d(-100%, 0, 0); } }
+@keyframes fadeOutRight { from { opacity: 1; } to { opacity: 0; transform: translate3d(100%, 0, 0); } }
+@keyframes flipInX {
+  from { opacity: 0; transform: perspective(400px) rotate3d(1, 0, 0, 90deg); animation-timing-function: ease-in; }
+  40% { transform: perspective(400px) rotate3d(1, 0, 0, -20deg); animation-timing-function: ease-in; }
+  60% { opacity: 1; transform: perspective(400px) rotate3d(1, 0, 0, 10deg); }
+  80% { transform: perspective(400px) rotate3d(1, 0, 0, -5deg); }
+  to { transform: perspective(400px); }
+}
+@keyframes flipOutX {
+  from { transform: perspective(400px); }
+  30% { opacity: 1; transform: perspective(400px) rotate3d(1, 0, 0, -20deg); }
+  to { opacity: 0; transform: perspective(400px) rotate3d(1, 0, 0, 90deg); }
+}
+@keyframes bounceInUp {
+  from { opacity: 0; transform: translate3d(0, 3000px, 0); }
+  60% { opacity: 1; transform: translate3d(0, -20px, 0); }
+  75% { transform: translate3d(0, 10px, 0); }
+  90% { transform: translate3d(0, -5px, 0); }
+  to { transform: none; }
+}
+@keyframes pulse { from, to { transform: none; } 50% { transform: scale3d(1.05, 1.05, 1.05); } }
+@keyframes rubberBand {
+  from, to { transform: none; }
+  30% { transform: scale3d(1.25, 0.75, 1); }
+  40% { transform: scale3d(0.75, 1.25, 1); }
+  50% { transform: scale3d(1.15, 0.85, 1); }
+  65% { transform: scale3d(0.95, 1.05, 1); }
+  75% { transform: scale3d(1.05, 0.95, 1); }
+}
+@keyframes wiggle { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+@keyframes wobble {
+  from, to { transform: none; }
+  15% { transform: translate3d(-25%, 0, 0) rotate3d(0, 0, 1, -5deg); }
+  30% { transform: translate3d(20%, 0, 0) rotate3d(0, 0, 1, 3deg); }
+  45% { transform: translate3d(-15%, 0, 0) rotate3d(0, 0, 1, -3deg); }
+  60% { transform: translate3d(10%, 0, 0) rotate3d(0, 0, 1, 2deg); }
+  75% { transform: translate3d(-5%, 0, 0) rotate3d(0, 0, 1, -1deg); }
+}
+@keyframes tada {
+  from, to { transform: none; }
+  10%, 20% { transform: scale3d(0.9, 0.9, 0.9) rotate3d(0, 0, 1, -3deg); }
+  30%, 50%, 70%, 90% { transform: scale3d(1.1, 1.1, 1.1) rotate3d(0, 0, 1, 3deg); }
+  40%, 60%, 80% { transform: scale3d(1.1, 1.1, 1.1) rotate3d(0, 0, 1, -3deg); }
+}
