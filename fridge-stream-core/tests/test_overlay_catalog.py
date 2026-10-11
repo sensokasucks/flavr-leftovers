@@ -23,7 +23,7 @@ TYPES = {"bool", "tri", "number", "text", "select", "multi"}
 
 
 def page_source(file_name: str, folder: Path) -> str:
-    """The page plus every local script it loads (a switch may be read in chat.js, market.js ...)."""
+    """The page plus every local script it loads (a switch may be read in chat.js ...)."""
     html = (folder / file_name).read_text(encoding="utf-8")
     text = html
     for src in re.findall(r'<script[^>]+src="([^"]+)"', html):
@@ -32,9 +32,6 @@ def page_source(file_name: str, folder: Path) -> str:
             if path.is_file():
                 text += path.read_text(encoding="utf-8")
                 break
-    # market pages share market.js
-    if "market" in file_name:
-        text += (ROOT / "overlay" / "market.js").read_text(encoding="utf-8")
     return text
 
 
@@ -72,7 +69,10 @@ class CatalogTests(unittest.TestCase):
             self.assertIn(k, keys)
 
     def test_default_query_only_for_required_text(self):
-        self.assertEqual(default_query(by_id("market-chart")), "symbol=FACT")
+        chart = {"params": [{"type": "text", "key": "symbol", "default": "FACT"},
+                            {"type": "text", "key": "symbols", "default": ""},
+                            {"type": "number", "key": "points", "default": 120}]}
+        self.assertEqual(default_query(chart), "symbol=FACT")
         self.assertEqual(default_query(by_id("chat")), "")
 
     def test_sources_rows(self):
@@ -83,8 +83,6 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(chat["url"], "http://127.0.0.1:3850/overlay/chat.html")
         self.assertEqual(chat["page"], chat["url"])
         self.assertTrue(chat["params"])
-        chart = next(r for r in rows if r.get("id") == "market-chart")
-        self.assertEqual(chart["url"], "http://127.0.0.1:3850/overlay/market-chart.html?symbol=FACT")
         self.assertIn("Replies + boards overlay", names)
         self.assertTrue(all("url" in r and "name" in r for r in rows))
 

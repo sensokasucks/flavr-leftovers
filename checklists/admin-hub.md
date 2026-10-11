@@ -10,7 +10,7 @@ Tabs, in order:
 - [ ] **Paid** (On stream, `#paid`) — paid messages, tips and subs with tick boxes, filters remembered in `localStorage`, badge in the menu (`data-title="Paid"` keeps the page title clean); see [paid.md](paid.md)
 - [ ] **Sources & overlays** — copyable Webpage URLs + descriptions, including sibling Fridge apps
 - [ ] **Integrations** — command tester (dry-run / live), per-game sub-panels, health recheck, metrics test, overlay preview
-- [ ] **Market** — tape + per-game vault/dynamo knobs (see [market.md](market.md)); one sub-page per game plugin with `market` fields, drawn from its `plugin.json`
+- [ ] **Plugin pages** — a running plugin's `pages` get menu entries (Gamer Stonks is one: tape, listings, per-game vault/dynamo knobs from each plugin's `market` block); old `#market` links open `#plg-stonks-main` (see [market.md](market.md))
 - [ ] **Settings → Plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
 - [ ] **Stored files** (Overlays, `#files`) — every uploaded picture / video / sound / font once; Upload (several at a time), Copy CSS, Rename, Replace…, Delete (asks, names the places it empties), "Used by" per file (see [stored-files.md](stored-files.md))
 - [ ] **Credits** — enable, roll/loop/once/hold/once-then-clear, pause, restart, CSV download, live list over `/ws`, style editor, pins, preview (see [credits-core.md](credits-core.md))
@@ -30,10 +30,10 @@ APIs that the tabs depend on must not disappear:
 - [ ] `POST /api/admin/commands/test`
 - [ ] `POST /api/admin/games/{id}/metrics-test`
 - [ ] `GET /api/admin/games/{id}/health`
-- [ ] `GET /api/admin/plugins`, `PUT /api/admin/plugins/{id}/settings` (manifest fields only, merged), `PUT /api/admin/market/settings`
+- [ ] `GET /api/admin/plugins`, `PUT /api/admin/plugins/{id}/settings` (manifest fields only, merged; `market` fields apply live)
 - [ ] `GET/PUT /api/admin/command-groups` + `POST .../reload`
 - [ ] `GET /api/admin/credits` including `cast` + the Credits write routes
-- [ ] Market admin routes used by the Market tab
+- [ ] `/plugin-pages/<id>/...` serves only the plugin's `pages/` folder
 - [ ] `GET/PUT /api/admin/reactions` + `POST /api/admin/reactions/test` (see [reactions.md](reactions.md))
 - [ ] `GET/POST /api/admin/media`, `PUT/DELETE /api/admin/media/{name}`; `POST /api/admin/overlays/{alerts|chat}/assets/{slot}` takes `{file, kind}` or `{data, filename}` (see [stored-files.md](stored-files.md))
 
@@ -46,7 +46,7 @@ Auth:
 Save rules:
 
 - [ ] Config save writes the same files the wizard / humans edit (`config.yaml`, `commands.json`).
-- [ ] Save merges unknown keys. It does not drop `command_groups`, `*.market`, `credits`, `overlay.modules`, `reactions`, or game blocks. The full Config save keeps the live `reactions` block.
+- [ ] Save merges unknown keys. It does not drop `command_groups`, `*.market` (plugins' market fields stay as the Gamer Stonks page saved them), `credits`, `overlay.modules`, `reactions`, or game blocks. The full Config save keeps the live `reactions` block.
 - [ ] Credits enable is hot-applied. Platform adapter settings hot-apply (only changed platforms reconnect); game toggles and port still need a restart — the UI must not claim otherwise.
 - [ ] Groups + commands can hot-reload without a full process restart.
 
@@ -60,7 +60,7 @@ Save rules:
 
 - [ ] Every tab button in `index.html` has a matching panel and loader in `admin.js`.
 - [ ] Status still lists each installed game plugin (Minecraft, Factorio, Granvir, OpenTTD when installed) with running / config / error.
-- [ ] Sources list still includes chat, stats overlay, alerts, credits, market, OpenTTD, plus sibling ports 3847 / 3851 / 3854 / 3855.
+- [ ] Sources list still includes chat, stats overlay, alerts, credits, OpenTTD, installed plugins' overlays (Gamer Stonks' market pages), plus sibling ports 3847 / 3851 / 3854 / 3855.
 
 ## Navigation (2026-09 rebuild)
 
@@ -68,7 +68,7 @@ Save rules:
 - [ ] Flat sidebar, no collapsible groups. Settings sub-pages are sidebar items (`data-tab="config" data-sub="…"`); the config pill bar is hidden.
 - [ ] Pages with `.acc-stack[data-acc]` show one sub-page at a time (`showSub`); `data-aside` sections (Credits / Alerts preview) stay visible beside every sub-page.
 - [ ] Save config.yaml bar shows only on the yaml sub-pages (core, games, points, advanced); Reactions / groups / commands keep their own save buttons — and those stay **visible** (hide `.config-savebar` there, never every `.config-actions`).
-- [ ] Every page with settings has the **page save bar** (`.page-savebar`, admin.js "Page save bar"): Chat games, Credits, Alerts, Market, and Config → Reactions / Command groups / Chat commands. A new block of settings is added to its `sections` list (scope or fields + its own Save button or save function), or with `PAGE_SAVER.add(...)` when it is drawn later (game plugins' Market sub-pages) — otherwise its edits are never flagged or saved by the bar / Ctrl+S.
+- [ ] Every page with settings has the **page save bar** (`.page-savebar`, admin.js "Page save bar"): Chat games, Credits, Alerts, and Config → Reactions / Command groups / Chat commands. A new block of settings is added to its `sections` list (scope or fields + its own Save button or save function), or with `PAGE_SAVER.add(...)` when it is drawn later (game plugins' Market sub-pages) — otherwise its edits are never flagged or saved by the bar / Ctrl+S.
 - [ ] Unsaved edits: orange dot on the sidebar item and sub-page pill; leaving that page (sidebar, Back) asks first; closing the tab asks (`beforeunload`). Action / test fields are not sections.
 - [ ] Each block's own Save button keeps working; the bar clicks it (or calls its save function), and only clears a block when a write call succeeded (`apiWrites` / `apiFails` counters in `api()`).
 - [ ] Routes are `#page/sub`; Back works; last page + last sub per page remembered in localStorage.

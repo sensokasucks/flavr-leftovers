@@ -42,12 +42,6 @@ DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
         "bind": "credits",
         "description": "End credits (!credit / !credits)",
     },
-    "market": {
-        "enabled": True,
-        "always": False,
-        "bind": "market",
-        "description": "Fridge Market (!buy / !sell / !tickers)",
-    },
     "reactions": {
         "enabled": True,
         "always": False,
@@ -131,6 +125,9 @@ def bind_satisfied(
     if not bind:
         return True, "unbound"
     bind = bind.lower().strip()
+    # A plugin that took over a section ("config_moved_from") also takes over its bind:
+    # an old "bind: market" now follows the Gamer Stonks plugin running.
+    bind = _plugin_manifest.moved_sections().get(bind, bind)
     section = (config or {}).get(bind)
     enabled_flag = None
     if isinstance(section, dict) and "enabled" in section:

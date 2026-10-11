@@ -16,7 +16,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional, Set
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -367,144 +367,17 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return FileResponse(str(target))
 
     def _game_problem(headers, client, token: Optional[str]) -> Optional[str]:
-        """Only games may say hello / push market signals and dividends: no web pages,
-        and from another device (LAN mode) only with the admin token."""
+        """Only games may say hello on the WebSocket: no web pages, and from another device
+        (LAN mode) only with the admin token. Plugin routes use ctx.require_game (same check)."""
         return game_caller_problem(
             headers, client.host if client else None, token,
             lambda: resolve_admin_token(core_state.config or {}, _CORE_ROOT, create=False),
         )
 
-    def _require_game(request: Request) -> None:
-        token = request.headers.get("x-admin-token") or request.query_params.get("token")
-        problem = _game_problem(request.headers, request.client, token)
-        if problem:
-            log.warning("Refused %s from %s (origin=%s): %s", request.url.path,
-                        request.client.host if request.client else "?", request.headers.get("origin"), problem)
-            raise HTTPException(403, problem)
-
-    def _market():
-        tape = getattr(core_state, "market", None)
-        if tape is None:
-            raise HTTPException(503, "Market tape not ready")
-        return tape
-
-    @app.get("/api/market/state")
-    async def market_state(book: str = "", symbols: str = ""):
-        tape = _market()
-        want = [s.strip() for s in (symbols or "").split(",") if s.strip()]
-        return tape.snapshot(book=book or None, symbols=want or None)
-
     @app.get("/api/overlay/replies")
     async def overlay_replies():
         ov = (getattr(core_state, "config", None) or {}).get("overlay") or {}
         return {"enabled": bool(ov.get("replies_enabled"))}
-
-    @app.get("/api/market/history")
-    async def market_history(symbol: str = "FRG", points: int = 120):
-        tape = _market()
-        return tape.history(symbol, points=max(8, min(int(points or 120), 2000)))
-
-    @app.post("/api/market/signal")
-    async def market_signal(payload: dict, request: Request):
-        """Preview ingest: death / named signals honor optional cooldowns."""
-        _require_game(request)
-        tape = _market()
-        cfg = (getattr(core_state, "config", None) or {}).get("market") or {}
-        name = str((payload or {}).get("name") or "").strip()
-        if not name:
-            raise HTTPException(400, "name required")
-        symbol = (payload or {}).get("symbol")
-        book = (payload or {}).get("book") or (payload or {}).get("game")
-        cooldown = payload.get("cooldown_sec")
-        if cooldown is None:
-            if name == "player_death":
-                cooldown = cfg.get("death_cooldown_sec", 20)
-            else:
-                cooldown = cfg.get("signal_cooldown_sec", 15)
-        scope = str(payload.get("scope") or cfg.get("signal_cooldown_scope") or "symbol")
-        gate = tape.try_signal(
-            name=name,
-            symbol=symbol,
-            cooldown_sec=cooldown,
-            book=book,
-            scope=scope,
-        )
-        if not gate.get("ok"):
-            return {**gate, "applied": False}
-        frac = payload.get("pct")
-        if frac is None and name == "player_death":
-            frac = float(cfg.get("death_return", -0.08) or -0.08)
-        elif frac is not None:
-            frac = float(frac) / 100.0 if abs(float(frac)) > 1 else float(frac)
-        applied = None
-        if frac is not None and symbol:
-            applied = tape.apply_return(str(symbol), float(frac), reason=name)
-        return {**gate, "applied": bool(applied), "instrument": applied, "last_event": tape.last_event}
-
-    @app.post("/api/market/dividend")
-    async def market_dividend(payload: dict, request: Request):
-        """
-        Vault flush from a game bridge.
-        Body: { game, symbol, work, unit, reason?, points? }
-        work*points_per_unit becomes a points pool paid to holders of symbol.
-        Also bumps the ticker so the tape reacts even with zero holders.
-        Games only (no web pages); the dashboard's test button uses /api/admin/market/dividend.
-        """
-        _require_game(request)
-        tape = _market()
-        cfg = (getattr(core_state, "config", None) or {}).get("market") or {}
-        body = payload or {}
-        symbol = str(body.get("symbol") or "").upper().strip()
-        # Older Factorio bridges send no game name; the plugin that owns the book fills the gaps
-        game = str(body.get("game") or body.get("book") or "factorio").strip()
-        if game.startswith("game:"):
-            game = game[5:]
-        plugins = getattr(core_state, "plugins", None)
-        hints = plugins.dividend_defaults(game, body, cfg) if plugins is not None else {}
-        if not symbol:
-            symbol = str(hints.get("symbol") or "").upper().strip()
-            if not symbol:
-                raise HTTPException(400, "symbol required")
-        work = float(body.get("work") or 0)
-        unit = str(body.get("unit") or "mj").lower()
-        reason = str(body.get("reason") or "vault")
-        rates = (cfg.get("points_per_unit") or {})
-        if isinstance(hints.get("rates"), dict):
-            rates = hints["rates"]
-        per = body.get("points")
-        if per is None:
-            default_rate = 0.02 if unit in ("mj", "joule", "j") else 1.0
-            per = work * float(rates.get(unit, rates.get("mj" if unit == "joule" else unit, default_rate)))
-        points = int(max(0, round(float(per))))
-        hourly_cap = int(cfg.get("hourly_cap_points") or 500)
-        points = min(points, hourly_cap)
-
-        store = getattr(core_state, "store", None)
-        paid = {"holders": 0, "paid": [], "burned": points, "total": points}
-        if store and hasattr(store, "pay_dividend") and points > 0:
-            paid = await store.pay_dividend(symbol, points, f"{reason}:{unit}")
-
-        bump = float(cfg.get("dividend_price_bump", 0.01) or 0)
-        applied = tape.apply_return(symbol, bump, reason=f"dividend:{reason}") if bump else None
-        event = {
-            "ts": time.time(),
-            "symbol": symbol,
-            "game": game,
-            "unit": unit,
-            "work": work,
-            "points": points,
-            "holders": paid.get("holders", 0),
-            "burned": paid.get("burned", points),
-            "reason": reason,
-        }
-        tape.last_dividend = event
-        tape.last_event = {
-            "ts": event["ts"],
-            "symbol": symbol,
-            "reason": f"dividend {points} pts",
-            "pct": round(bump * 100.0, 2),
-        }
-        return {"ok": True, "dividend": event, "instrument": applied, "payout": paid}
 
     # ------------------------------------------------------------------
     # WebSocket for overlays / live dashboards
@@ -753,7 +626,6 @@ class CoreState:
         self.recent_alerts: list = []
         self.recent_replies: list = []
         self.store = None
-        self.market = None
         self.fire_alert = None
         self.test_command = None
         self.test_metrics = None

@@ -33,7 +33,8 @@ log = logging.getLogger("core.plugin_manifest")
 ROOT = Path(__file__).resolve().parent.parent
 
 # Bumped when the plugin contract changes. A plugin asks for the version it needs ("core_api");
-# 2 added "category", "provides" / "after", "pages", "config_moved_from" and ctx.plugins / ctx.db.
+# 2 added "category", "provides" / "after", "pages", "config_moved_from", "specials",
+# command_group "aliases" and ctx.plugins / ctx.db / ctx.require_admin / ctx.require_game.
 PLUGIN_API_VERSION = 2
 
 # Game ids that used to be built into Core. Their command groups only switch on while the
@@ -196,6 +197,12 @@ def validate(data: Any, folder: Path) -> str:
             return err
     if str(data.get("category") or "game") not in CATEGORIES:
         return f"category must be one of {sorted(CATEGORIES)}"
+    grp = data.get("command_group")
+    if grp is not None and not isinstance(grp, dict):
+        return "command_group must be an object"
+    for key, val in (("command_group.aliases", (grp or {}).get("aliases")), ("specials", data.get("specials"))):
+        if val is not None and (not isinstance(val, list) or not all(isinstance(x, str) and ID_RE.match(x) for x in val)):
+            return f"{key} must be a list of names (lowercase letters, digits, _)"
     for key in ("provides", "after", "config_moved_from"):
         val = data.get(key)
         if val is not None and (not isinstance(val, list) or not all(isinstance(x, str) and ID_RE.match(x) for x in val)):
@@ -277,12 +284,25 @@ def group_defaults() -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
     for m in installed():
         grp = m.get("command_group") or {}
-        out[m.id] = {
+        spec = {
             "enabled": True,
             "always": False,
             "bind": m.id,
             "description": str(grp.get("description") or m.get("description") or m.name),
         }
+        out[m.id] = spec
+        # Older names for the same group (commands.json entries that still say "group": "market")
+        for alias in grp.get("aliases") or []:
+            out.setdefault(str(alias), dict(spec))
+    return out
+
+
+def special_owners() -> Dict[str, str]:
+    """{special: plugin id} for core commands a plugin answers (plugin.json "specials")."""
+    out: Dict[str, str] = {}
+    for m in installed():
+        for name in m.get("specials") or []:
+            out.setdefault(str(name), m.id)
     return out
 
 
@@ -341,13 +361,3 @@ def start_order(manifests: Iterable[Manifest]) -> List[Manifest]:
 
 def overlay_dirs() -> List[Path]:
     return [m.path / "overlay" for m in installed() if (m.path / "overlay").is_dir()]
-
-
-def market_books() -> List[Dict[str, Any]]:
-    """Preview listings plugins ask for (book defaults to game:<id>)."""
-    out = []
-    for m in installed():
-        for row in m.get("market_books") or []:
-            if isinstance(row, dict) and row.get("symbol"):
-                out.append({"book": f"game:{m.id}", **row})
-    return out

@@ -146,25 +146,9 @@ red_flags:
   #    command: ""        # run a chat command as you, e.g. "!spawn zombie {user}"
   #    hide: false        # red-flag them too
 
-# Fridge Market tape (overlays work in preview even while enabled is false).
-# Trading commands are not shipped yet — see docs/MARKET.md.
-market:
-  enabled: false
-  tick_sec: 5
-  death_return: -0.08
-  death_cooldown_sec: 20      # 0 = no cooldown (spawn camp can dump the ticker)
-  signal_cooldown_sec: 15     # default for other game.signal names; 0 = off
-  signal_cooldown_scope: symbol   # symbol | book | global
-  hourly_cap_points: 500
-  dividend_price_bump: 0.01
-  steam_poll_sec: 1800          # Steam CCU refresh; 1800 = 30 minutes
-  chatter_points_scale: 10.0    # channel points / scale = listing price
-  chatter_streak_bonus: 0.05    # +5% per consecutive stream they chat in
-  points_per_unit:
-    mj: 0.02
-    rf: 0.005
-    xp: 1.0
-    items: 1.0
+# The market is a plugin now: Gamer Stonks (flavr-game-plugins, plugins/stonks). Its settings
+# live under "stonks:" and are made on its own dashboard page. An old "market:" block is read
+# once by Gamer Stonks and can stay here.
 
 # Unique-chatter end credits overlay. Off by default.
 # Uses the same Kick / Twitch / YouTube adapters as live chat — no extra process.
@@ -214,10 +198,6 @@ command_groups:
     enabled: true
     bind: credits
     description: "End credits (!credit / !credits)"
-  market:
-    enabled: true
-    bind: market
-    description: "Fridge Market (!buy / !sell / !tickers)"
   reactions:
     enabled: true
     bind: reactions

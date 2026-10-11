@@ -133,7 +133,6 @@ class PluginManager:
         *,
         get_config: Callable[[], dict],
         games: Dict[str, Any],
-        market: Any = None,
         store: Any = None,
         bus: Any = None,
         broadcast: Any = None,
@@ -141,7 +140,6 @@ class PluginManager:
     ):
         self.get_config = get_config
         self.games = games                      # shared with StreamCore.games / CoreState.games
-        self.market = market
         self.store = store
         self.bus = bus
         self.broadcast = broadcast
@@ -184,7 +182,6 @@ class PluginManager:
             root=self.root,
             data_dir=self.root / "data" / "plugins" / plugin_id,
             get_config=self.get_config,
-            market=self.market,
             store=self.store,
             bus=self.bus,
             broadcast=self.broadcast,
@@ -204,8 +201,6 @@ class PluginManager:
             inst = lp.cls(cfg, ctx)
         if getattr(inst, "ctx", None) is None:
             inst.ctx = ctx
-        if self.market is not None and hasattr(inst, "attach_market"):
-            inst.attach_market(self.market)
         if self.store is not None and hasattr(inst, "attach_store"):
             inst.attach_store(self.store)
         return inst
@@ -292,16 +287,12 @@ class PluginManager:
                 out.update(part)
         return out
 
-    def dividend_defaults(self, game: str, body: dict, market_cfg: dict) -> dict:
-        lp = self.loaded.get(game)
-        fn = getattr(lp.cls, "dividend_defaults", None) if lp and lp.cls else None
-        if not callable(fn):
-            return {}
-        try:
-            return fn(body, market_cfg) or {}
-        except Exception:
-            log.exception("Plugin %s dividend_defaults failed", game)
-            return {}
+    def special_owner(self, special: str) -> Optional[str]:
+        """The installed plugin that answers a core command's special (plugin.json "specials")."""
+        if not special:
+            return None
+        pid = plugin_manifest.special_owners().get(str(special).lower())
+        return pid if pid in self.loaded else None
 
     def overlays(self, pid: str, base: str) -> list[dict]:
         """Overlay links for a plugin: its own list when running, else from the manifest."""
@@ -334,7 +325,7 @@ class PluginManager:
         return out
 
     def info(self, cfg: dict, base: str) -> list[dict]:
-        """Everything the dashboard needs to draw the Plugins cards and Market sub-pages."""
+        """Everything the dashboard needs to draw the Plugins cards (and what Gamer Stonks shows per game)."""
         rows = []
         for pid, lp in sorted(self.loaded.items()):
             m = lp.manifest

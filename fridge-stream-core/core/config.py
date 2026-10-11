@@ -125,27 +125,6 @@ DEFAULTS: Dict[str, Any] = {
         "jewels_points": 0,      # per YouTube gift bought with Jewels (0 = none)
         "admin_token": "change-me",
     },
-    "market": {
-        "enabled": False,
-        "tick_sec": 5,
-        "noise_bps": 18,
-        "revert_bps": 15,
-        "history_len": 180,
-        "list_streamer": True,
-        "streamer_symbol": "FRG",
-        "death_return": -0.08,
-        "death_cooldown_sec": 20,
-        "signal_cooldown_sec": 15,
-        "signal_cooldown_scope": "symbol",
-        "hourly_cap_points": 500,
-        "dividend_price_bump": 0.01,
-        "points_per_unit": {"mj": 0.02, "rf": 0.005, "xp": 1.0, "items": 1.0},
-        "steam_poll_sec": 1800,
-        "chatter_points_scale": 10.0,
-        "chatter_streak_bonus": 0.05,
-        "trade_impact": True,
-        "trade_impact_bps_per_100": 40,
-    },
     "chat_log": {
         "enabled": False,  # persist messages to SQLite (Chat History tab)
         "only_flagged": False,  # save only red-flagged chatters' lines (red_flags)
@@ -222,12 +201,6 @@ DEFAULTS: Dict[str, Any] = {
             "always": False,
             "bind": "credits",
             "description": "End credits (!credit / !credits)",
-        },
-        "market": {
-            "enabled": True,
-            "always": False,
-            "bind": "market",
-            "description": "Fridge Market (!buy / !sell / !tickers)",
         },
         "reactions": {
             "enabled": True,
@@ -432,16 +405,21 @@ def load_config(path: Path | str | None = None) -> dict:
 
 def apply_moved_sections(data: dict) -> dict:
     """A plugin that took over one of Core's sections under its own id ("config_moved_from")
-    starts from the user's old settings until it has a section of its own. The old block
-    stays in the file (harmless), so going back to an older Core loses nothing."""
+    keeps the user's old settings: whatever its own section doesn't set yet comes from the old
+    block (so a hand-written "stonks: enabled: true" still gets the old market settings). The
+    old block stays in the file (harmless), so going back to an older Core loses nothing."""
     moves = _plugin_manifest.moved_sections()
     if not moves or not isinstance(data, dict):
         return data
     out = dict(data)
     for old, pid in moves.items():
-        if isinstance(out.get(old), dict) and not isinstance(out.get(pid), dict):
-            out[pid] = copy.deepcopy(out[old])
-            log.info("Settings for plugin %s taken from the old %s: section", pid, old)
+        if not isinstance(out.get(old), dict):
+            continue
+        mine = out.get(pid) if isinstance(out.get(pid), dict) else {}
+        merged = _deep_merge(copy.deepcopy(out[old]), mine)
+        if merged != mine:
+            out[pid] = merged
+            log.info("Settings for plugin %s filled in from the old %s: section", pid, old)
     return out
 
 

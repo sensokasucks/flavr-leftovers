@@ -59,7 +59,6 @@ try:
     from core.red_flags import RedFlags, matching_recent
     from core.chat_flags import ChatFlags
     from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, PRICED_ALERT_KINDS, split_amount_prefix
-    from core.market import MarketTape
     from core.reactions import ReactionEngine
     from core.reaction_images import ReactionImages
     from core.chat_games import ChatGames
@@ -150,13 +149,10 @@ class StreamCore:
         self.state.store = self.store
         self.credits = CreditsEngine(config, ROOT)
         self.state.credits = self.credits
-        self.market = MarketTape(config, listings_path=ROOT / "data" / "market_tickers.json")
-        self.state.market = self.market
         # Game plugins (plugins/<id>/): loaded now so their routes exist, started in start()
         self.plugins = PluginManager(
             get_config=lambda: self.state.config or self.config,
             games=self.games,
-            market=self.market,
             store=self.store,
             bus=self.bus,
             broadcast=self._ws_broadcast,
@@ -224,7 +220,6 @@ class StreamCore:
         self.state.paid = self.paid
 
         self._metrics_task: asyncio.Task | None = None
-        self._market_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         # Recent chat for overlays that connect mid-stream (newest last)
         self.recent_chat: list[dict] = []
@@ -283,7 +278,6 @@ class StreamCore:
         # Periodic metrics publish
         self._metrics_task = asyncio.create_task(self._metrics_loop(), name="metrics-loop")
         self._credits_task = asyncio.create_task(self._credits_persist_loop(), name="credits-persist")
-        self._market_task = asyncio.create_task(self._market_loop(), name="market-tape")
         self._games_task = asyncio.create_task(self._games_loop(), name="chat-games")
         if (self.config.get("core") or {}).get("watch_config", True):
             self._config_watch_task = asyncio.create_task(
@@ -498,29 +492,6 @@ class StreamCore:
             "count": len(self.credits.chatters),
         }
 
-    async def _market_loop(self) -> None:
-        """Walk preview / live prices so overlay charts have a series."""
-        while not self._stop.is_set():
-            delay = max(1.0, float(getattr(self.market, "tick_sec", 5) or 5))
-            try:
-                await asyncio.wait_for(self._stop.wait(), timeout=delay)
-                break
-            except asyncio.TimeoutError:
-                try:
-                    self.market.tick()
-                    now = time.time()
-                    last = getattr(self, "_steam_poll_at", 0)
-                    poll_every = float(getattr(self.market, "steam_poll_sec", 1800) or 1800)
-                    if now - last >= poll_every:
-                        self._steam_poll_at = now
-                        await self.market.poll_steam()
-                    try:
-                        await self.market.tick_chatter(self.store)
-                    except Exception:
-                        log.exception("chatter tape tick failed")
-                except Exception:
-                    log.exception("market tape tick failed")
-
     async def _games_loop(self) -> None:
         """Timers for chat games (poll / prediction / heist ends, hype meter, countdowns)."""
         while not self._stop.is_set():
@@ -571,12 +542,6 @@ class StreamCore:
             self._metrics_task.cancel()
             try:
                 await self._metrics_task
-            except asyncio.CancelledError:
-                pass
-        if getattr(self, "_market_task", None):
-            self._market_task.cancel()
-            try:
-                await self._market_task
             except asyncio.CancelledError:
                 pass
         if getattr(self, "_games_task", None):
@@ -774,76 +739,6 @@ class StreamCore:
         )
         await self.bus.publish_execute(req)
 
-    async def _handle_market_command(self, event: ChatEvent, special: str) -> str:
-        tape = self.market
-        store = self.store
-        parts = (event.message or "").split()
-        if special == "market_tickers":
-            snap = tape.snapshot() if tape else {"instruments": []}
-            bits = [
-                f"{it['symbol']} {it['price']:.2f}"
-                for it in (snap.get("instruments") or [])[:8]
-            ]
-            return "Tickers: " + (", ".join(bits) if bits else "none listed")
-        uid = await store.get_or_create_user(
-            event.platform.value, event.user.id, event.user.username, event.user.display_name
-        )
-        if special == "market_portfolio":
-            holds = await store.holdings_for_user(uid)
-            if not holds:
-                return f"@{event.user.username}: no shares yet. Try !buy MINECRAF 20"
-            bits = []
-            for h in holds:
-                px = (tape.quote(h["symbol"]) or {}).get("price", 0) if tape else 0
-                bits.append(f"{h['symbol']} {h['milli_shares']/1000:.2f}sh @ {float(px):.2f}")
-            return f"@{event.user.username}: " + ", ".join(bits)
-        if len(parts) < 2:
-            return "Usage: !buy SYMBOL POINTS   or   !sell SYMBOL QTY|all"
-        symbol = parts[1].upper()
-        inst = tape.quote(symbol) if tape else None
-        if not inst or inst.get("status") != "listed":
-            return f"{symbol} is not listed (or is hidden)."
-        price = float(inst.get("price") or 0) or 1.0
-        user = await store.get_user(uid)
-        bal = int((user or {}).get("points") or 0)
-        if special == "market_buy":
-            if len(parts) < 3:
-                return "Usage: !buy SYMBOL POINTS"
-            try:
-                spend = int(float(parts[2]))
-            except ValueError:
-                return "Points must be a number."
-            if spend <= 0:
-                return "Spend at least 1 point."
-            if bal < spend:
-                return f"@{event.user.username}: need {spend} points, have {bal}."
-            shares = spend / price
-            await store.adjust_points(uid, -spend, f"buy {symbol}", "market")
-            nxt = await store.adjust_holding(uid, symbol, int(round(shares * 1000)))
-            if tape:
-                tape.apply_trade_impact(symbol, spend, side="buy")
-            return f"@{event.user.username}: bought {shares:.3f} {symbol} @ {price:.2f} ({nxt/1000:.3f} sh)"
-        raw = parts[2] if len(parts) > 2 else "all"
-        holds = {h["symbol"]: h["milli_shares"] for h in await store.holdings_for_user(uid)}
-        have = int(holds.get(symbol) or 0)
-        if have <= 0:
-            return f"@{event.user.username}: no {symbol} shares."
-        if raw.lower() == "all":
-            sell_milli = have
-        else:
-            try:
-                sell_milli = int(round(float(raw) * 1000))
-            except ValueError:
-                return "Qty must be a number or all."
-        sell_milli = max(0, min(have, sell_milli))
-        credit = int(round((sell_milli / 1000.0) * price))
-        await store.adjust_holding(uid, symbol, -sell_milli)
-        if credit:
-            await store.adjust_points(uid, credit, f"sell {symbol}", "market")
-        if tape:
-            tape.apply_trade_impact(symbol, credit, side="sell")
-        return f"@{event.user.username}: sold {sell_milli/1000:.3f} {symbol} for {credit} pts"
-
     async def _handle_core_command(self, event: ChatEvent, req: ExecuteRequest, cmd_def) -> None:
         special = (cmd_def.special or req.special or "").lower()
         text = None
@@ -893,8 +788,11 @@ class StreamCore:
                         )
         elif special == "credits_count":
             text = f"Credits roster: {len(self.credits.chatters)} unique chatters"
-        elif special in ("market_buy", "market_sell", "market_tickers", "market_portfolio"):
-            text = await self._handle_market_command(event, special)
+        elif self.plugins.special_owner(special) is not None:
+            # A plugin answers this one (plugin.json "specials", e.g. Gamer Stonks' market_buy)
+            text = await self._plugin_special(special, req)
+            if text is None:
+                return
         elif special == "help":
             names = sorted({
                 c.name for c in self.router.commands.values()
@@ -916,6 +814,22 @@ class StreamCore:
             target_platform=event.platform,
         )
         await self.bus.publish_reply(reply)
+
+    async def _plugin_special(self, special: str, req: ExecuteRequest) -> str | None:
+        """Hand a core command's special to the running plugin that lists it; its "reply" is said."""
+        pid = self.plugins.special_owner(special)
+        inst = self.games.get(pid) if pid else None
+        if inst is None:
+            log.info("Command %s needs the %s plugin, which isn't running", req.command_name, pid)
+            return None
+        req.special = special
+        try:
+            result = await inst.execute(req)
+        except Exception:
+            log.exception("[%s] special %s failed", pid, special)
+            return None
+        reply = result.get("reply") if isinstance(result, dict) else None
+        return str(reply) if reply else None
 
     def _extra_command_names(self) -> list:
         """Reaction + chat game commands that are on (for !help)."""

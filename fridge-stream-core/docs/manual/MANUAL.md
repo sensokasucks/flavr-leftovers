@@ -57,7 +57,7 @@ Since the 7 October manual. A few pictures were taken before these changes, so s
 - [12. Chat games](#12-chat-games)
 - [13. Alerts](#13-alerts)
 - [14. End credits](#14-end-credits)
-- [15. The Fridge Market](#15-the-fridge-market)
+- [15. Gamer Stonks (the points market)](#15-gamer-stonks-the-points-market)
 
 **Part 4: On screen**
 
@@ -134,7 +134,7 @@ The menu on the left is in five groups:
 |---|---|
 | **On stream** | **Live controls** (everything for mid-stream), **Chat games**, **Status** |
 | **Overlays** | **Sources & overlays** (the addresses for OBS), **Credits**, **Alerts**, **Chat overlay** |
-| **Games** | **Integrations** (command tester, Minecraft panel), **Market** |
+| **Games** | **Integrations** (command tester, Minecraft panel), **Gamer Stonks** (when the plugin is on) |
 | **People** | **Users & points**, **Chat history**, **Red flags** |
 | **Settings** | **Core + chat platforms**, **Plugins**, **Points, permissions + chat**, **Reactions**, **Command groups**, **Chat commands**, **Advanced** |
 
@@ -289,7 +289,7 @@ Every message that reaches an overlay or Stream Rooms carries:
 
 Commands start with `!` (the prefix is a setting). `!help` lists the commands that are on right now, including the reaction and chat game commands.
 
-**Settings → Command groups** turns whole sets on or off without a restart: *core* (`!help`, `!permit`, always on), *points*, *reactions*, *chat games*, *credits*, *market*, and one group for each game plugin you installed (*minecraft*, *factorio*, *openttd*...). A group tied to a feature is only on while that feature is on, so turning points off also silences `!points`.
+**Settings → Command groups** turns whole sets on or off without a restart: *core* (`!help`, `!permit`, always on), *points*, *reactions*, *chat games*, *credits*, *market* (Gamer Stonks plugin), and one group for each game plugin you installed (*minecraft*, *factorio*, *openttd*...). A group tied to a feature is only on while that feature is on, so turning points off also silences `!points`.
 
 ![Command groups](images/sc-cfg-groups.png)
 
@@ -415,22 +415,21 @@ A rolling list of everyone who chatted this stream. **Overlays → Credits**:
 
 The latest `!rate` result of the stream appears in the credits above the footer, and regulars' titles next to their names. A movie-style cast list (departments, "Starring", a rating card, a stinger) can be written as a JSON file under `config\cast\` and picked under Layout → **Cast format**.
 
-## 15. The Fridge Market
+## 15. Gamer Stonks (the points market)
 
-A points stock market that keeps the stream tape alive: tickers for the games you play (and for you, the streamer), prices that move with the game and with how many people play it on Steam, dividends paid from in-game vaults, and overlays that show it all.
+A points stock market that keeps the stream tape alive: tickers for the games you play (and for you, the streamer), prices that move with the game and with how many people play it on Steam, dividends paid from in-game vaults, viewer trading with points, and overlays that show it all. It used to be built into Stream Core as "the Fridge Market"; it is now a **plugin** called **Gamer Stonks**, in the same download as the game plugins ([flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins), folder `plugins\stonks`).
 
-**Games → Market**:
+To use it, copy the `stonks` folder into Stream Core's `plugins` folder, turn **Gamer Stonks** on under **Settings → Plugins** (it is listed under *Features*) and restart Core. Your old market settings, tickers and viewers' shares are copied over the first time it starts. It then has its own page in the menu, **Games → Gamer Stonks**:
 
 - **Listings**: the tickers, each with a name, which book it belongs to (core or a game), an optional Steam App ID (then **CCU**, the number of people playing it right now, moves the price), the price and whether it shows on the tape. Add one with a symbol and a name.
+- **Settings**: how prices move, trading fees and limits.
 - **Minecraft** and **Factorio**: which tickers each game's events read or pay, and the vault settings (what the Dividend Dynamo and the Smelt Chest, or the Factorio power and item vaults, are worth in points).
-- **Investors**: grant shares to someone by hand, an hourly cap on payouts, and how often Steam numbers refresh.
+- **Investors**: who holds which shares, grant shares to someone by hand, an hourly cap on payouts, and how often Steam numbers refresh.
 - **Tape preview**: what the ticker overlay shows.
 
-![Market](images/sc-market.png)
+Viewers trade with `!buy SYMBOL 50` (spend 50 points), `!sell SYMBOL 2` or `!sell SYMBOL all`, `!tickers` and `!portfolio`, in the *market* command group. With the plugin off these commands do nothing.
 
 ![The market board overlay](images/sc-overlay-market-board.png)
-
-Viewer trading (`!buy`, `!sell`, `!tickers`) is designed but not switched on yet; what ships today is the tape, the game vaults and the overlays. The design is in `docs\MARKET.md`.
 
 ---
 
@@ -483,7 +482,7 @@ Most overlays take switches on their address (which platforms the chat shows, th
 | End credits overlay | `http://127.0.0.1:3850/overlay/credits.html` | `?motion=matrix&title=THE%20CREW` overrides the saved look |
 | Replies and chat games boards | `http://127.0.0.1:3850/overlay/replies.html` | `?boards=0` hides boards, `?replies=0` shows boards only |
 | Reactions fallback | `http://127.0.0.1:3850/overlay/reactions.html` | Only needed when Stream Rooms isn't running |
-| Market ticker / board / chart | `…/overlay/market.html`, `market-board.html`, `market-chart.html?symbol=FACT`, `market-cycle.html?symbols=FRG,FACT` | |
+| Gamer Stonks ticker / board / chart (plugin) | `…/overlay/market.html`, `market-board.html`, `market-chart.html?symbol=FACT`, `market-cycle.html?symbols=FRG,FACT` | |
 | Metrics overlay (Minecraft stats, Minecraft plugin) | `http://127.0.0.1:3850/overlay/overlay.html` | Health, food, XP, deaths, armour, viewers, chat per minute, power, inventory; `?show=` / `?hide=` pick widgets |
 | OpenTTD companies / ticker | `…/overlay/openttd.html`, `openttd-ticker.html` | Only with the OpenTTD plugin installed |
 
@@ -511,7 +510,7 @@ Stream Rooms tells Core which effects the current room can play, so reactions ne
 
 ### Game plugins: adding a game
 
-Games don't ship with Stream Core any more. Minecraft, Factorio, Granvir and OpenTTD are **plugins**, in their own download: [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins) (its Releases page has a zip). The game-side mods and bridges are there too. Core runs fine with no plugins at all; without them there are simply no game cards, game commands or game Market listings.
+Games don't ship with Stream Core any more. Minecraft, Factorio, Granvir and OpenTTD are **plugins**, in their own download: [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins) (its Releases page has a zip). The game-side mods and bridges are there too. Core runs fine with no plugins at all; without them there are simply no game cards, game commands or game tickers.
 
 1. Copy the folder of each game you want into Core's `plugins` folder (so you get `plugins\minecraft\plugin.json`, for example).
 2. Restart Core. The game gets a card under **Settings → Plugins**.
@@ -521,7 +520,7 @@ To remove a game: untick it, delete its folder, restart Core. Its settings stay 
 
 ## 18. Minecraft
 
-Needs the **Minecraft** plugin (above). Two Fabric mods (from flavr-game-plugins) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; they only accept a list of harmless mobs, items and effects (no Wither, TNT or command blocks); the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
+Needs the **Minecraft** plugin (above). Two Fabric mods (from flavr-game-plugins) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; they only accept a list of harmless mobs, items and effects (no Wither, TNT or command blocks); the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Gamer Stonks** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
 
 ![Settings → Plugins](images/sc-cfg-games.png)
 

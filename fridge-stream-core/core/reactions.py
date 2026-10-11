@@ -45,7 +45,7 @@ from collections import deque
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, Iterable, List, Optional, Tuple
 
-from core.market import CooldownGate
+from core.cooldown import CooldownGate
 from core.models import ChatEvent, ChatUser, PermissionLevel
 
 log = logging.getLogger("core.reactions")

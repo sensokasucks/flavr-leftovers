@@ -60,12 +60,6 @@ def _multi(key: str, label: str, options: list, help_text: str = "") -> dict[str
     return {"key": key, "label": label, "type": "multi", "default": [], "options": options, "help": help_text}
 
 
-_MARKET_BOOK = _select("book", "Game book", [["", "All books"], ["factorio", "Factorio"], ["minecraft", "Minecraft"],
-                                            ["openttd", "OpenTTD"]], help_text="Only tickers from one game")
-_MARKET_SYMBOLS = _text("symbols", "Tickers", "", "Comma-separated, empty = all", "FRG,FACT")
-_SOLID = _bool("solid", "Solid background", False, "Opaque panel instead of transparent")
-_BARE = _bool("bare", "Bare (no frame or title)", False)
-
 # ``file`` is under /overlay/. ``settings`` are dashboard pages for the same overlay.
 # ``config`` fields are config.yaml values the overlay reads (saved from the same panel).
 OVERLAYS: list[dict[str, Any]] = [
@@ -174,48 +168,6 @@ OVERLAYS: list[dict[str, Any]] = [
         "notes": "Built-in unique-chatter end credits (Admin → Credits). Transparent Webpage source.",
         "params": [],
         "settings": [{"label": "Credits look, motion and roll controls", "hash": "#credits"}],
-    },
-    {
-        "id": "market",
-        "file": "market.html",
-        "name": "Fridge Market ticker",
-        "notes": "Scrolling live tape",
-        "params": [_MARKET_SYMBOLS, _MARKET_BOOK, _num("speed", "Scroll speed", 80, "Pixels per second", 10, 400, 10)],
-        "settings": [{"label": "Market settings", "hash": "#market"}],
-    },
-    {
-        "id": "market-board",
-        "file": "market-board.html",
-        "name": "Fridge Market board",
-        "notes": "Quote cards + sparklines. Transparent Webpage source.",
-        "params": [_MARKET_SYMBOLS, _MARKET_BOOK, _BARE, _SOLID],
-        "settings": [{"label": "Market settings", "hash": "#market"}],
-    },
-    {
-        "id": "market-chart",
-        "file": "market-chart.html",
-        "name": "Fridge Market chart",
-        "notes": "TV-style line graph of one ticker",
-        "params": [
-            _text("symbol", "Ticker", "FACT", "", "FACT"),
-            _select("layout", "Layout", [["hero", "Hero (big)"], ["grid", "Grid"]], "hero"),
-            _num("points", "History points", 120, "", 20, 600, 10),
-            _BARE, _SOLID,
-        ],
-        "settings": [{"label": "Market settings", "hash": "#market"}],
-    },
-    {
-        "id": "market-cycle",
-        "file": "market-cycle.html",
-        "name": "Fridge Market cycle",
-        "notes": "Plays a chosen set of charts in turn",
-        "params": [
-            _text("symbols", "Tickers", "FRG,FACT,STEVE", "Comma-separated", "FRG,FACT,STEVE"),
-            _num("dwell", "Seconds per chart", 8, "", 2, 120, 1),
-            _num("points", "History points", 180, "", 20, 600, 10),
-            _SOLID,
-        ],
-        "settings": [{"label": "Market settings", "hash": "#market"}],
     },
     {
         "id": "reactions",
