@@ -15,7 +15,7 @@
 | Fridge Market | [market.md](market.md) | Tape, vaults, dividends, Market tab, game pricing |
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |
 | Overlays (shared) | [overlays.md](overlays.md) | Webpage sources, ports, query filters |
-| Game plugins | [plugins.md](plugins.md) | `plugins/`, `core/plugins.py`, `core/plugin_api.py`, `core/plugin_manifest.py`, Settings → Game plugins |
+| Plugins (games + features) | [plugins.md](plugins.md) | `plugins/`, `core/plugins.py`, `core/plugin_api.py`, `core/plugin_manifest.py`, Settings → Plugins |
 
 ## Always-on companions
 

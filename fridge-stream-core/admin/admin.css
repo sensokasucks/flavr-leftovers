@@ -1290,3 +1290,10 @@ button.copied { border-color: var(--accent); color: var(--accent); }
 .plat-chip.youtube { background: #ff4e45; color: #fff; }
 .plat-chip.twitch { background: #a970ff; color: #fff; }
 .plat-chip.kick { background: #53fc18; }
+
+/* Plugin dashboard pages (plugin.json "pages"): a frame on the dashboard, admin.css inside it */
+.plugin-page-frame { display: block; width: 100%; min-height: 240px; border: 0; background: transparent; }
+html.plugin-page body { min-height: 0; background: transparent; }
+html.plugin-page body > main { padding: 0 2px 16px; }
+.plugin-group-heading { grid-column: 1 / -1; margin: 18px 0 0; font-size: 1rem; color: var(--muted); }
+.plugin-group-heading:first-child { margin-top: 0; }

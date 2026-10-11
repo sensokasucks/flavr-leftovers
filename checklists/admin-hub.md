@@ -11,7 +11,7 @@ Tabs, in order:
 - [ ] **Sources & overlays** — copyable Webpage URLs + descriptions, including sibling Fridge apps
 - [ ] **Integrations** — command tester (dry-run / live), per-game sub-panels, health recheck, metrics test, overlay preview
 - [ ] **Market** — tape + per-game vault/dynamo knobs (see [market.md](market.md)); one sub-page per game plugin with `market` fields, drawn from its `plugin.json`
-- [ ] **Settings → Game plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
+- [ ] **Settings → Plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
 - [ ] **Stored files** (Overlays, `#files`) — every uploaded picture / video / sound / font once; Upload (several at a time), Copy CSS, Rename, Replace…, Delete (asks, names the places it empties), "Used by" per file (see [stored-files.md](stored-files.md))
 - [ ] **Credits** — enable, roll/loop/once/hold/once-then-clear, pause, restart, CSV download, live list over `/ws`, style editor, pins, preview (see [credits-core.md](credits-core.md))
 - [ ] **Alert test** — fire kinds + skin + custom CSS (see [alerts.md](alerts.md))
@@ -19,7 +19,7 @@ Tabs, in order:
 - [ ] **Chat History** — only fills when `chat_log.enabled`; shows the newest 200 and says so; names open the person; Download CSV follows the platform / search / 🚩 filters (`GET /chat/export?platform=&q=&flagged=`)
 - [ ] **Red flags** (People) — its own page (`#redflags`), not a card on Chat history; Unflag offers Undo (`DELETE /red-flags/{id}` returns `removed`, `POST /red-flags/restore` puts it back). **Custom flags** card on the same page saves through `PUT /red-flags` (`custom`); its own Unflag + Undo (`DELETE /red-flags/custom/{id}`, `POST /red-flags/custom/restore`)
 - [ ] **Config** — hybrid editor for `config.yaml` + `commands.json`; advanced fields accordion; **Reactions** editor; command group table; overlay module checkboxes
-- [ ] One name per page: menu, Settings pills (same order as the menu), page title and in-app links use the same words ("Points, permissions + chat", "Game plugins", "Sources & overlays" under Overlays). No banner or hint points at a "Config" menu. Live controls is the landing page (`tab-live` is the `active` panel in the HTML).
+- [ ] One name per page: menu, Settings pills (same order as the menu), page title and in-app links use the same words ("Points, permissions + chat", "Plugins", "Sources & overlays" under Overlays). No banner or hint points at a "Config" menu. Live controls is the landing page (`tab-live` is the `active` panel in the HTML).
 - [ ] Credits on/off has one switch, on the Credits page (`PUT /credits/enabled`); a config save keeps the live `credits.enabled`. While off, the Credits page and Live controls show a red "Credits are off" line with **Turn on**, and the play state never says "Looping". Live controls and Credits page buttons share labels.
 - [ ] Sources & overlays: Customise remembers its switches and open panels in `sessionStorage` (per browser tab); Copy shows "Copied ✓" on the button.
 - [ ] Sub-page pills are a `role=tablist` (arrow keys move). Status cards are `<section>` with a heading, not `<legend>` outside a fieldset. **Start a new stream now** asks first.

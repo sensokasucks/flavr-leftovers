@@ -1,5 +1,5 @@
 """
-Loads, starts and stops the game plugins in ``plugins/``.
+Loads, starts and stops the plugins in ``plugins/`` (games, and features such as a market).
 
 Core boots fine with no plugins at all: no game cards, no game commands, no game books.
 A plugin that fails to import or start is logged and shown on its dashboard card with the
@@ -78,6 +78,55 @@ def load_class(manifest: Manifest):
     return cls
 
 
+class PluginDirectory:
+    """What one plugin can see of the others (``ctx.plugins``)."""
+
+    def __init__(self, manager: "PluginManager"):
+        self._m = manager
+
+    def running(self, plugin_id: str) -> Any:
+        """The running instance of a plugin, or None."""
+        return self._m.games.get(plugin_id) if plugin_id in self._m.loaded else None
+
+    def installed(self, plugin_id: str) -> bool:
+        lp = self._m.loaded.get(plugin_id)
+        return bool(lp and not lp.error)
+
+    def ids(self) -> list[str]:
+        return sorted(pid for pid, lp in self._m.loaded.items() if not lp.error)
+
+    def service(self, name: str) -> Any:
+        """A running plugin that lists name under "provides": its service(name), else itself."""
+        for pid, lp in sorted(self._m.loaded.items()):
+            if name not in lp.manifest.provides:
+                continue
+            inst = self._m.games.get(pid)
+            if inst is None:
+                continue
+            fn = getattr(inst, "service", None)
+            if callable(fn):
+                try:
+                    found = fn(name)
+                except Exception:
+                    log.exception("Plugin %s service(%s) failed", pid, name)
+                    continue
+                if found is not None:
+                    return found
+            else:
+                return inst
+        return None
+
+    def class_hook(self, plugin_id: str, name: str) -> Optional[Callable]:
+        """A class-level hook (e.g. a staticmethod) of an installed plugin, running or not."""
+        lp = self._m.loaded.get(plugin_id)
+        fn = getattr(lp.cls, name, None) if lp and lp.cls else None
+        return fn if callable(fn) else None
+
+    def manifest(self, plugin_id: str) -> Optional[dict]:
+        lp = self._m.loaded.get(plugin_id)
+        return dict(lp.manifest.data) if lp else None
+
+
 class PluginManager:
     def __init__(
         self,
@@ -100,6 +149,8 @@ class PluginManager:
         self.loaded: Dict[str, LoadedPlugin] = {}
         self.broken: List[Manifest] = []
         self.start_errors: Dict[str, str] = {}
+        self.directory = PluginDirectory(self)
+        self._contexts: Dict[str, PluginContext] = {}
 
     # ------------------------------------------------------------------
     # Loading
@@ -122,8 +173,12 @@ class PluginManager:
             log.info("No game plugins installed (plugins/ is empty)")
 
     def context(self, plugin_id: str) -> PluginContext:
+        """One context per plugin (kept, so its ctx.db stays one open file)."""
+        ctx = self._contexts.get(plugin_id)
+        if ctx is not None:
+            return ctx
         lp = self.loaded[plugin_id]
-        return PluginContext(
+        ctx = PluginContext(
             id=plugin_id,
             folder=lp.manifest.path,
             root=self.root,
@@ -133,7 +188,10 @@ class PluginManager:
             store=self.store,
             bus=self.bus,
             broadcast=self.broadcast,
+            plugins=self.directory,
         )
+        self._contexts[plugin_id] = ctx
+        return ctx
 
     def make(self, plugin_id: str, config: Optional[dict] = None):
         """A plugin instance (not started)."""
@@ -158,7 +216,9 @@ class PluginManager:
 
     async def start_enabled(self) -> None:
         cfg = self.get_config() or {}
-        for pid, lp in self.loaded.items():
+        # Providers ("provides") and anything named in "after" start first
+        for m in plugin_manifest.start_order(lp.manifest for lp in self.loaded.values()):
+            pid, lp = m.id, self.loaded[m.id]
             if lp.error:
                 continue
             if not (cfg.get(pid) or {}).get("enabled", False):
@@ -175,14 +235,19 @@ class PluginManager:
             self.games[pid] = inst
 
     async def stop_all(self) -> None:
-        for pid in list(self.games):
-            if pid not in self.loaded:
+        # Reverse start order: a plugin stops before the ones it uses
+        order = [m.id for m in plugin_manifest.start_order(lp.manifest for lp in self.loaded.values())]
+        for pid in reversed(order):
+            if pid not in self.games:
                 continue
             inst = self.games.pop(pid)
             try:
                 await inst.stop()
             except Exception:
                 log.exception("Plugin %s stop failed", pid)
+        for ctx in self._contexts.values():
+            if ctx._db is not None:
+                ctx._db.close()
 
     def apply_config(self, cfg: dict) -> None:
         """A dashboard save replaced the live config (plugins read it live); tell those that care."""
@@ -294,6 +359,8 @@ class PluginManager:
                 "name": m.name,
                 "version": str(m.get("version") or ""),
                 "kind": m.kind,
+                "category": m.category,
+                "pages": [{**pg, "url": f"/plugin-pages/{pid}/{pg['file'][len('pages/'):]}"} for pg in m.pages],
                 "description": str(m.get("description") or ""),
                 "links": list(m.get("links") or []),
                 "settings": list(m.get("settings") or []),
@@ -309,6 +376,7 @@ class PluginManager:
         for m in self.broken:
             rows.append({
                 "id": m.id, "name": m.name, "version": str(m.get("version") or ""), "kind": m.kind,
+                "category": m.category, "pages": [],
                 "description": str(m.get("description") or ""), "links": [], "settings": [],
                 "market": None, "market_status": [], "values": {}, "configured_enabled": False,
                 "running": False, "error": m.error, "overlays": [], "status": {},

@@ -24,7 +24,7 @@ Since the 7 October manual. A few pictures were taken before these changes, so s
 - **Customise** on **Sources & overlays** builds an overlay address with the switches you pick (section 16).
 - **Highlighted messages:** Twitch "Highlight My Message" shows in a purple box on the chat overlay, gigantified emotes are drawn big, and Super Chats, Kicks and Bits are marked as paid (section 9).
 - **YouTube replies to Super Chats** show "↩ Replying to", and Twitch emotes in replies land in the right place (section 9).
-- **Games are plugins** you add yourself from a separate download (**Settings → Game plugins**, Part 5). Core runs fine without any.
+- **Games are plugins** you add yourself from a separate download (**Settings → Plugins**, Part 5). Core runs fine without any.
 - **Paid list** (**On stream → Paid**): every Super Chat, Super Sticker, YouTube gift, bits cheer, power-up and KICKs tip, plus subs and memberships, with a tick box so you can see who you haven't thanked yet (section 8).
 - **YouTube Super Stickers and gifts** now show in chat with their pictures, and have their own alerts (sections 9 and 13).
 - **One alerts overlay, many looks.** The alerts overlay takes filters and options in its address like the chat overlay: only some platforms or kinds, a smallest amount, its own duration, sound, layout, animations, and its own saved stylesheet (section 13).
@@ -136,7 +136,7 @@ The menu on the left is in five groups:
 | **Overlays** | **Sources & overlays** (the addresses for OBS), **Credits**, **Alerts**, **Chat overlay** |
 | **Games** | **Integrations** (command tester, Minecraft panel), **Market** |
 | **People** | **Users & points**, **Chat history**, **Red flags** |
-| **Settings** | **Core + chat platforms**, **Game plugins**, **Points, permissions + chat**, **Reactions**, **Command groups**, **Chat commands**, **Advanced** |
+| **Settings** | **Core + chat platforms**, **Plugins**, **Points, permissions + chat**, **Reactions**, **Command groups**, **Chat commands**, **Advanced** |
 
 <!-- picture outdated: every dashboard screenshot in this manual that shows the menu was taken before this menu (it shows "Games" instead of "Game plugins", Sources & overlays under On stream, and no Chat overlay or Red flags entries) -->
 
@@ -514,16 +514,16 @@ Stream Rooms tells Core which effects the current room can play, so reactions ne
 Games don't ship with Stream Core any more. Minecraft, Factorio, Granvir and OpenTTD are **plugins**, in their own download: [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins) (its Releases page has a zip). The game-side mods and bridges are there too. Core runs fine with no plugins at all; without them there are simply no game cards, game commands or game Market listings.
 
 1. Copy the folder of each game you want into Core's `plugins` folder (so you get `plugins\minecraft\plugin.json`, for example).
-2. Restart Core. The game gets a card under **Settings → Game plugins**.
+2. Restart Core. The game gets a card under **Settings → Plugins**.
 3. Tick **Enabled (opt-in)** on its card, fill in its settings, press **Save & apply**, then **Restart Core now** in the bar at the top.
 
 To remove a game: untick it, delete its folder, restart Core. Its settings stay in `config.yaml` in case you put it back. A plugin that can't load shows the error on its card; the rest of Core keeps running. Plugins run inside Core with no sandbox, so install only plugins you trust. Writing your own is in `docs\PLUGINS.md`.
 
 ## 18. Minecraft
 
-Needs the **Minecraft** plugin (above). Two Fabric mods (from flavr-game-plugins) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Game plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; they only accept a list of harmless mobs, items and effects (no Wither, TNT or command blocks); the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
+Needs the **Minecraft** plugin (above). Two Fabric mods (from flavr-game-plugins) let chat reach into the game: the **client mod** reports the player's stats for the overlay (port 3852) and the **server mod** runs commands and the Chat Dynamo (port 3853). Install the pre-built jars, start the game, then turn **Minecraft** on under **Settings → Plugins** with your in-game name and restart Core. Commands such as `!spawn creeper` or `!give` are in the *minecraft* command group; they only accept a list of harmless mobs, items and effects (no Wither, TNT or command blocks); the Minecraft panel on **Games → Integrations** shows health and lets you push metrics. The **Market** page's Minecraft tab wires the Dividend Dynamo and the Smelt Chest to tickers.
 
-![Settings → Game plugins](images/sc-cfg-games.png)
+![Settings → Plugins](images/sc-cfg-games.png)
 
 <!-- picture outdated: taken when the page was called "Games" and all four games were built in; now the page is "Game plugins" and a card only shows for each plugin folder in plugins\ -->
 
@@ -531,9 +531,9 @@ Needs the **Minecraft** plugin (above). Two Fabric mods (from flavr-game-plugins
 
 Each needs its plugin from flavr-game-plugins (above).
 
-- **Factorio**: run the **Fridge Factorio Stats** bridge (port 3847) next to the game; it reads power, research and kills over RCON and feeds overlays of its own. In Core, turn **Factorio** on under **Settings → Game plugins**. The power and item vaults pay market dividends.
+- **Factorio**: run the **Fridge Factorio Stats** bridge (port 3847) next to the game; it reads power, research and kills over RCON and feeds overlays of its own. In Core, turn **Factorio** on under **Settings → Plugins**. The power and item vaults pay market dividends.
 - **Granvir**: the **Fridge Granvir Stats** plugin (BepInEx, port 3855) reports co-op stats; turn **Granvir** on the same way.
-- **OpenTTD**: Core joins the game's admin port and runs the **Chat Fund**: `!invest` turns points into company cash, `!companies` lists them, and two overlays show the companies and a ticker. Settings are on its card under **Settings → Game plugins** (host, admin port and password, points-to-pounds rate, limits).
+- **OpenTTD**: Core joins the game's admin port and runs the **Chat Fund**: `!invest` turns points into company cash, `!companies` lists them, and two overlays show the companies and a ticker. Settings are on its card under **Settings → Plugins** (host, admin port and password, points-to-pounds rate, limits).
 
 Game toggles need a Core restart (the **Restart Core now** bar appears); everything else applies live.
 

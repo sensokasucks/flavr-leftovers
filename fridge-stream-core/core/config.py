@@ -427,7 +427,22 @@ def load_config(path: Path | str | None = None) -> dict:
     else:
         log.warning("No config file found – using defaults. Copy config.example.yaml")
 
-    return _deep_merge(DEFAULTS, data)
+    return _deep_merge(DEFAULTS, apply_moved_sections(data))
+
+
+def apply_moved_sections(data: dict) -> dict:
+    """A plugin that took over one of Core's sections under its own id ("config_moved_from")
+    starts from the user's old settings until it has a section of its own. The old block
+    stays in the file (harmless), so going back to an older Core loses nothing."""
+    moves = _plugin_manifest.moved_sections()
+    if not moves or not isinstance(data, dict):
+        return data
+    out = dict(data)
+    for old, pid in moves.items():
+        if isinstance(out.get(old), dict) and not isinstance(out.get(pid), dict):
+            out[pid] = copy.deepcopy(out[old])
+            log.info("Settings for plugin %s taken from the old %s: section", pid, old)
+    return out
 
 
 def save_config(data: dict, path: Path | str | None = None) -> Path:
