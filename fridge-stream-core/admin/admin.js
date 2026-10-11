@@ -333,6 +333,7 @@
       loadChatStyle();
       loadOverlayAssets("chat");
     }
+    if (tabId === "files") loadFiles();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "market") initMarketTab();
@@ -1678,6 +1679,7 @@
       member_gift: "YouTube gifted memberships (else Gifted sub's)",
       powerup: "Bits power-up (else Bits')", celebration: "On-screen celebration (else Bits')",
       charity: "Charity donation (else Donation's)", hypetrain: "Hype Train summary (else Raid's)",
+      flag: "Chat flag",
     },
     chat: {
       background: "Background picture", "badge-broadcaster": "Host badge", "badge-mod": "Mod badge",
@@ -1686,55 +1688,84 @@
     },
   };
 
-  function assetRow(name, slot, kind, url) {
+  // A slot's picture or sound is a file from Stored files (one copy, used in many places).
+  // Upload new adds the file there and uses it here in one step.
+  const mediaSrc = (url) => (/^\//.test(url) ? url : "/overlay/" + url + "?t=" + Date.now());
+  const isVideoUrl = (url) => /\.(webm|mp4)(\?|$)/i.test(url || "");
+
+  function mediaPreview(url, kind, cls) {
+    if (!url) return '<span class="muted">none</span>';
+    const src = esc(mediaSrc(url));
+    if (kind === "sound") return `<audio controls preload="none" src="${src}"></audio>`;
+    if (kind === "font") return '<span class="font-sample">Aa</span>';
+    if (kind === "video" || isVideoUrl(url)) return `<video class="${cls}" muted loop autoplay playsinline src="${src}"></video>`;
+    return `<img class="${cls}" src="${src}" alt="" />`;
+  }
+
+  function assetRow(name, slot, kind, url, files, picked, allowVideo) {
     const label = (ASSET_LABELS[name] || {})[slot] || slot;
-    const accept = kind === "sound" ? "audio/*" : "image/*,video/webm";
-    let current = '<span class="muted">none</span>';
-    if (url) {
-      const src = "/overlay/" + url + "?t=" + Date.now();
-      if (kind === "sound") current = `<audio controls preload="none" src="${src}"></audio>`;
-      else if (/\.webm$/i.test(url)) current = `<video class="asset-thumb" muted loop autoplay playsinline src="${src}"></video>`;
-      else current = `<img class="asset-thumb" src="${src}" alt="" />`;
-    }
-    return `<div class="asset-row" data-slot="${slot}" data-kind="${kind}">
-      <div class="asset-label"><strong>${label}</strong><span class="muted">${kind === "sound" ? "sound" : "picture"} · <code>${slot}</code></span></div>
-      <div class="asset-current">${current}</div>
+    const accept = kind === "sound" ? "audio/*" : "image/png,image/jpeg,image/gif,image/webp" + (allowVideo ? ",video/webm,video/mp4" : "");
+    const fits = files.filter((f) => (kind === "sound" ? f.kind === "sound" : f.kind === "image" || (allowVideo && f.kind === "video")));
+    let options = `<option value="">${picked ? "Stored file…" : url ? "Dropped-in file" : "Stored file…"}</option>`;
+    for (const f of fits) options += `<option value="${esc(f.name)}"${f.name === picked ? " selected" : ""}>${esc(f.name)} (${f.kind === "video" ? "video" : f.ext})</option>`;
+    return `<div class="asset-row" data-slot="${esc(slot)}" data-kind="${kind}">
+      <div class="asset-label"><strong>${esc(label)}</strong><span class="muted">${kind === "sound" ? "sound" : "picture"} · <code>${esc(slot)}</code></span></div>
+      <div class="asset-current">${mediaPreview(url, kind, "asset-thumb")}</div>
       <div class="asset-actions">
-        <input type="file" accept="${accept}" />
-        <button type="button" class="asset-upload">Upload</button>
-        ${url ? '<button type="button" class="asset-remove">Remove</button>' : ""}
+        <select class="asset-pick" aria-label="${esc(label)} ${kind === "sound" ? "sound" : "picture"} from Stored files"${fits.length ? "" : " disabled"}>${options}</select>
+        <input type="file" accept="${accept}" aria-label="Upload a new file for ${esc(label)}" />
+        <button type="button" class="asset-upload">Upload new</button>
+        ${url ? '<button type="button" class="asset-remove">Clear</button>' : ""}
       </div>
     </div>`;
+  }
+
+  function readAsDataUrl(f) {
+    return new Promise((resolve, reject) => {
+      const rd = new FileReader();
+      rd.onload = () => resolve(rd.result);
+      rd.onerror = () => reject(new Error("Couldn't read the file"));
+      rd.readAsDataURL(f);
+    });
   }
 
   async function loadOverlayAssets(name) {
     const box = $(name + "-assets");
     if (!box) return;
     try {
-      const data = await api(`/api/admin/overlays/${name}/assets`);
+      const [data, lib] = await Promise.all([api(`/api/admin/overlays/${name}/assets`), api("/api/admin/media")]);
+      const files = lib.files || [];
+      const picks = data.picks || { image: {}, sound: {} };
       let html = "";
-      for (const slot of data.image_slots || []) html += assetRow(name, slot, "image", (data.media || {})[slot]);
-      for (const slot of data.sound_slots || []) html += assetRow(name, slot, "sound", (data.sounds || {})[slot]);
+      for (const slot of data.image_slots || [])
+        html += assetRow(name, slot, "image", (data.media || {})[slot], files, (picks.image || {})[slot], data.allow_video);
+      for (const slot of data.sound_slots || [])
+        html += assetRow(name, slot, "sound", (data.sounds || {})[slot], files, (picks.sound || {})[slot], false);
       box.innerHTML = html;
       box.querySelectorAll(".asset-row").forEach((row) => {
         const slot = row.dataset.slot;
+        const kind = row.dataset.kind;
         const st = $(name + "-assets-status");
+        const post = (body) => api(`/api/admin/overlays/${name}/assets/${encodeURIComponent(slot)}`, { method: "POST", body: JSON.stringify(body) });
+        row.querySelector(".asset-pick").onchange = async (ev) => {
+          const file = ev.target.value;
+          if (!file) return;
+          try {
+            await post({ file, kind });
+            if (st) st.textContent = `${slot} now uses ${file}. Open overlays pick it up within a few seconds.`;
+            loadOverlayAssets(name);
+          } catch (e) {
+            if (st) st.textContent = String(e.message || e);
+          }
+        };
         row.querySelector(".asset-upload").onclick = async () => {
           const f = row.querySelector('input[type="file"]').files[0];
           if (!f) { if (st) st.textContent = "Pick a file first."; return; }
           if (st) st.textContent = "Uploading…";
           try {
-            const dataUrl = await new Promise((resolve, reject) => {
-              const rd = new FileReader();
-              rd.onload = () => resolve(rd.result);
-              rd.onerror = () => reject(new Error("Couldn't read the file"));
-              rd.readAsDataURL(f);
-            });
-            await api(`/api/admin/overlays/${name}/assets/${encodeURIComponent(slot)}`, {
-              method: "POST",
-              body: JSON.stringify({ data: dataUrl }),
-            });
-            if (st) st.textContent = `Saved ${slot}. Open overlays pick it up within a few seconds.`;
+            const res = await post({ data: await readAsDataUrl(f), filename: f.name });
+            const used = ((res.picks || {})[kind] || {})[slot];
+            if (st) st.textContent = `Saved ${slot}${used ? ` (stored as ${used})` : ""}. Open overlays pick it up within a few seconds.`;
             loadOverlayAssets(name);
           } catch (e) {
             if (st) st.textContent = String(e.message || e);
@@ -1743,10 +1774,10 @@
         const rm = row.querySelector(".asset-remove");
         if (rm) {
           rm.onclick = async () => {
-            if (!confirm(`Remove the ${slot} file?`)) return;
+            if (!confirm(`Clear the ${slot} ${kind === "sound" ? "sound" : "picture"}? The file stays in Stored files.`)) return;
             try {
-              await api(`/api/admin/overlays/${name}/assets/${encodeURIComponent(slot)}?kind=${row.dataset.kind}`, { method: "DELETE" });
-              if (st) st.textContent = `Removed ${slot}.`;
+              await api(`/api/admin/overlays/${name}/assets/${encodeURIComponent(slot)}?kind=${kind}`, { method: "DELETE" });
+              if (st) st.textContent = `Cleared ${slot}.`;
               loadOverlayAssets(name);
             } catch (e) {
               if (st) st.textContent = String(e.message || e);
@@ -1755,8 +1786,146 @@
         }
       });
     } catch (e) {
-      box.innerHTML = `<span class="muted">${String(e.message || e)}</span>`;
+      box.innerHTML = `<span class="muted">${esc(e.message || e)}</span>`;
     }
+  }
+
+  // ── Stored files: every upload once, used by alerts, chat and custom CSS ──
+  function fileUseLabel(u) {
+    const page = u.overlay === "alerts" ? "Alerts" : u.overlay === "chat" ? "Chat overlay" : u.overlay;
+    const slot = (ASSET_LABELS[u.overlay] || {})[u.slot] || u.slot;
+    return `${page}: ${slot.replace(/ \(else .*\)$/, "")}${u.overlay === "alerts" ? (u.kind === "sound" ? " sound" : " picture") : ""}`;
+  }
+
+  function fileSize(n) {
+    return n >= 1048576 ? (n / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+  }
+
+  let filesCache = [];
+
+  function renderFiles() {
+    const box = $("files-list");
+    if (!box) return;
+    const want = $("files-filter") ? $("files-filter").value : "";
+    const list = filesCache.filter((f) => !want || f.kind === want);
+    if (!filesCache.length) {
+      box.innerHTML = '<p class="muted">Nothing stored yet. Upload a file above, or from Alerts / Chat overlay → Pictures and sounds.</p>';
+      return;
+    }
+    if (!list.length) {
+      box.innerHTML = '<p class="muted">No files of that type.</p>';
+      return;
+    }
+    const kindName = { image: "picture", video: "video", sound: "sound", font: "font" };
+    box.innerHTML = list
+      .map((f) => {
+        const used = (f.used_by || []).map(fileUseLabel);
+        return `<div class="asset-row file-row" data-name="${esc(f.name)}">
+        <div class="asset-label"><strong>${esc(f.name)}</strong>
+          <span class="muted">${kindName[f.kind] || f.kind} · ${esc(f.ext.toUpperCase())} · ${fileSize(f.size)}</span>
+          <span class="muted">${used.length ? "Used by: " + esc(used.join(", ")) : "Not used anywhere yet"}</span></div>
+        <div class="asset-current">${mediaPreview(f.url, f.kind, "asset-thumb")}</div>
+        <div class="asset-actions">
+          ${f.kind === "sound" ? "" : `<button type="button" class="file-css" title="Copies url(${esc(f.css_url)}) for custom CSS">Copy CSS</button>`}
+          <button type="button" class="file-rename">Rename</button>
+          <input type="file" class="file-replace-input" hidden />
+          <button type="button" class="file-replace" title="Swap in a new file; every place using it shows the new one">Replace…</button>
+          <button type="button" class="file-delete">Delete</button>
+        </div>
+      </div>`;
+      })
+      .join("");
+    box.querySelectorAll(".file-row").forEach((row) => {
+      const name = row.dataset.name;
+      const f = filesCache.find((x) => x.name === name) || {};
+      const st = $("files-status");
+      const say = (t) => { if (st) st.textContent = t; };
+      const css = row.querySelector(".file-css");
+      if (css) {
+        const snippet = f.kind === "font"
+          ? `@font-face { font-family: "${name}"; src: url(${f.css_url}); }`
+          : `url(${f.css_url})`;
+        css.onclick = () => copyWithFeedback(css, snippet);
+      }
+      row.querySelector(".file-rename").onclick = async () => {
+        const next = prompt("New name (letters, numbers, - or _). Every place using it follows.", name);
+        if (next == null || next.trim() === "" || next.trim() === name) return;
+        try {
+          const res = await api(`/api/admin/media/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify({ name: next }) });
+          filesCache = res.files || [];
+          say(`Renamed to ${res.file.name}. Custom CSS that used url(/media/${name}) needs the new name.`);
+          renderFiles();
+        } catch (e) {
+          say(String(e.message || e));
+        }
+      };
+      const input = row.querySelector(".file-replace-input");
+      row.querySelector(".file-replace").onclick = () => input.click();
+      input.onchange = async () => {
+        const nf = input.files[0];
+        if (!nf) return;
+        say("Uploading…");
+        try {
+          const res = await api(`/api/admin/media/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify({ data: await readAsDataUrl(nf) }) });
+          filesCache = res.files || [];
+          say(`Replaced ${name}. Everything using it shows the new file within a few seconds.`);
+          renderFiles();
+        } catch (e) {
+          say(String(e.message || e));
+        }
+      };
+      row.querySelector(".file-delete").onclick = async () => {
+        const used = (f.used_by || []).map(fileUseLabel);
+        const msg = used.length
+          ? `Delete ${name}? It's used by ${used.join(", ")}; those will be empty afterwards.`
+          : `Delete ${name}?`;
+        if (!confirm(msg)) return;
+        try {
+          const res = await api(`/api/admin/media/${encodeURIComponent(name)}`, { method: "DELETE" });
+          filesCache = res.files || [];
+          say(`Deleted ${name}.`);
+          renderFiles();
+        } catch (e) {
+          say(String(e.message || e));
+        }
+      };
+    });
+  }
+
+  async function loadFiles() {
+    try {
+      const res = await api("/api/admin/media");
+      filesCache = res.files || [];
+      renderFiles();
+    } catch (e) {
+      if ($("files-list")) $("files-list").innerHTML = `<span class="muted">${esc(e.message || e)}</span>`;
+    }
+  }
+
+  if ($("files-filter")) $("files-filter").onchange = renderFiles;
+  if ($("files-refresh")) $("files-refresh").onclick = loadFiles;
+  if ($("files-upload")) {
+    $("files-upload").onclick = async () => {
+      const input = $("files-upload-input");
+      const st = $("files-status");
+      const picked = [...(input.files || [])];
+      if (!picked.length) { st.textContent = "Pick one or more files first."; return; }
+      const done = [];
+      const failed = [];
+      for (const f of picked) {
+        st.textContent = `Uploading ${f.name}…`;
+        try {
+          const res = await api("/api/admin/media", { method: "POST", body: JSON.stringify({ data: await readAsDataUrl(f), filename: f.name }) });
+          filesCache = res.files || [];
+          done.push(res.reused ? `${f.name} (already stored as ${res.file.name})` : res.file.name);
+        } catch (e) {
+          failed.push(`${f.name}: ${e.message || e}`);
+        }
+      }
+      input.value = "";
+      st.textContent = [done.length ? "Stored " + done.join(", ") + "." : "", failed.join(" ")].filter(Boolean).join(" ");
+      renderFiles();
+    };
   }
 
   async function loadAlertAssets() {

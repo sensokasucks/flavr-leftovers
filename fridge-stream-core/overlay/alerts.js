@@ -240,7 +240,7 @@
     clearMedia();
     const src = mediaMap[kind] || (data && data.image) || mediaMap[(data && data.falls_back) || ""];
     if (!src || !imgWrap) return;
-    if (/\.webm$/i.test(src) && videoEl) {
+    if (/\.(webm|mp4)(\?|$)/i.test(src) && videoEl) {
       videoEl.src = src;
       videoEl.hidden = false;
       imgWrap.classList.add("has-video");

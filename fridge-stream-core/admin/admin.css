@@ -1141,6 +1141,8 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 .asset-thumb { max-width: 120px; max-height: 60px; object-fit: contain; background: repeating-conic-gradient(#22262e 0 25%, #171a21 0 50%) 0 0 / 12px 12px; border-radius: 4px; }
 .asset-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .asset-actions input[type="file"] { max-width: 220px; font-size: 0.8rem; }
+.asset-actions select.asset-pick { max-width: 220px; }
+.font-sample { font-size: 1.6rem; font-weight: 600; }
 @media (max-width: 700px) {
   .asset-row { grid-template-columns: 1fr; }
 }

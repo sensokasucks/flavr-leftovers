@@ -127,7 +127,9 @@ Chatter pictures come from Core itself (`/avatars/<platform>/<file>`, saved once
 
 ## Pictures and sounds
 
-Upload in **Admin → Chat overlay → Pictures and sounds**, or drop files in `overlay/assets/chat/`:
+Pick them in **Admin → Chat overlay → Pictures and sounds** from **Stored files** (`data/media/`, the same files the
+alerts use), or upload a new one there. Dropping files into `overlay/assets/chat/` still works for a slot with nothing
+picked (Core copies them into Stored files at start):
 
 | File | What it does |
 |------|--------------|
@@ -135,6 +137,8 @@ Upload in **Admin → Chat overlay → Pictures and sounds**, or drop files in `
 | `badge-mod.png`, `badge-vip.png`, `badge-sub.png`, `badge-broadcaster.png`, `badge-og.png`, `badge-founder.png` | Picture badges instead of the text chips |
 | `message.mp3` / `.ogg` / `.wav` | Played for each new message (volume and a minimum gap are in the dashboard) |
 | `paid.mp3` | Played for Super Chats and Kicks instead of the message sound |
+
+Custom CSS can use any stored picture or font by name, e.g. `url(/media/my-frame)` (**Copy CSS** on the Stored files page).
 
 Sounds play inside OBS / XSplit without a click. A normal browser tab needs one click on the page first (browser rule).
 

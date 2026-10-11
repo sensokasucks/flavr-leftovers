@@ -9,7 +9,7 @@ Home: `core/alerts.py`, `overlay/alerts.html` + `alerts.js` + `alerts.css`. Note
 - [ ] Default look is Classic (Montserrat, text-shadow, accent name) — not Card-only.
 - [ ] Custom CSS editor on Admin → Alert test writes `overlay/alerts-custom.css` and is picked up live (no restart).
 - [ ] CSS variables (`--alert-accent`, `--alert-font`, `--alert-name-size`, …) still exist.
-- [ ] Optional per-kind media path: `overlay/assets/alerts/{kind}.gif|.webm|…`
+- [ ] Per-kind picture / video and sound come from Stored files (see [stored-files.md](stored-files.md)); a kind with nothing picked still uses `overlay/assets/alerts/{kind}.gif|.webm|.mp4|…` dropped in by hand. The overlay plays `.webm` / `.mp4` (also with `?v=`) as video.
 - [ ] Duration comes from `overlay.alert_duration_ms` (paid chat in `_alert_from_paid_chat`; adapter sub alerts with `source:"platform"` in `StreamCore._on_alert`).
 - [ ] Live sub / resub / gift alerts come from the adapters (see `adapters-chat.md`); Super Chat / bits from paid chat.
 - [ ] Follow / sub / raid / bits / Super Chat / donation kinds still testable from the Alert test tab.

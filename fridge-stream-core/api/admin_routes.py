@@ -1785,6 +1785,8 @@ def create_admin_router(core_state) -> APIRouter:
             "sounds": sounds,
             "image_slots": list(style.image_slots),
             "sound_slots": list(style.sound_slots),
+            "picks": style.read_picks(),                # {image|sound: {slot: stored file name}}
+            "allow_video": style.allow_video,
             "max_bytes": MAX_ASSET_BYTES,
         }
 
@@ -1796,11 +1798,16 @@ def create_admin_router(core_state) -> APIRouter:
     @router.post("/overlays/{name}/assets/{slot}")
     async def upload_overlay_asset(name: str, slot: str, body: Dict[str, Any] = Body(default={}),
                                    x_admin_token: Optional[str] = Header(None)):
-        """{data}: the file as base64 (a data: URL is fine). Replaces the slot's old file."""
+        """{file, kind?}: use a stored file (Files tab) for the slot. Or {data, filename?}: the file
+        as base64 (a data: URL is fine); it lands in the stored files and the slot uses it."""
         _auth(x_admin_token)
         style = _overlay_style(name)
         try:
-            url = style.save_asset_base64(slot, str(body.get("data") or ""))
+            if body.get("file"):
+                kind = str(body.get("kind") or "") or None
+                url = style.pick(slot, str(body["file"]), kind=kind)
+            else:
+                url = style.save_asset_base64(slot, str(body.get("data") or ""), filename=str(body.get("filename") or ""))
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
         style.write_settings(bump_css=True)       # nudges open overlays to re-read the list
@@ -1809,13 +1816,113 @@ def create_admin_router(core_state) -> APIRouter:
     @router.delete("/overlays/{name}/assets/{slot}")
     async def delete_overlay_asset(name: str, slot: str, kind: Optional[str] = None,
                                    x_admin_token: Optional[str] = Header(None)):
-        """?kind=image|sound picks which file when a slot has both (the alert kinds)."""
+        """?kind=image|sound picks which file when a slot has both (the alert kinds). The stored
+        file stays in the Files tab; only the slot is emptied."""
         _auth(x_admin_token)
         style = _overlay_style(name)
         if not style.delete_asset(slot, kind=kind):
             raise HTTPException(404, "Nothing uploaded for that slot.")
         style.write_settings(bump_css=True)
         return {"ok": True, **_assets_payload(style)}
+
+    # ------------------------------------------------------------------
+    # Stored files (core/media_library.py): upload once, use in many places
+    # ------------------------------------------------------------------
+
+    def _media():
+        from core.media_library import default_library
+
+        return getattr(core_state, "media", None) or default_library()
+
+    def _media_users():
+        """Everything that points at stored files (alerts and chat overlay slots for now)."""
+        from core.alerts import ALERT_STYLE
+        from core.chat_style import CHAT_STYLE
+
+        return [ALERT_STYLE, CHAT_STYLE]
+
+    def _media_payload() -> Dict[str, Any]:
+        from core.media_library import MAX_BYTES, MAX_FILES, MAX_VIDEO_BYTES
+
+        used: Dict[str, list] = {}
+        for user in _media_users():
+            for ref in user.media_refs():
+                used.setdefault(ref["name"], []).append({k: ref[k] for k in ("overlay", "slot", "kind")})
+        files = []
+        for entry in sorted(_media().list(), key=lambda e: e["name"]):
+            files.append({**entry, "used_by": used.get(entry["name"], [])})
+        return {"files": files, "max_bytes": MAX_BYTES, "max_video_bytes": MAX_VIDEO_BYTES, "max_files": MAX_FILES}
+
+    def _media_touched(name: str) -> None:
+        """Open overlays that use the file re-read their list (new version / name / gone)."""
+        for user in _media_users():
+            if any(ref["name"] == name for ref in user.media_refs()):
+                user.write_settings(bump_css=True)
+
+    @router.get("/media")
+    async def list_media(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        return _media_payload()
+
+    @router.post("/media")
+    async def upload_media(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{data, name?, filename?}: the file as base64. An identical file already stored is reused."""
+        _auth(x_admin_token)
+        from core.media_library import clean_name, name_from_filename
+
+        try:
+            entry, reused = _media().save_base64(str(body.get("data") or ""),
+                                                 clean_name(str(body.get("name") or ""))
+                                                 or name_from_filename(str(body.get("filename") or "")))
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "file": entry, "reused": reused, **_media_payload()}
+
+    @router.put("/media/{file_name}")
+    async def change_media(file_name: str, body: Dict[str, Any] = Body(default={}),
+                           x_admin_token: Optional[str] = Header(None)):
+        """{data}: replace the file's content (every place using it shows the new one).
+        {name}: rename it (every place using it follows)."""
+        _auth(x_admin_token)
+        from core.media_library import decode_base64
+
+        lib = _media()
+        if lib.get(file_name) is None:
+            raise HTTPException(404, "No stored file by that name.")
+        try:
+            if body.get("data"):
+                entry = lib.replace(file_name, decode_base64(str(body["data"])))
+                _media_touched(entry["name"])
+            elif body.get("name") is not None:
+                entry = lib.rename(file_name, str(body["name"]))
+                if entry["name"] != file_name:
+                    for user in _media_users():
+                        if user.media_renamed(file_name, entry["name"]):
+                            user.write_settings(bump_css=True)
+            else:
+                raise ValueError("Send a new file (data) or a new name.")
+        except KeyError as e:
+            raise HTTPException(404, "No stored file by that name.") from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "file": entry, **_media_payload()}
+
+    @router.delete("/media/{file_name}")
+    async def delete_media(file_name: str, x_admin_token: Optional[str] = Header(None)):
+        """Delete a stored file; the places that used it are emptied."""
+        _auth(x_admin_token)
+        lib = _media()
+        entry = lib.get(file_name)
+        if entry is None:
+            raise HTTPException(404, "No stored file by that name.")
+        emptied = 0
+        for user in _media_users():
+            n = user.media_forgotten(entry["name"])
+            if n:
+                emptied += n
+                user.write_settings(bump_css=True)
+        lib.delete(entry["name"])
+        return {"ok": True, "emptied": emptied, **_media_payload()}
 
     # ------------------------------------------------------------------
     # Integrations test bench (per-game command / metrics / overlay)

@@ -575,6 +575,22 @@ def create_app(core_state: "CoreState") -> FastAPI:
             raise HTTPException(404, "No such reaction image")
         return FileResponse(path, headers={"Cache-Control": "public, max-age=86400"})
 
+    # Stored files (core/media_library.py): pictures, videos, sounds and fonts for overlays and
+    # custom CSS. /media/<name> or /media/<name>.<ext>; read-only, same origin as the overlays.
+    @app.get("/media/{file_name}")
+    async def media_file(file_name: str):
+        from core.media_library import CONTENT_TYPES, default_library
+
+        lib = getattr(core_state, "media", None) or default_library()
+        path = lib.resolve(file_name)
+        if path is None:
+            raise HTTPException(404, "No such stored file")
+        ext = path.suffix.lower().lstrip(".")
+        # /media/<name> stays the same across Replace, so it is re-checked often; the overlays'
+        # own links carry ?v=<time> and can be kept longer
+        return FileResponse(path, media_type=CONTENT_TYPES.get(ext),
+                            headers={"Cache-Control": "public, max-age=60"})
+
     # ------------------------------------------------------------------
     # Chatter profile pictures (core/avatar_store.py)
     # ------------------------------------------------------------------
