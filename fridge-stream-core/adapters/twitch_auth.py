@@ -31,9 +31,14 @@ log = logging.getLogger("adapters.twitch_auth")
 
 # Stream Core's own public app on dev.twitch.tv (client type "Public": no secret exists).
 BUILTIN_CLIENT_ID = "timu942xi1c5yqua2b5uv6vtu68yy2"
-# What the sign-in asks for. Reading chat and posting into it (replies to commands) are
-# the only things Core will ever do with the account. Chatter pictures need no scope.
-SCOPES = ["user:read:chat", "user:write:chat"]
+# What the sign-in asks for: reading chat and posting into it (replies to commands), plus
+# reading the channel's paid events Twitch only sends through EventSub (bits power-ups and
+# celebrations with their bits, charity donations, Hype Train summaries; see
+# adapters/twitch_eventsub.py). Core never spends, changes or posts anything else.
+# Chatter pictures need no scope.
+CHAT_SCOPES = ["user:read:chat", "user:write:chat"]
+PAID_SCOPES = ["bits:read", "channel:read:charity", "channel:read:hype_train"]
+SCOPES = CHAT_SCOPES + PAID_SCOPES
 
 ID_BASE = "https://id.twitch.tv/oauth2"
 DEVICE_URL = f"{ID_BASE}/device"
@@ -132,6 +137,9 @@ class TwitchAuth:
             "has_secret": bool(self._client_secret),
             "pending": pending,
             "error": self._last_error,
+            # signed in before Core asked for these: press Reconnect once to allow them
+            "missing_scopes": [s for s in SCOPES if s not in (self._tok.get("scopes") or [])]
+            if self.connected else [],
         }
 
     # ── device code sign-in ─────────────────────────────────

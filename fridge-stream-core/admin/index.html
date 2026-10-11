@@ -1252,15 +1252,17 @@
 
       <fieldset class="cfg-card">
         <legend>Twitch</legend>
-        <p class="hint">Chat is read without a login. Connect your Twitch account for chatter profile pictures.</p>
+        <p class="hint">Chat is read without a login. Connect your Twitch account for chatter profile pictures and the paid events chat doesn't carry.</p>
         <label class="check"><input id="cfg-tw-enabled" type="checkbox" /> Enabled</label>
         <label>Channel <span class="field-help">twitch.tv/<strong>this</strong></span>
           <input id="cfg-tw-channel" type="text" placeholder="twitch.tv/THIS_PART" />
         </label>
         <label class="check"><input id="cfg-tw-3p" type="checkbox" /> BetterTTV / FrankerFaceZ / 7TV emotes</label>
         <label class="check"><input id="cfg-tw-avatars" type="checkbox" /> Chatter profile pictures</label>
+        <label class="check"><input id="cfg-tw-paid" type="checkbox" /> Paid events: bits power-ups and celebrations with their bits, charity donations, Hype Train summaries <span class="field-help">Needs Connect Twitch with the channel's own account</span></label>
         <div class="tw-auth" id="tw-auth">
           <p class="tw-auth-state" id="tw-auth-state">Twitch account: checking…</p>
+          <p class="hint" id="tw-paid-state"></p>
           <div class="tw-auth-code" id="tw-auth-code" hidden>
             <p>Go to <a id="tw-auth-link" href="https://www.twitch.tv/activate" target="_blank" rel="noopener">twitch.tv/activate</a> and enter this code:</p>
             <p class="tw-auth-digits" id="tw-auth-digits"></p>
@@ -1271,7 +1273,7 @@
             <button type="button" id="tw-auth-disconnect" class="secondary" hidden>Disconnect</button>
             <button type="button" id="tw-auth-cancel" class="secondary" hidden>Cancel</button>
           </div>
-          <p class="hint">The sign-in happens between this PC and Twitch; the token is kept in <code>data\twitch_token.json</code> and sent nowhere else. Core asks only to read chat and to post in it.</p>
+          <p class="hint">The sign-in happens between this PC and Twitch; the token is kept in <code>data\twitch_token.json</code> and sent nowhere else. Core asks only to read chat, to post in it, and to read the channel's bits, charity and Hype Train events.</p>
         </div>
         <details class="tw-advanced">
           <summary>Advanced: use your own Twitch app</summary>
