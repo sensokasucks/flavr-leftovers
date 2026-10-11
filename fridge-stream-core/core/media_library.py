@@ -224,6 +224,34 @@ class MediaLibrary:
             self._write_index(index)
             return self._entry(final, path, index), False
 
+    def save_exact(self, data: bytes, name: str) -> dict[str, Any]:
+        """Store an upload under exactly this name (reaction pictures: img:<name>). The same file
+        already under that name is fine; a different file under it is a ValueError. An identical
+        file under another name is stored again, because the name is what matters here."""
+        ext = self.check(data)
+        name = clean_name(name)
+        if not name:
+            raise ValueError("Give it a name made of letters, numbers, - or _.")
+        digest = hashlib.sha256(data).hexdigest()
+        with self._lock:
+            files = self._files()
+            index = self._read_index()
+            have = files.get(name)
+            if have is not None:
+                h = (index.get(name) or {}).get("sha256") or hashlib.sha256(have.read_bytes()).hexdigest()
+                if h == digest:
+                    return self._entry(name, have, index)
+                raise ValueError(f"There's already a stored file called '{name}'. Pick another name, "
+                                 "or use Replace on the Stored files page to change it everywhere.")
+            if len(files) >= MAX_FILES:
+                raise ValueError(f"The library is full ({MAX_FILES} files). Delete some first.")
+            self.root.mkdir(parents=True, exist_ok=True)
+            path = self.root / f"{name}.{ext}"
+            self._write_file(path, data)
+            index[name] = {"sha256": digest, "added": int(time.time())}
+            self._write_index(index)
+            return self._entry(name, path, index)
+
     def save_base64(self, b64: str, name: str = "") -> tuple[dict[str, Any], bool]:
         return self.save(decode_base64(b64), name)
 

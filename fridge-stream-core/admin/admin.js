@@ -1792,6 +1792,7 @@
 
   // ── Stored files: every upload once, used by alerts, chat and custom CSS ──
   function fileUseLabel(u) {
+    if (u.overlay === "reactions") return `Reaction: ${u.slot}`;
     const page = u.overlay === "alerts" ? "Alerts" : u.overlay === "chat" ? "Chat overlay" : u.overlay;
     const slot = (ASSET_LABELS[u.overlay] || {})[u.slot] || u.slot;
     return `${page}: ${slot.replace(/ \(else .*\)$/, "")}${u.overlay === "alerts" ? (u.kind === "sound" ? " sound" : " picture") : ""}`;
@@ -1848,7 +1849,7 @@
         css.onclick = () => copyWithFeedback(css, snippet);
       }
       row.querySelector(".file-rename").onclick = async () => {
-        const next = prompt("New name (letters, numbers, - or _). Every place using it follows.", name);
+        const next = prompt("New name (letters, numbers, - or _). Alerts, chat and reactions using it follow.", name);
         if (next == null || next.trim() === "" || next.trim() === name) return;
         try {
           const res = await api(`/api/admin/media/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify({ name: next }) });
@@ -4041,7 +4042,7 @@
           `<div class="rx-img-card" title="${escapeHtml(im.file)} · ${Math.round(im.bytes / 1024)} KB">` +
           `<img src="${escapeHtml(im.url)}" alt="" />` +
           `<code>img:${escapeHtml(im.name)}</code>` +
-          `<span class="muted">${escapeHtml(im.source)}${im.animated ? " · animated" : ""}</span>` +
+          `<span class="muted">${im.source === "stored" ? "stored file" : im.source === "custom" ? "older upload" : escapeHtml(im.source)}${im.animated ? " · animated" : ""}</span>` +
           (im.source === "custom"
             ? `<button type="button" class="danger" data-rx-img-del="${escapeHtml(im.name)}">Delete</button>`
             : "") +

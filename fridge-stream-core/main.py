@@ -175,7 +175,8 @@ class StreamCore:
             broadcast=self._ws_broadcast,
             groups_active=lambda: self.router.enabled_groups,
             command_prefix=lambda: self.router.prefix,
-            images=ReactionImages(ROOT / "overlay" / "assets" / "reactions", ROOT / "data" / "reaction_images"),
+            images=ReactionImages(ROOT / "overlay" / "assets" / "reactions", ROOT / "data" / "reaction_images",
+                                  library=default_library()),
         )
         self.state.reactions = self.reactions
         # Chat games + crowd moments (combos, hype, polls, predictions, slots, heists ...)
@@ -193,14 +194,14 @@ class StreamCore:
         )
         self.state.chat_games = self.chat_games
         self.credits.extra = self._credits_extra
-        # Stored files (Files tab): one copy of each upload, used by alerts / chat / custom CSS.
-        # Files dropped into overlay/assets/alerts|chat/ by hand are copied in once.
+        # Stored files: one copy of each upload, used by alerts / chat / reactions / custom CSS.
+        # Files dropped into overlay/assets/alerts|chat/ and older reaction uploads are copied in.
         self.state.media = default_library()
-        for style in (ALERT_STYLE, CHAT_STYLE):
+        for style in (ALERT_STYLE, CHAT_STYLE, self.reactions.images):
             try:
                 style.import_legacy()
             except Exception as e:  # never let a bad file stop Core from starting
-                log.warning("Couldn't move %s files into the file library: %s", style.name, e)
+                log.warning("Couldn't move %s files into the file library: %s", getattr(style, "name", "reaction"), e)
 
         # Chatter profile pictures saved by Core and served at /avatars/... (core/avatar_store.py)
         self.avatars = AvatarStore()

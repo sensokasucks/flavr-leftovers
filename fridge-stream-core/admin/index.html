@@ -1599,14 +1599,15 @@
 
       <fieldset class="cfg-card rx-images">
         <legend>Pictures</legend>
-        <p class="hint">PNG, JPEG or GIF (animated GIFs play). Use one in a reaction by setting its
-          <strong>Object</strong> to <code>img:name</code>, for example <code>img:boot</code>.
-          Uploads are kept in <code>data/reaction_images/</code>; built-in pictures can be replaced by
-          uploading one with the same name.</p>
+        <p class="hint">Every PNG, JPEG, GIF or WebP picture in <a href="#files">Stored files</a> can be thrown
+          (animated GIFs play), so a picture you already use for an alert needs no second upload. Use one in a reaction
+          by setting its <strong>Object</strong> to <code>img:name</code>, for example <code>img:boot</code>.
+          Uploading here stores the picture under that name; a stored picture with a built-in's name replaces the built-in.
+          Rename or delete pictures on the Stored files page (reactions using them follow).</p>
         <div id="rx-img-grid" class="rx-img-grid"><span class="muted">Loading…</span></div>
         <div class="rx-img-upload">
           <label>Name <input id="rx-img-name" type="text" maxlength="40" placeholder="e.g. rubber-chicken" /></label>
-          <label>File <input id="rx-img-file" type="file" accept=".png,.jpg,.jpeg,.gif,image/png,image/jpeg,image/gif" /></label>
+          <label>File <input id="rx-img-file" type="file" accept=".png,.jpg,.jpeg,.gif,.webp,image/png,image/jpeg,image/gif,image/webp" /></label>
           <button id="rx-img-upload" type="button">Upload</button>
           <span id="rx-img-status" class="muted"></span>
         </div>

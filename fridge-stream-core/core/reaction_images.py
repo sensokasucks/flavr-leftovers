@@ -1,12 +1,14 @@
 """Images that reactions can throw / drop / float instead of an emoji.
 
-A reaction's object param "img:boot" uses the image named "boot". Images live in
-  - overlay/assets/reactions/   built-in, shipped (boot.png)
-  - data/reaction_images/       uploaded in Admin → Config → Reactions (local, not in git)
-An upload with the same name as a built-in replaces it for this install.
+A reaction's object param "img:boot" uses the picture named "boot". Pictures come from
+  - overlay/assets/reactions/   built-in, shipped (boot.png); served at /reactions/images/<file>
+  - data/reaction_images/       older uploads, before Stored files; copied into Stored files at
+                                start (import_legacy) and removed here once they are
+  - Stored files                (core/media_library.py, data/media/, /media/<file>): any stored
+                                PNG / JPEG / GIF / WebP picture, by its name
+Later ones win, so a stored picture called "boot" replaces the built-in for this install.
 
-Core serves them at /reactions/images/<file> (read-only, same origin as the overlays) and
-puts {"name", "url", "animated"} into the reaction packet's params as `object_image`, so
+Core puts {"name", "url", "animated"} into the reaction packet's params as `object_image`, so
 Stream Rooms and the fallback overlay can draw the picture.
 """
 
@@ -15,7 +17,10 @@ from __future__ import annotations
 import base64
 import re
 from pathlib import Path
+import logging
 from typing import Any, Dict, List, Optional
+
+log = logging.getLogger("core.reaction_images")
 
 MAX_BYTES = 5 * 1024 * 1024
 NAME_RE = re.compile(r"[^a-z0-9_-]+")
@@ -42,9 +47,10 @@ def sniff(data: bytes) -> Optional[str]:
 
 
 class ReactionImages:
-    def __init__(self, builtin_dir: Path, custom_dir: Path):
+    def __init__(self, builtin_dir: Path, custom_dir: Path, library: Any = None):
         self.builtin_dir = Path(builtin_dir)
         self.custom_dir = Path(custom_dir)
+        self.library = library        # core.media_library.MediaLibrary (Stored files); None = none
 
     # ── lookup ─────────────────────────────────────────────────
     def _scan(self, folder: Path, source: str) -> Dict[str, Dict[str, Any]]:
@@ -71,9 +77,29 @@ class ReactionImages:
             }
         return out
 
+    def _stored(self) -> Dict[str, Dict[str, Any]]:
+        out: Dict[str, Dict[str, Any]] = {}
+        if self.library is None:
+            return out
+        for f in self.library.list():
+            if f["kind"] != "image":          # pictures only (no videos, sounds, fonts)
+                continue
+            out[f["name"]] = {
+                "name": f["name"],
+                "file": f["file"],
+                "kind": "jpeg" if f["ext"] == "jpg" else f["ext"],
+                "bytes": f["size"],
+                "source": "stored",
+                "path": None,
+                "url": f["url"],
+                "animated": f["ext"] == "gif",
+            }
+        return out
+
     def all(self) -> Dict[str, Dict[str, Any]]:
         found = self._scan(self.builtin_dir, "built-in")
         found.update(self._scan(self.custom_dir, "custom"))     # uploads win
+        found.update(self._stored())                            # Stored files win over both
         return found
 
     def list(self) -> List[Dict[str, Any]]:
@@ -103,8 +129,10 @@ class ReactionImages:
             return None
         return {"name": info["name"], "url": info["url"], "animated": info["animated"]}
 
-    # ── changes (custom folder only) ───────────────────────────
+    # ── changes ────────────────────────────────────────────────
     def save(self, name: str, data: bytes) -> Dict[str, Any]:
+        """Store an upload in Stored files under exactly this name (so img:<name> works).
+        Without Stored files (tests, old callers) it goes to the old uploads folder."""
         name = clean_name(name)
         if not name:
             raise ValueError("Give the image a name (letters, numbers, - or _).")
@@ -113,6 +141,14 @@ class ReactionImages:
         if len(data) > MAX_BYTES:
             raise ValueError(f"Too big ({len(data) // 1024} KB). The limit is {MAX_BYTES // (1024 * 1024)} MB.")
         kind = sniff(data)
+        if self.library is not None:
+            from core.overlay_style import sniff as sniff_any
+
+            if kind is None and sniff_any(data) != "webp":
+                raise ValueError("Only PNG, JPEG, GIF or WebP images.")
+            self.library.save_exact(data, name)
+            info = self.get(name) or {}
+            return {k: v for k, v in info.items() if k != "path"}
         if kind is None:
             raise ValueError("Only PNG, JPEG or GIF images.")
         self.custom_dir.mkdir(parents=True, exist_ok=True)
@@ -137,8 +173,8 @@ class ReactionImages:
         return self.save(name, data)
 
     def delete(self, name: str) -> bool:
-        """Deletes an upload. Built-in images can't be deleted (an upload of the same
-        name only hides them)."""
+        """Deletes an older upload from data/reaction_images. Built-in images can't be deleted;
+        stored pictures are deleted on the Stored files page (they may be used elsewhere)."""
         name = clean_name(name)
         gone = False
         for p in self.custom_dir.glob(name + ".*") if self.custom_dir.is_dir() else []:
@@ -146,3 +182,30 @@ class ReactionImages:
                 p.unlink()
                 gone = True
         return gone
+
+    def import_legacy(self) -> int:
+        """Copy data/reaction_images/* into Stored files under the same names and remove the
+        originals that made it. A name Stored files already uses for a different file stays
+        here (still usable; the stored one wins) and is logged."""
+        if self.library is None or not self.custom_dir.is_dir():
+            return 0
+        moved = 0
+        for p in sorted(self.custom_dir.iterdir()):
+            if not p.is_file() or KIND_FOR_EXT.get(p.suffix.lower()) is None:
+                continue
+            name = clean_name(p.stem)
+            if not name:
+                continue
+            try:
+                self.library.save_exact(p.read_bytes(), name)
+            except (OSError, ValueError) as e:
+                log.warning("Reaction picture %s stays in %s: %s", p.name, self.custom_dir, e)
+                continue
+            try:
+                p.unlink()
+            except OSError as e:
+                log.debug("could not remove %s: %s", p, e)
+            moved += 1
+        if moved:
+            log.info("Moved %d reaction picture(s) into Stored files (data/media)", moved)
+        return moved
