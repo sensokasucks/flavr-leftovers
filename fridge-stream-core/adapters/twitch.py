@@ -1,8 +1,9 @@
 """
 Twitch chat adapter (read-only).
 
-Uses anonymous IRC (justinfanXXXXX) — no OAuth required to listen.
-Optional Helix viewer polling can be added later with a client id + token.
+Uses anonymous IRC (justinfanXXXXX) — no OAuth required to listen. With the streamer's
+own Twitch sign-in it also opens EventSub (adapters/twitch_eventsub.py) for the paid events
+IRC doesn't carry: power-ups with their bits, celebrations, charity, Hype Trains.
 """
 
 from __future__ import annotations
@@ -18,6 +19,7 @@ from adapters.base import BaseAdapter
 from adapters.twitch_auth import get_auth
 from adapters.twitch_avatars import TwitchAvatars
 from adapters.twitch_emotes import ThirdPartyEmotes, parse_twitch_emotes, strip_action
+from adapters.twitch_eventsub import EventSubClient
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
@@ -212,6 +214,9 @@ class TwitchAdapter(BaseAdapter):
         # chatter pictures through Helix; needs the streamer's Twitch sign-in (or an own app with a secret)
         self.auth = get_auth(config)
         self.avatars = TwitchAvatars(bool(cfg.get("avatars", True)), auth=self.auth)
+        # bits power-ups / celebrations / charity / Hype Trains (needs the streamer's sign-in)
+        self.paid_events = bool(cfg.get("paid_events", True))
+        self.eventsub: Optional[EventSubClient] = None
 
     async def start(self) -> None:
         if not self.channel or self.channel.startswith("your_"):
@@ -222,6 +227,12 @@ class TwitchAdapter(BaseAdapter):
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="twitch-irc")
         log.info("Twitch IRC listening on #%s", self.channel)
+        if self.paid_events:
+            self.eventsub = EventSubClient(self.auth, self.channel, self._on_paid_event)
+            self.eventsub.start()
+
+    async def _on_paid_event(self, alert: dict) -> None:
+        await self._emit_alert(**alert)
 
     async def stop(self) -> None:
         self._running = False
@@ -229,6 +240,9 @@ class TwitchAdapter(BaseAdapter):
         self._stop.set()
         self.emotes3p.stop()
         self.avatars.stop()
+        if self.eventsub is not None:
+            await self.eventsub.stop()
+            self.eventsub = None
         if self._writer:
             try:
                 self._writer.close()

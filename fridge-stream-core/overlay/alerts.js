@@ -23,14 +23,16 @@
   const KIND_ALIASES = {
     follower: "follow", followers: "follow", sub: "subscribe", subs: "subscribe", subscriber: "subscribe",
     subscription: "subscribe", membership: "member", members: "member", milestone: "member_milestone",
-    giftmembership: "member_gift", resubscribe: "resub",
+    giftmembership: "member_gift", resubscribe: "resub", powerups: "powerup", "power-up": "powerup",
+    celebrations: "celebration", charity_donation: "charity", hype: "hypetrain", hype_train: "hypetrain",
+    hypetrains: "hypetrain",
     gifted: "gift", giftsub: "gift", subgift: "gift", cheer: "bits", bit: "bits", tip: "donation",
     tips: "donation", donate: "donation", sticker: "supersticker", jewel: "jewels", kick: "kicks",
   };
   const GROUPS = {
-    money: ["superchat", "supersticker", "jewels", "bits", "kicks", "donation"],
+    money: ["superchat", "supersticker", "jewels", "bits", "kicks", "donation", "powerup", "celebration", "charity"],
     subs: ["subscribe", "resub", "gift", "member", "member_milestone", "member_gift"],
-    community: ["follow", "raid", "host"],
+    community: ["follow", "raid", "host", "hypetrain"],
   };
   const kindOf = (k) => KIND_ALIASES[k] || k;
   // YouTube memberships used to arrive as subscribe / resub / gift: a URL that names those
@@ -126,6 +128,10 @@
     supersticker: "sticker-alert superchat-alert donation-alert kind-supersticker",
     jewels: "jewels-alert gift-alert donation-alert kind-jewels",
     kicks: "kicks-alert donation-alert kind-kicks",
+    powerup: "powerup-alert cheer-alert bits-alert kind-powerup",
+    celebration: "celebration-alert powerup-alert cheer-alert bits-alert kind-celebration",
+    charity: "charity-alert donation-alert kind-charity",
+    hypetrain: "hypetrain-alert hype-train-alert kind-hypetrain",
     member: "member-alert subscriber-alert kind-member",
     member_milestone: "member-alert subscriber-alert resub-alert kind-member_milestone",
     member_gift: "member-alert sub-gift-alert gift-alert kind-member_gift",
@@ -198,6 +204,10 @@
     if (data.months != null) {
       const m = String(data.months);
       html = html.replace(m + " months", wrap(m, "months", "months") + " months");
+    }
+    if (data.level != null) {
+      const l = String(data.level);
+      html = html.replace("level " + l, "level " + wrap(l, "level", "level"));
     }
     if (data.viewers != null) {
       const v = String(data.viewers);

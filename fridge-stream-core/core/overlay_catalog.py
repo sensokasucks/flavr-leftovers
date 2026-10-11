@@ -21,7 +21,9 @@ ALERT_KINDS = [["follow", "Follow"], ["subscribe", "Sub / member"], ["resub", "R
                ["raid", "Raid"], ["host", "Host"], ["bits", "Bits"], ["superchat", "Super Chat"],
                ["supersticker", "Super Sticker"], ["jewels", "YouTube gift"], ["kicks", "KICKs"],
                ["donation", "Donation"], ["member", "YouTube member"], ["member_milestone", "Member milestone"],
-               ["member_gift", "Gifted memberships"]]
+               ["member_gift", "Gifted memberships"],
+               ["powerup", "Bits power-up"], ["celebration", "Celebration"], ["charity", "Charity"],
+               ["hypetrain", "Hype Train"]]
 METRIC_MODULES = ["health", "food", "xp", "deaths", "armor", "viewers", "cpm", "power", "effects", "inventory"]
 
 

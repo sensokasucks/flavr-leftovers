@@ -121,6 +121,43 @@ KINDS: dict[str, dict[str, Any]] = {
     },
     # YouTube memberships: their own kinds, so a membership can look and sound different
     # from a Twitch / Kick sub. Until they have their own picture they borrow the sub's.
+    # Twitch events that only arrive through EventSub (adapters/twitch_eventsub.py)
+    "powerup": {
+        "label": "Bits power-up",
+        "title": "Power-up",
+        "template": "{name} used {item} ({amount_fmt})!",
+        "accent": "twitch",
+        "needs": ["amount"],
+        "defaults": {"amount": 100, "currency": "bits", "item": "Gigantified emote"},
+        "falls_back": "bits",
+    },
+    "celebration": {
+        "label": "On-screen celebration",
+        "title": "Celebration",
+        "template": "{name} started a celebration ({amount_fmt})!",
+        "accent": "twitch",
+        "needs": ["amount"],
+        "defaults": {"amount": 300, "currency": "bits", "item": "On-screen celebration"},
+        "falls_back": "bits",
+    },
+    "charity": {
+        "label": "Charity donation",
+        "title": "Charity donation",
+        "template": "{name} gave {amount_fmt} to {item}!",
+        "accent": "twitch",
+        "needs": ["amount"],
+        "defaults": {"amount": 10, "currency": "USD", "item": "Direct Relief"},
+        "falls_back": "donation",
+    },
+    "hypetrain": {
+        "label": "Hype Train summary",
+        "title": "Hype Train",
+        "template": "{item} ended at level {level}!",
+        "accent": "twitch",
+        "needs": ["level"],
+        "defaults": {"level": 3, "item": "Hype Train"},
+        "falls_back": "raid",
+    },
     "member": {
         "label": "YouTube new member",
         "title": "New member",
@@ -164,6 +201,10 @@ KIND_CLASSES: dict[str, list[str]] = {
     "supersticker": ["sticker-alert", "superchat-alert", "donation-alert", "kind-supersticker"],
     "jewels": ["jewels-alert", "gift-alert", "donation-alert", "kind-jewels"],
     "kicks": ["kicks-alert", "donation-alert", "kind-kicks"],
+    "powerup": ["powerup-alert", "cheer-alert", "bits-alert", "kind-powerup"],
+    "celebration": ["celebration-alert", "powerup-alert", "cheer-alert", "bits-alert", "kind-celebration"],
+    "charity": ["charity-alert", "donation-alert", "kind-charity"],
+    "hypetrain": ["hypetrain-alert", "hype-train-alert", "kind-hypetrain"],
     "member": ["member-alert", "subscriber-alert", "kind-member"],
     "member_milestone": ["member-alert", "subscriber-alert", "resub-alert", "kind-member_milestone"],
     "member_gift": ["member-alert", "sub-gift-alert", "gift-alert", "kind-member_gift"],
@@ -238,6 +279,7 @@ def build_alert(
     item: str = "",
     image: str = "",
     amount_text: str = "",
+    level: Optional[int] = None,
 ) -> dict[str, Any]:
     """Normalize an alert payload for WS + overlay."""
     kind_key = (kind or "follow").strip().lower()
@@ -265,6 +307,8 @@ def build_alert(
         qty = int(defaults["qty"])
     if viewers is None and "viewers" in defaults:
         viewers = int(defaults["viewers"])
+    if level is None and "level" in defaults:
+        level = int(defaults["level"])
     if not item and defaults.get("item"):
         item = str(defaults["item"])
 
@@ -279,6 +323,7 @@ def build_alert(
         amount=(int(amount) if isinstance(amount, float) and amount.is_integer() else amount) if amount is not None else "",
         amount_fmt=amount_fmt or (str(amount) if amount is not None else ""),
         item=item or "a gift",
+        level=level if level is not None else "",
     )
 
     dur = duration_ms if duration_ms is not None else 6000
@@ -301,6 +346,7 @@ def build_alert(
         "months": months,
         "qty": qty,
         "viewers": viewers,
+        "level": level,
         "message": (message or "").strip(),
         # the sticker / gift's name and picture (shown when no picture is uploaded for the kind)
         "item": item or "",

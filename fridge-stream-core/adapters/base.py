@@ -129,6 +129,8 @@ class BaseAdapter(abc.ABC):
         message: str = "",
         item: str = "",
         image: str = "",
+        level: Optional[int] = None,
+        event_id: str = "",
     ) -> None:
         """Sub / resub / gift / raid / tip seen on the platform → overlay alert on the bus.
 
@@ -147,8 +149,12 @@ class BaseAdapter(abc.ABC):
             message=message,
             item=item,
             image=image,
+            level=level,
         )
         payload["source"] = "platform"
+        if event_id:
+            # the platform's own id for the event: the Paid list lists it once
+            payload["event_id"] = str(event_id)
         # Platform user id when the event carries one, so Core can credit points
         # to the same identity the viewer chats with (else it matches by name).
         payload["user_id"] = str(user_id or "")
