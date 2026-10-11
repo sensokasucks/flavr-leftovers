@@ -99,12 +99,17 @@ def twitch_reply_to(tags: dict[str, str]) -> Optional[dict]:
     return {"user": who, "message": (tags.get("reply-parent-msg-body") or "")[:200], "message_id": parent_id}
 
 
-# PRIVMSG msg-id values for messages bought with channel points
+# PRIVMSG msg-id values for messages that were bought: "Highlight My Message" with channel
+# points, and the bits power-ups (Gigantify an Emote, Message Effects; see POWERUP_KINDS)
 HIGHLIGHT_KINDS = {
     "highlighted-message": "highlighted",
     "gigantified-emote-message": "gigantified",
     "animated-message": "animated",
 }
+
+
+# bits power-ups: they go on the Paid list (Twitch's chat doesn't say how many bits)
+POWERUP_KINDS = {"gigantified", "animated"}
 
 
 def twitch_highlight(tags: dict[str, str]) -> Optional[str]:
@@ -374,6 +379,7 @@ class TwitchAdapter(BaseAdapter):
                 paid_amount=float(bits) if bits else None,
                 paid_currency="bits" if bits else None,
                 is_paid=bits > 0,
+                paid_kind="bits" if bits else None,
                 reply_to=reply_to,
                 highlight=twitch_highlight(tags),
             )

@@ -374,6 +374,10 @@ class CastBoard:
             "cheer": "donors",
             "donation": "donors",
             "superchat": "donors",
+            "bits": "donors",
+            "supersticker": "donors",
+            "jewels": "donors",
+            "kicks": "donors",
         }.get((kind or "").lower())
         if bucket:
             self.tags[bucket].add(key)

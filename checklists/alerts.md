@@ -13,6 +13,7 @@ Home: `core/alerts.py`, `overlay/alerts.html` + `alerts.js` + `alerts.css`. Note
 - [ ] Duration comes from `overlay.alert_duration_ms` (paid chat in `_alert_from_paid_chat`; adapter sub alerts with `source:"platform"` in `StreamCore._on_alert`).
 - [ ] Live sub / resub / gift alerts come from the adapters (see `adapters-chat.md`); Super Chat / bits from paid chat.
 - [ ] Follow / sub / raid / bits / Super Chat / donation kinds still testable from the Alert test tab.
+- [ ] Super Sticker (`supersticker`), YouTube gift (`jewels`) and KICKs (`kicks`) have their own kinds with `falls_back` (superchat / superchat / donation): the overlay uses the fallback's picture and sound until the kind has its own, and a sticker / gift's own `image` before the fallback's. Their classes keep the older names too (`donation-alert`, `superchat-alert`, `gift-alert`) so existing CSS still styles them. `build_alert(item=..., image=..., amount_text=...)`: an amount Core can't read shows the platform's own text, never a default.
 
 ## Drop risks
 

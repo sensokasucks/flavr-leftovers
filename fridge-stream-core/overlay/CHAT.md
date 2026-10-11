@@ -52,6 +52,7 @@ The same rules can go into OBS **Custom CSS** on the browser source instead.
 .badges .badge            badge chips; .badge.mod .vip .sub .broadcaster .og .founder
 .name                     the chatter's name          .colon   the ":" after it
 .message                  the text                    .emote   emote pictures
+.emote.sticker / .emote.gift   a YouTube Super Sticker / Jewels gift picture (drawn 2.5 × an emote)
 .plat                     the K / T / Y letter        .reply   "Replying to …" line
 .avatar                   chatter picture
 ```

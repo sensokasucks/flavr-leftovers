@@ -61,7 +61,12 @@ class ChatPayload(unittest.TestCase):
         from main import StreamCore
         from core.models import ChatEvent, ChatUser, Platform
 
+        from core.store import Store
+
         core = StreamCore({})
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        core.store = Store(Path(tmp.name) / "t.db")      # never the real data/stream_core.db
         sent: list = []
 
         class WS:

@@ -9,7 +9,16 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Paid list** (**On stream → Paid**): every Super Chat, Super Sticker, YouTube gift (Jewels), bits cheer, bits power-up and KICKs tip, plus subs, resubs, gifted subs and YouTube memberships, from every platform, with a tick box for "read out / thanked". Filters for ticked or not, this stream / today / 7 days / dates, money or subs, platforms, types, smallest amount, with or without a message, name or words, and order; totals per currency; **Tick all shown**, **Download CSV** and **Delete ticked rows older than…**. The menu shows how many paid messages aren't ticked. Saved in `data/stream_core.db`, so restarts lose nothing; red-flagged chatters' money is listed (marked) but never shown. `core/paid.py`, `/api/admin/paid`. Tests: `tests/test_paid.py`.
+- **YouTube Super Stickers show** in chat, on the chat overlay and in Stream Rooms, as the sticker's picture with the amount. Core used to drop them because they have no typed text.
+- **YouTube gifts bought with Jewels show** ("@name sent Star" with the gift's picture). Core reads the sender's channel from the gift animation YouTube sends with it.
+- **New alert kinds:** Super Sticker, YouTube gift and KICKs, each with its own picture and sound slot. Until you upload one, they use the Super Chat's (stickers, gifts) or the Donation's (KICKs) picture and sound; a sticker or gift with no picture of its own shows the sticker or gift. The Alert test tab has a **Gift or sticker name** box.
+
 ### Fixed
+- **YouTube Super Chat amounts are numbers now.** InnerTube Super Chats only had the amount glued to the text, so their alert showed the made-up default "4.99 USD". Core reads "$5.00", "CA$10.00", "€2,50" and so on into an amount and currency; an amount it can't read shows YouTube's own text.
+- **YouTube official API mode** reads Super Chats and Super Stickers from `superChatDetails` / `superStickerDetails` (it only read the old `fanFundingEventDetails`, so they weren't marked as paid).
+- **Bits, Super Stickers, gifts and KICKs count as donors** in the end credits' donor group.
 - **A chat line (and its chat point) could be lost when Core stopped or restarted.** The chat saver had already taken the line off its queue and was waiting a quarter second to save it together with others; stopping cancelled that wait. Stopping now saves those lines first, and waits for a save that's already running instead of starting a second one next to it. Tests: `tests/test_busy_chat.py`.
 - **A burst of messages could disconnect healthy overlays too** (seen on Python 3.10, which Core uses on Windows): a fast overlay's queue filled before it got its turn to send. A full queue now waits up to a quarter second for room before the overlay counts as stuck.
 - **Core's tests no longer read your own `config/commands.json`**: the game-command allow-list tests bring their own commands, so a locally edited command list can't make them fail.

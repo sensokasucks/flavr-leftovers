@@ -71,6 +71,12 @@ class ChatEvent:
     is_paid: bool = False
     reward_id: Optional[str] = None      # platform-specific reward/redemption id
     reward_title: Optional[str] = None
+    # What kind of paid message (see core/paid.py): "superchat", "supersticker", "jewels"
+    # (YouTube), "bits", "powerup" (Twitch), "kicks" (Kick). None for ordinary messages.
+    paid_kind: Optional[str] = None
+    # The sticker / gift picture and its name ("Dancing cat", "Star") when there is one.
+    paid_image: Optional[str] = None
+    paid_label: Optional[str] = None
 
     # Emote ranges in `message` (Twitch native + BTTV/FFZ/7TV, see adapters/twitch_emotes.py;
     # YouTube custom / member emoji, see adapters/youtube.py runs_to_text_and_emotes).

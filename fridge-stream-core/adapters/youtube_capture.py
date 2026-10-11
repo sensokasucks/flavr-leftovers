@@ -31,6 +31,8 @@ KNOWN_ACTIONS = {
     "removeBannerForLiveChatCommand", "showLiveChatTooltipCommand",
     "updateLiveChatPollAction", "showLiveChatActionPanelAction",
     "closeLiveChatActionPanelAction", "liveChatReportModerationStateCommand",
+    # the big on-screen animation of a Jewels gift (Core reads the sender's channel id from it)
+    "updateOrAddInteractivityWidgetAction",
 }
 
 # Chat item renderers: the ones Core reads plus common ones with nothing to show.
@@ -42,6 +44,8 @@ KNOWN_ITEMS = {
     "liveChatViewerEngagementMessageRenderer", "liveChatPlaceholderItemRenderer",
     "liveChatModeChangeMessageRenderer", "liveChatAutoModMessageRenderer",
     "liveChatDonationAnnouncementRenderer", "liveChatBannerRenderer",
+    # Jewels gifts ("@name sent Star"), read by Core
+    "giftMessageViewModel",
 }
 
 # Fields of the renderers Core reads that are known not to matter (layout, colours,
@@ -60,6 +64,8 @@ KNOWN_FIELDS = {
     # read by Core: gift header, Super Chat Reply button, reply / leaderboard chips
     # (an unknown chip icon is noted on its own, "chip:<icon>")
     "header", "replyButton", "beforeContentButtons",
+    # Jewels gift (giftMessageViewModel)
+    "text", "authorAvatar", "giftImage", "giftImageA11yLabel", "rendererContext",
 }
 
 

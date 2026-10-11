@@ -55,12 +55,13 @@ try:
     from core.credits import CreditsEngine
     from core.avatar_store import AvatarStore
     from core.red_flags import RedFlags, matching_recent
+    from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, split_amount_prefix
     from core.market import MarketTape
     from core.reactions import ReactionEngine
     from core.reaction_images import ReactionImages
     from core.chat_games import ChatGames
     from adapters.kick import KickAdapter
-    from adapters.twitch import TwitchAdapter
+    from adapters.twitch import POWERUP_KINDS, TwitchAdapter
     from adapters.youtube import YouTubeAdapter
     from core import plugin_manifest
     from core.plugins import PluginManager
@@ -196,6 +197,9 @@ class StreamCore:
         self.state.red_flags = self.red_flags
         self.state.red_flag_hide = self.hide_flagged
         self.red_flags.staff = self._is_staff
+        # Paid list: every paid message, tip and sub with a tick box (core/paid.py, Admin → Paid)
+        self.paid = PaidLog(lambda: self.store)
+        self.state.paid = self.paid
 
         self._metrics_task: asyncio.Task | None = None
         self._market_task: asyncio.Task | None = None
@@ -668,7 +672,8 @@ class StreamCore:
         except Exception:
             log.exception("credits ingest failed")
 
-        # Paid Super Chat / bits / donations → alert overlay
+        # Paid Super Chat / bits / donations → alert overlay, and the Paid list
+        await self._note_paid_chat(event, local or picture or "")
         if event.is_paid:
             await self._alert_from_paid_chat(event)
 
@@ -1158,6 +1163,7 @@ class StreamCore:
             self.store.submit_chat(event, award=False, flagged=True)
         except Exception:
             log.exception("store.submit_chat failed")
+        await self._note_paid_chat(event, "", flagged=True)   # money is never missed
         if flagged.get("new"):
             u = event.user
             await self.hide_flagged(event.platform.value, str(u.id or ""), u.username, u.display_name)
@@ -1284,8 +1290,21 @@ class StreamCore:
                                                   "profile_image_url": "", "avatar_local": ""})
 
     async def _on_alert(self, payload: dict) -> None:
-        if not payload.get("is_test") and self.red_flags.hides(
-                str(payload.get("platform") or ""), "", str(payload.get("username") or "")):
+        hidden = not payload.get("is_test") and self.red_flags.hides(
+            str(payload.get("platform") or ""), "", str(payload.get("username") or ""))
+        if (payload.get("source") == "platform" and not payload.get("is_test")
+                and payload.get("kind") in PAID_ALERT_KINDS):
+            # subs, gifted subs, KICKs ... (paid chat is listed from the chat line instead)
+            await self.paid.add(
+                platform=payload.get("platform") or "", kind=payload.get("kind") or "",
+                user_id=payload.get("user_id") or "", username=payload.get("username") or "",
+                display_name=payload.get("display_name") or "", message=payload.get("message") or "",
+                amount=payload.get("amount") if payload.get("kind") in ("kicks", "donation") else None,
+                currency=(payload.get("currency") or "") if payload.get("kind") in ("kicks", "donation") else "",
+                qty=payload.get("qty"), months=payload.get("months"), item=payload.get("item") or "",
+                image_url=payload.get("image") or "", flagged=hidden,
+            )
+        if hidden:
             log.info("[alert/%s] hidden: %s is red-flagged", payload.get("kind"), payload.get("username"))
             return
         if payload.get("source") == "platform":
@@ -1359,11 +1378,44 @@ class StreamCore:
             payload["points_awarded"] = res["delta"]
             log.info("points +%s → %s (%s, bal %s)", res["delta"], payload.get("display_name"), reason, res["balance"])
 
+    async def _note_paid_chat(self, event: ChatEvent, avatar: str = "", flagged: bool = False) -> None:
+        """A paid chat line (or a bits power-up) → a row on the Paid list."""
+        kind = event.paid_kind if event.is_paid else None
+        item = event.paid_label or ""
+        if not kind and event.platform == Platform.TWITCH and event.highlight in POWERUP_KINDS:
+            kind = "powerup"
+            item = "Gigantified emote" if event.highlight == "gigantified" else "Message effect"
+        if not kind and event.is_paid:
+            kind = {"youtube": "superchat", "twitch": "bits", "kick": "kicks"}.get(event.platform.value, "donation")
+        if not kind:
+            return
+        message, amount_text = split_amount_prefix(event.message)
+        if kind in ("supersticker", "jewels"):
+            # the sticker / gift is drawn from its :name: token; the list shows it as a picture
+            message = message.replace(":" + item + ":", "").strip() if item else message
+            if kind == "jewels" and message.lower().startswith("sent "):
+                message = ""
+        u = event.user
+        await self.paid.add(
+            platform=event.platform.value, kind=kind, user_id=str(u.id or ""), username=u.username,
+            display_name=u.display_name, message=message, amount=event.paid_amount,
+            currency=event.paid_currency or "", amount_text=amount_text, item=item,
+            image_url=event.paid_image or "", avatar_url=avatar or u.profile_image_url or "",
+            message_id=event.message_id or "", flagged=flagged, when=event.timestamp,
+        )
+
     async def _alert_from_paid_chat(self, event: ChatEvent) -> None:
-        """Turn Super Chat / bits into an overlay alert (same pipeline as tests)."""
+        """Turn Super Chat / Super Sticker / Jewels gift / bits into an overlay alert (same pipeline as tests)."""
         plat = event.platform.value
-        kind = "superchat" if plat == "youtube" else "bits" if plat == "twitch" else "donation"
-        currency = event.paid_currency or ("bits" if kind == "bits" else "USD")
+        kind = event.paid_kind or ("superchat" if plat == "youtube" else "bits" if plat == "twitch" else "donation")
+        if kind not in ("superchat", "supersticker", "jewels", "bits", "kicks", "donation"):
+            kind = "donation"
+        currency = event.paid_currency or ("bits" if kind == "bits" else "")
+        message, amount_text = split_amount_prefix(event.message)
+        if event.paid_label:
+            message = message.replace(":" + event.paid_label + ":", "").strip()
+        if kind == "jewels":
+            message = ""
         ov = self.config.get("overlay") or {}
         try:
             payload = build_alert(
@@ -1371,14 +1423,20 @@ class StreamCore:
                 username=event.user.username,
                 display_name=event.user.display_name,
                 platform=plat,
-                amount=event.paid_amount,
+                # a currency Core can't name: show YouTube's own text ("₦500.00") instead
+                amount=event.paid_amount if (currency or not amount_text) else None,
                 currency=currency,
-                message=event.message,
+                amount_text=amount_text,
+                message=message,
                 duration_ms=int(ov.get("alert_duration_ms") or 6000),
                 is_test=False,
+                item=event.paid_label or "",
+                image=event.paid_image or "",
             )
         except ValueError:
             return
+        payload["source"] = "chat"
+        payload["user_id"] = str(event.user.id or "")
         await self.bus.publish_alert(payload)
 
     async def _on_execute(self, req: ExecuteRequest) -> None:

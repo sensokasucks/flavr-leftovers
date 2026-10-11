@@ -116,6 +116,8 @@ class BaseAdapter(abc.ABC):
         amount: Optional[float] = None,
         currency: str = "",
         message: str = "",
+        item: str = "",
+        image: str = "",
     ) -> None:
         """Sub / resub / gift / raid / tip seen on the platform → overlay alert on the bus.
 
@@ -132,6 +134,8 @@ class BaseAdapter(abc.ABC):
             amount=amount,
             currency=currency,
             message=message,
+            item=item,
+            image=image,
         )
         payload["source"] = "platform"
         # Platform user id when the event carries one, so Core can credit points

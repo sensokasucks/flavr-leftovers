@@ -205,6 +205,8 @@ img.badge {
 .msg.highlighted .meta { color: #fff !important; }
 /* Twitch "Gigantify an Emote": the last emote is drawn big */
 .msg.gigantified .message .emote:last-of-type { height: calc(var(--chat-emote-size) * 3); }
+/* YouTube Super Stickers and Jewels gifts */
+.message .emote.sticker, .message .emote.gift { height: calc(var(--chat-emote-size) * 2.5); }
 
 /* ============================================================
    Skin: plain — the neutral base most chat CSS packs expect:

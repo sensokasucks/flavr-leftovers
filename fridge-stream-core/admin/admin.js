@@ -292,7 +292,8 @@
     if (!h) return;
     const exact = sub && document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"][data-sub="' + sub + '"]');
     const page = document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"]');
-    h.textContent = (exact || page || { textContent: tabId }).textContent.trim();
+    const el = exact || page;
+    h.textContent = el ? (el.dataset.title || el.textContent.trim()) : tabId;
   }
 
   function activateTab(tabId, sub) {
@@ -339,6 +340,7 @@
       loadChat();
       refreshChatLogBanner();
     }
+    if (tabId === "paid") initPaidTab();
     if (tabId === "redflags") {
       if (!(PAGE_SAVER && PAGE_SAVER.isDirty("rf"))) loadRedFlags();
       refreshChatLogBanner();
@@ -1312,6 +1314,7 @@
     if (d.months != null && $("alert-months")) $("alert-months").value = d.months;
     if (d.qty != null && $("alert-qty")) $("alert-qty").value = d.qty;
     if (d.viewers != null && $("alert-viewers")) $("alert-viewers").value = d.viewers;
+    if ($("alert-item")) $("alert-item").value = d.item || "";
     if (meta.accent && $("alert-platform")) {
       const sel = $("alert-platform");
       const ok = [...sel.options].some((o) => o.value === meta.accent);
@@ -1384,6 +1387,7 @@
       qty: optNum("alert-qty"),
       viewers: optNum("alert-viewers"),
       duration_ms: optNum("alert-duration"),
+      item: ($("alert-item") && $("alert-item").value.trim()) || "",
     };
     const btn = $("alert-fire");
     if (btn) btn.disabled = true;
@@ -1569,6 +1573,8 @@
     alerts: {
       follow: "Follow", subscribe: "Subscribe", resub: "Resub", gift: "Gifted sub", raid: "Raid", host: "Host",
       bits: "Bits / cheer", superchat: "Super Chat", donation: "Donation",
+      supersticker: "Super Sticker (else Super Chat's)", jewels: "YouTube gift (else the gift's own picture)",
+      kicks: "KICKs (else Donation's)",
     },
     chat: {
       background: "Background picture", "badge-broadcaster": "Host badge", "badge-mod": "Mod badge",
@@ -4098,6 +4104,277 @@
       return String(ts);
     }
   }
+
+  // ------------------------------------------------------------------
+  // Paid tab (core/paid.py): paid messages, tips and subs with a tick box
+  // ------------------------------------------------------------------
+
+  const PAID_FILTERS_KEY = "fridge_paid_filters";
+  let paidReady = false;
+  let paidKinds = [];
+  let paidBusyUntil = 0;     // a tick was just clicked: skip the refresh that would redraw under the mouse
+
+  function paidSaved() {
+    return loadJson(PAID_FILTERS_KEY, {});
+  }
+
+  function dayStart(d) {
+    const x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x.getTime() / 1000;
+  }
+
+  /** The filters on the page → query values for /api/admin/paid. */
+  function paidFilters() {
+    const f = {
+      status: $("paid-status").value,
+      group: $("paid-group").value,
+      platforms: [...document.querySelectorAll(".paid-plat:checked")].map((b) => b.value).join(","),
+      kinds: [...document.querySelectorAll(".paid-kind:checked")].map((b) => b.value).join(","),
+      min: $("paid-min").value,
+      has_message: $("paid-has-msg").value,
+      q: $("paid-q").value.trim(),
+      sort: $("paid-sort").value,
+    };
+    const when = $("paid-when").value;
+    if (when === "stream") f.when = "stream";
+    else if (when === "today") f.since = dayStart(Date.now());
+    else if (when === "week") f.since = dayStart(Date.now() - 6 * 86400000);
+    else if (when === "dates") {
+      if ($("paid-from").value) f.since = dayStart($("paid-from").value + "T00:00");
+      if ($("paid-to").value) f.until = dayStart($("paid-to").value + "T00:00") + 86400;
+    }
+    // all platforms ticked = no platform filter; none ticked shows nothing, said in the empty line
+    if (document.querySelectorAll(".paid-plat").length === document.querySelectorAll(".paid-plat:checked").length) {
+      f.platforms = "";
+    }
+    return f;
+  }
+
+  function paidQuery(f) {
+    const p = new URLSearchParams();
+    for (const [k, v] of Object.entries(f)) {
+      if (v !== "" && v != null) p.set(k, String(v));
+    }
+    return p;
+  }
+
+  function savePaidFilters() {
+    saveJson(PAID_FILTERS_KEY, {
+      status: $("paid-status").value, when: $("paid-when").value, group: $("paid-group").value,
+      from: $("paid-from").value, to: $("paid-to").value,
+      plats: [...document.querySelectorAll(".paid-plat")].filter((b) => !b.checked).map((b) => b.value),
+      kinds: [...document.querySelectorAll(".paid-kind:checked")].map((b) => b.value),
+      min: $("paid-min").value, has_message: $("paid-has-msg").value, sort: $("paid-sort").value,
+    });
+  }
+
+  function restorePaidFilters() {
+    const f = paidSaved();
+    const set = (id, v) => { if (v != null && $(id)) $(id).value = v; };
+    set("paid-status", f.status);
+    set("paid-when", f.when);
+    set("paid-group", f.group);
+    set("paid-from", f.from);
+    set("paid-to", f.to);
+    set("paid-min", f.min);
+    set("paid-has-msg", f.has_message);
+    set("paid-sort", f.sort);
+    const off = new Set(f.plats || []);
+    document.querySelectorAll(".paid-plat").forEach((b) => { b.checked = !off.has(b.value); });
+    $("paid-dates").hidden = $("paid-when").value !== "dates";
+  }
+
+  function fillPaidKinds(kinds) {
+    if (paidKinds.length || !kinds || !kinds.length) return;
+    paidKinds = kinds;
+    const want = new Set(paidSaved().kinds || []);
+    const box = $("paid-kinds");
+    box.innerHTML = "";
+    for (const k of kinds) {
+      const lab = document.createElement("label");
+      lab.className = "check";
+      const where = k.platform ? ` (${k.platform === "youtube" ? "YouTube" : k.platform === "twitch" ? "Twitch" : "Kick"})` : "";
+      lab.innerHTML = `<input type="checkbox" class="paid-kind" value="${escapeHtml(k.kind)}" ${want.has(k.kind) ? "checked" : ""} /> ${escapeHtml(k.label)}${escapeHtml(where)}`;
+      box.appendChild(lab);
+    }
+    box.querySelectorAll(".paid-kind").forEach((b) => { b.onchange = () => { savePaidFilters(); loadPaid(); }; });
+    paidKindsSummary();
+  }
+
+  function paidKindsSummary() {
+    const on = [...document.querySelectorAll(".paid-kind:checked")];
+    $("paid-kinds-summary").textContent = on.length ? `(${on.length} picked)` : "(all)";
+  }
+
+  function fmtPaidAmount(r) {
+    if (r.amount == null) {
+      if (r.qty) return `${r.qty} ${r.kind === "gift" ? "gifted" : ""}`.trim();
+      if (r.months) return `${r.months} months`;
+      return "";
+    }
+    const cur = (r.currency || "").toLowerCase();
+    if (cur === "bits") return `${Math.round(r.amount).toLocaleString()} bits`;
+    if (cur === "kicks") return `${Math.round(r.amount).toLocaleString()} KICKs`;
+    if (r.amount_text) return r.amount_text;
+    try {
+      if (r.currency) return r.amount.toLocaleString(undefined, { style: "currency", currency: r.currency });
+    } catch (_) { /* not an ISO code */ }
+    return `${r.amount.toFixed(2)} ${r.currency || ""}`.trim();
+  }
+
+  function fmtPaidTotals(totals) {
+    const parts = [];
+    for (const t of totals || []) {
+      if (t.currency != null) parts.push(fmtPaidAmount({ amount: t.amount, currency: t.currency }) + (t.count > 1 ? ` (${t.count})` : ""));
+      else parts.push(`${t.count} × ${t.label}`);
+    }
+    return parts;
+  }
+
+  const PLAT_NAMES = { youtube: "YouTube", twitch: "Twitch", kick: "Kick" };
+
+  async function loadPaid() {
+    if (!$("paid-table")) return;
+    const f = paidFilters();
+    let data;
+    try {
+      data = await api("/api/admin/paid?" + paidQuery(f).toString());
+    } catch (e) {
+      $("paid-msg").textContent = String(e.message || e);
+      return;
+    }
+    fillPaidKinds(data.kinds);
+    setPaidBadge(data.unticked);
+    const parts = fmtPaidTotals(data.totals);
+    $("paid-totals").innerHTML = data.total
+      ? `<b>${data.total}</b> shown: ` + parts.map((p) => `<b>${escapeHtml(p)}</b>`).join(" · ")
+      : "";
+    const tb = $("paid-table").querySelector("tbody");
+    tb.innerHTML = "";
+    for (const r of data.rows) {
+      const tr = document.createElement("tr");
+      tr.dataset.id = r.id;
+      if (r.done) tr.classList.add("paid-done");
+      if (r.flagged) {
+        tr.classList.add("rf-row");
+        tr.title = "Red-flagged: hidden from the overlays";
+      }
+      const pic = r.image_url ? `<img class="paid-pic" src="${escapeHtml(r.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : "";
+      const item = r.item ? `<span class="paid-item">${escapeHtml(r.item)}</span>` : "";
+      const avatar = r.avatar_url ? `<img src="${escapeHtml(r.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : "";
+      tr.innerHTML =
+        `<td><input type="checkbox" class="paid-tick" ${r.done ? "checked" : ""} aria-label="Ticked" /></td>` +
+        `<td>${fmtTime(r.created_at)}</td>` +
+        `<td><span class="plat-chip ${escapeHtml(r.platform)}">${escapeHtml(PLAT_NAMES[r.platform] || r.platform)}</span></td>` +
+        `<td>${escapeHtml(r.label)}</td>` +
+        `<td><span class="paid-who">${avatar}${r.flagged ? '<span class="rf-mark" aria-label="red-flagged">🚩</span>' : ""}${escapeHtml(r.display_name || r.username)}</span></td>` +
+        `<td class="paid-amount">${escapeHtml(fmtPaidAmount(r))}</td>` +
+        `<td>${pic}${item}${item && r.message ? " · " : ""}${escapeHtml(r.message || "")}</td>`;
+      tb.appendChild(tr);
+    }
+    tb.querySelectorAll(".paid-tick").forEach((box) => {
+      box.onchange = async () => {
+        paidBusyUntil = Date.now() + 2500;
+        const tr = box.closest("tr");
+        tr.classList.toggle("paid-done", box.checked);
+        try {
+          const res = await api("/api/admin/paid/tick", { method: "POST", body: JSON.stringify({ ids: [Number(tr.dataset.id)], done: box.checked }) });
+          setPaidBadge(res.unticked);
+        } catch (e) {
+          box.checked = !box.checked;
+          tr.classList.toggle("paid-done", box.checked);
+          $("paid-msg").textContent = String(e.message || e);
+        }
+      };
+    });
+    const empty = $("paid-empty");
+    empty.hidden = data.rows.length > 0;
+    if (!data.rows.length) {
+      empty.textContent = !document.querySelectorAll(".paid-plat:checked").length
+        ? "No platform is ticked."
+        : $("paid-status").value === "open"
+          ? "Nothing waiting. Everything that matches these filters is ticked."
+          : "Nothing matches these filters.";
+    }
+    if (data.total > data.rows.length) {
+      empty.hidden = false;
+      empty.textContent = `Showing ${data.rows.length} of ${data.total}. Narrow the filters, or Download CSV for all of them.`;
+    }
+  }
+
+  function setPaidBadge(n) {
+    const b = $("paid-badge");
+    if (!b) return;
+    b.hidden = !n;
+    b.textContent = n > 99 ? "99+" : String(n || "");
+  }
+
+  async function refreshPaidBadge() {
+    if (!token() || document.visibilityState !== "visible") return;
+    try {
+      setPaidBadge((await api("/api/admin/paid/count")).unticked);
+    } catch (_) { /* Core restarting: try again next time */ }
+  }
+
+  function initPaidTab() {
+    if (!paidReady) {
+      paidReady = true;
+      restorePaidFilters();
+      const again = () => { savePaidFilters(); loadPaid(); };
+      ["paid-status", "paid-group", "paid-has-msg", "paid-sort", "paid-from", "paid-to"].forEach((id) => { $(id).onchange = again; });
+      $("paid-when").onchange = () => { $("paid-dates").hidden = $("paid-when").value !== "dates"; again(); };
+      document.querySelectorAll(".paid-plat").forEach((b) => { b.onchange = again; });
+      let typing = 0;
+      const later = () => { clearTimeout(typing); typing = setTimeout(again, 350); };
+      $("paid-q").oninput = later;
+      $("paid-min").oninput = later;
+      $("paid-kinds").addEventListener("change", paidKindsSummary);
+      $("paid-tick-all").onclick = async () => {
+        const f = paidFilters();
+        if (f.status === "done") return;
+        try {
+          const res = await api("/api/admin/paid/tick", { method: "POST", body: JSON.stringify({ filters: f, done: true }) });
+          $("paid-msg").textContent = `Ticked ${res.changed}.`;
+          loadPaid();
+        } catch (e) {
+          $("paid-msg").textContent = String(e.message || e);
+        }
+      };
+      $("paid-export").onclick = async () => {
+        const f = paidFilters();
+        $("paid-msg").textContent = "Preparing the file…";
+        try {
+          await downloadFile("/api/admin/paid/export?" + paidQuery(f).toString(), "paid.csv");
+          $("paid-msg").textContent = "Downloaded.";
+        } catch (e) {
+          $("paid-msg").textContent = "Download failed: " + readableActionError(e);
+        }
+      };
+      $("paid-del").onclick = async () => {
+        const days = num($("paid-del-days").value, 30);
+        if (!confirm(`Delete ticked rows older than ${days} days? Unticked rows stay.`)) return;
+        try {
+          const res = await api("/api/admin/paid/delete-ticked", { method: "POST", body: JSON.stringify({ days }) });
+          $("paid-msg").textContent = `Deleted ${res.deleted}.`;
+          loadPaid();
+        } catch (e) {
+          $("paid-msg").textContent = String(e.message || e);
+        }
+      };
+    }
+    loadPaid();
+  }
+
+  // New paid messages show up while the tab is open; the badge counts them everywhere else.
+  setInterval(() => {
+    if ($("tab-paid") && $("tab-paid").classList.contains("active") && document.visibilityState === "visible") {
+      if (Date.now() > paidBusyUntil && !document.activeElement?.closest?.("#paid-table")) loadPaid();
+    } else {
+      refreshPaidBadge();
+    }
+  }, 5000);
+  setTimeout(refreshPaidBadge, 1500);
 
   // ------------------------------------------------------------------
   // Credits tab
