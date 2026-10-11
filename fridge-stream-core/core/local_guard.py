@@ -14,6 +14,10 @@ Server-to-server callers (game bridges, httpx, Node fetch) send no Origin
 and pass. Extra names can be allowed with ``core.allowed_hosts`` /
 ``core.allowed_origins`` when someone deliberately runs Core on a LAN IP.
 
+Game links (a game's ``hello`` on the WebSocket, the market signal / dividend
+POSTs) are stricter: see ``game_caller_problem``. They can spend and refund
+points, so a web page may never use them, whatever its origin.
+
 Also resolves the admin token: a placeholder like ``change-me`` is never
 accepted — Core generates a random one in ``data/admin_token.txt``.
 """
@@ -21,11 +25,12 @@ accepted — Core generates a random one in ``data/admin_token.txt``.
 from __future__ import annotations
 
 import hmac
+import ipaddress
 import logging
 import re
 import secrets
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Callable, Iterable, Optional
 from urllib.parse import urlsplit
 
 log = logging.getLogger("core.local_guard")
@@ -147,6 +152,45 @@ class LocalGuardMiddleware:
             await send({"type": "http.response.body", "body": body})
             return
         return await self.app(scope, receive, send)
+
+
+# ----------------------------------------------------------------------
+# Game links
+# ----------------------------------------------------------------------
+
+def is_browser_request(headers) -> bool:
+    """Browsers always send Origin on WebSockets and POSTs (and Sec-Fetch-Site
+    on top). Stream Rooms' Godot WebSocket, Python httpx and Node fetch send neither."""
+    return headers.get("origin") is not None or bool(headers.get("sec-fetch-site"))
+
+
+def is_loopback_client(host: Optional[str]) -> bool:
+    h = str(host or "").strip().lower()
+    if h == "localhost":
+        return True
+    if h.startswith("::ffff:"):
+        h = h[7:]
+    try:
+        return ipaddress.ip_address(h.strip("[]")).is_loopback
+    except ValueError:
+        return False
+
+
+def game_caller_problem(headers, client_host: Optional[str], token: Optional[str],
+                        expected_token: Callable[[], str]) -> Optional[str]:
+    """Why a caller may not act as a game (None = allowed).
+
+    Web pages are refused outright: any page open in the streamer's browser
+    passes the loopback-origin rule, and a game link can spend and refund points.
+    Callers on the same PC need nothing else; another device (Core in LAN mode)
+    must send the admin token. ``expected_token`` is only called in that case."""
+    if is_browser_request(headers):
+        return "web pages can't connect as a game"
+    if is_loopback_client(client_host):
+        return None
+    if token_matches(token, expected_token()):
+        return None
+    return "game connections from another device need the admin token"
 
 
 # ----------------------------------------------------------------------

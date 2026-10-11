@@ -12,6 +12,7 @@ Home: `fridge-stream-core/core/reactions.py`. Spec: [docs/REACTIONS.md](../fridg
 - [ ] Emoji triggers never post chat replies. Commands may.
 - [ ] A `commands.json` command (or `!permit`) with the same name wins over a reaction command. The editor lists clashes.
 - [ ] Only a WebSocket that sent `hello` may send `room_state` / `reaction_result` / `say` / `overlay`. `say` is rate limited and length-capped. Unknown frames are ignored (old overlays still just send `ping`).
+- [ ] `hello` (and `avatars_hide_import`) is refused with `hello_refused` from a browser socket (`Origin` / `Sec-Fetch-Site`), even a loopback page, and from another device without the admin token (`?token=` or `hello` data `token`). Stream Rooms' Godot socket sends no `Origin`; keep it that way (no `handshake_headers` Origin).
 - [ ] `reaction` events go only to hello'd game sockets when routed to the game; the overlay route is a broadcast with `route:"overlay"`, and the overlay ignores other routes.
 - [ ] `PUT /api/admin/config` keeps the live `reactions` block; only `PUT /api/admin/reactions` changes it (and hot-applies).
 - [ ] Overlay text from chat is set with `textContent` only.

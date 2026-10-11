@@ -28,6 +28,9 @@ Dates are when the work landed in this tree.
 - **Points for YouTube gifts (Jewels):** Admin → Config → Points → **Points per YouTube gift**, paid to the sender for each gift. Default 0 (off) until you set an amount.
 - **Deleted messages leave the chat overlay.** Twitch CLEARMSG / CLEARCHAT, Kick message deleted / user banned / chat cleared and YouTube deleted messages reach the overlays as `chat_removed`; rows get `.deleted` and go, and the catch-up history drops them. Tests: `tests/test_overlay_compat.py`.
 
+### Security
+- **Web pages can no longer pose as a game.** A game's `hello` on the WebSocket (which then allows `say`, refunds and `room_state`), Stream Rooms' hide-pictures list, and `POST /api/market/signal` / `POST /api/market/dividend` (which can mint points) are refused from any request a browser makes (one with an `Origin` or `Sec-Fetch-Site` header), even from a page on `127.0.0.1`. Stream Rooms and the game bridges send neither and work as before. A refused socket gets `hello_refused` with the reason; a refused POST gets 403. When Core runs in LAN mode, a game on another device must also send the admin token (`?token=` on the WebSocket address or in the `hello` data; `X-Admin-Token` header or `?token=` on the POSTs); games on the same PC need nothing. `core/local_guard.py` `game_caller_problem`, tests `tests/test_game_link_guard.py`.
+
 ### Fixed
 - **The dashboard's chat overlay preview was empty while no one was chatting.** It now shows the made-up chatters as intended.
 - **Bits alerts said "500.0 bits".** Whole amounts read "500 bits" again, and alerts with no amount (follows, gifts) no longer carry a USD currency.
