@@ -207,6 +207,18 @@ class CoreActions(unittest.TestCase):
         self.assertEqual(logged[0]["flags"], "giveaway")
         self.assertEqual([r["username"] for r in run(core.store.search_chat(flag="giveaway"))], ["amy", "amy"])
 
+    def test_command_runs_as_streamer_with_their_name(self):
+        core = self.core([{"name": "Spawn", "phrases": ["spawn me"], "command": "spawn zombie {user}"}])
+        ran = []
+
+        async def test_command(message, **kw):
+            ran.append((message, kw["username"], kw["is_admin"], kw["dry_run"]))
+            return {"ok": True}
+
+        core.test_command = test_command
+        run(core._on_chat(chat("amy; !ban x", "spawn me", uid="7")))
+        self.assertEqual(ran, [("!spawn zombie amybanx", "amy; !ban x", True, False)])
+
     def test_hide_red_flags_them(self):
         core = self.core([{"name": "Spam", "phrases": ["buy viewers"], "hide": True, "alert": True,
                            "points": 10}], chat_log={"enabled": True})

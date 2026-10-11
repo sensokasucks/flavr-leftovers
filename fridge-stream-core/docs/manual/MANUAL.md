@@ -16,7 +16,7 @@ Since the 7 October manual. A few pictures were taken before these changes, so s
 
 - **Chatter profile pictures** for Kick, Twitch and YouTube are saved by Core and served to the chat overlay and Stream Rooms. Press **Connect Twitch** for Twitch pictures. **Never show a picture for** is one hide list shared with Stream Rooms (section 5).
 - **Red flags** have their own page (**People → Red flags**), with **Check past chat** to find people who said a phrase before you added it, and **Undo** after **Unflag** (section 8).
-- **Custom flags** on the same page: your own flags with their own phrases, which can save a chatter's chat, show an alert, answer them on the overlays, give points, play a reaction, red-flag them or tell your game plugins (section 8).
+- **Custom flags** on the same page: your own flags with their own phrases, which can save a chatter's chat, show an alert, answer them on the overlays, give points, play a reaction, run a command, red-flag them or tell your game plugins (section 8).
 - **Status says why** a platform isn't connected, and Core keeps retrying by itself when you start it before you're live (section 4).
 - **YouTube live video** box on **Live controls**: paste the stream's link, press **Connect** (section 5).
 - **Restart Core now** bar when a setting needs a restart (section 3). Buttons say what they did, or why they failed.
@@ -248,9 +248,10 @@ Below the red flag, **🏷️ Custom flags** lets you make your own flags. Press
 - **Answer them**: a Stream Core line on the chat and replies overlays (`@{name} you're in!`), the same way command answers show.
 - **Points**: give them points, or take some away with a number below 0.
 - **Play a reaction** from the Reactions page, free for them (its cooldown still applies).
+- **Run a command** as if you typed it, with their name filled in: `!spawn zombie {user}`, or any Core command. Game commands work too.
 - **Tell game plugins and overlays**, so a game can do something of its own when the flag goes off.
 
-Normally all of this happens once, the first time a chatter gets the flag. Tick **Every time they say one** to run it on every matching line, at most once every so many seconds per chatter. Each flag lists its chatters with **Messages**, **Unflag** (with **Undo**) and how many times they said a phrase; **Check past chat** works per flag too (it only puts people on the list: alerts, answers, points and reactions are for live chat). Flag a name by hand with the menu next to **Flag** at the bottom of the red flag list. Placeholders in the alert and chat text: `{name}`, `{phrase}`, `{flag}`, `{message}`.
+Normally all of this happens once, the first time a chatter gets the flag. Tick **Every time they say one** to run it on every matching line, at most once every so many seconds per chatter. Each flag lists its chatters with **Messages**, **Unflag** (with **Undo**) and how many times they said a phrase; **Check past chat** works per flag too (it only puts people on the list: alerts, answers, points, reactions and commands are for live chat). Flag a name by hand with the menu next to **Flag** at the bottom of the red flag list. Placeholders in the alert, answer and command: `{name}`, `{user}`, `{phrase}`, `{flag}`, `{message}`.
 
 ![Chat history](images/sc-chat-history.png)
 

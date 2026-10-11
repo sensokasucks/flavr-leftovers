@@ -98,6 +98,11 @@ def default_player(config: dict) -> str:
     return "Player"
 
 
+def _cmd_word(text: str) -> str:
+    """A chatter's name as one safe command word (no spaces, no command prefix tricks)."""
+    return "".join(ch for ch in str(text or "") if ch.isalnum() or ch in "_-.")[:40] or "someone"
+
+
 class StreamCore:
     def __init__(self, config: dict):
         self.config = config
@@ -1266,6 +1271,27 @@ class StreamCore:
                     ))
             if flag.reaction:
                 await self._flag_reaction(flag.reaction, event)
+            if flag.command:
+                await self._flag_command(fmt(flag.command, **{**ctx, "user": _cmd_word(u.username or name),
+                                                               "name": _cmd_word(name)}), event)
+
+    async def _flag_command(self, text: str, event: ChatEvent) -> None:
+        """Run a flag's chat command through the real router, as the streamer would (admin
+        rights, the chatter's name), so game commands and Core commands both work."""
+        text = text.strip()
+        if not text:
+            return
+        if not text.startswith(self.router.prefix):
+            text = self.router.prefix + text
+        u = event.user
+        try:
+            res = await self.test_command(text, username=u.username or u.display_name or "someone",
+                                          display_name=u.display_name or u.username or "",
+                                          platform=event.platform.value, is_admin=True, dry_run=False)
+            if not res.get("ok"):
+                log.info("Flag command %r not run: %s", text, res.get("error") or res.get("stage"))
+        except Exception:
+            log.exception("flag command failed")
 
     async def _flag_reaction(self, reaction_id: str, event: ChatEvent) -> None:
         """Play a reaction for a flag: free, whoever the chatter is, its cooldowns still apply."""

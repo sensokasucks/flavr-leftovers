@@ -25,9 +25,11 @@ Config (``red_flags.custom:`` in config.yaml, People → Red flags)::
                             like command answers; empty = no answer)
     points: 0               give (or, below 0, take) this many points
     reaction: ""            play this reaction (its id on the Reactions page), free
+    command: ""             run this chat command as if the streamer typed it, with the
+                            chatter's name ("!spawn zombie {user}"); empty = none
     notify: true            tell game plugins (``on_flag``) and overlays (``chat_flag``)
 
-Placeholders in alert_text / reply: {name} {user} {phrase} {flag} {message} {platform}.
+Placeholders in alert_text / reply / command: {name} {user} {phrase} {flag} {message} {platform}.
 What the actions do is in main.py (``StreamCore._flag_actions``); this file only matches and
 keeps the lists.
 """
@@ -69,6 +71,7 @@ DEFAULT_FLAG: dict[str, Any] = {
     "reply": "",
     "points": 0,
     "reaction": "",
+    "command": "",
     "notify": True,
 }
 
@@ -113,6 +116,7 @@ def normalize_flag(raw: Any, taken: set[str]) -> Optional[dict]:
         if key in raw:
             flag[key] = " ".join(str(raw.get(key) or "").split())[:MAX_TEXT_LEN]
     flag["reaction"] = str(raw.get("reaction") or "").strip().lower()[:60]
+    flag["command"] = " ".join(str(raw.get("command") or "").split())[:200]
     return flag
 
 

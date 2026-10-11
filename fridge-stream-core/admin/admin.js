@@ -2554,7 +2554,7 @@
     const onlyFlagged = $("chat-log-only-flagged") && !$("chat-log-only-flagged").hidden;
     $(prefix + "-past-hint").textContent = (found.length
       ? `Read ${lines} saved chat lines. Untick anyone who should not be flagged (a mod quoting a phrase, say), then press ${prefix === "rf" ? "Red-flag" : "Flag"} ticked chatters.` +
-        (prefix === "rf" ? "" : " Only the list changes: alerts, answers, points and reactions are for live chat.")
+        (prefix === "rf" ? "" : " Only the list changes: alerts, answers, points, reactions and commands are for live chat.")
       : `Read ${lines} saved chat lines: nobody new said one of these phrases.`) +
       (d.more ? " The list stops here; flag these, then check again for the rest." : "") +
       (onlyFlagged ? " Chat history is saved only for red-flagged chatters, so other people's old lines are not there to check." : "") +
@@ -2673,6 +2673,8 @@
       `<input type="text" class="cf-reply" maxlength="300" value="${escapeHtml(f.reply || "")}" placeholder="@{name} you're in!" /></label>` +
       `<div class="cf-row"><label>Points <input type="number" class="cf-points" step="1" value="${Number(f.points || 0)}" title="Give this many points (below 0 takes them away; 0 = none)" /></label>` +
       `<label>Play a reaction <select class="cf-reaction" title="Free for them; the reaction's cooldown still applies">${rx.join("")}</select></label></div>` +
+      `<label>Run a command <span class="field-help">A chat command run as if you typed it, for example <code>!spawn zombie {user}</code>. Game commands work too. Empty = none.</span>` +
+      `<input type="text" class="cf-command" maxlength="200" value="${escapeHtml(f.command || "")}" placeholder="!command {user}" /></label>` +
       ck("notify", "Tell game plugins and overlays", "Game plugins get on_flag, overlays and Stream Rooms get a chat_flag message") +
       `<div class="cf-row">` + ck("every_time", "Every time they say one", "Off = only the first time a chatter gets this flag") +
       `<label>at most every <input type="number" class="cf-cooldown_sec" min="0" max="86400" step="1" value="${Number(f.cooldown_sec ?? 30)}" /> s</label></div>` +
@@ -2696,6 +2698,7 @@
     if (box.querySelector(".cf-reply").value.trim()) does.push("answer");
     if (Number(box.querySelector(".cf-points").value || 0)) does.push("points");
     if (box.querySelector(".cf-reaction").value) does.push("reaction");
+    if (box.querySelector(".cf-command").value.trim()) does.push("command");
     const people = cfPeople.filter((p) => p.flag === box.dataset.id).length;
     box.querySelector(".cf-sum").textContent =
       `${box.querySelector(".cf-enabled").checked ? "" : "(off) "}${n} phrase${n === 1 ? "" : "s"}` +
@@ -2809,6 +2812,7 @@
         reply: v("reply").value,
         points: Number(v("points").value || 0),
         reaction: v("reaction").value,
+        command: v("command").value,
         notify: v("notify").checked,
         every_time: v("every_time").checked,
         cooldown_sec: Number(v("cooldown_sec").value || 0),

@@ -143,6 +143,7 @@ red_flags:
   #    reply: ""          # say this in chat
   #    points: 0          # give (or take, below 0) points
   #    reaction: ""       # play a reaction (its id on the Reactions page)
+  #    command: ""        # run a chat command as you, e.g. "!spawn zombie {user}"
   #    hide: false        # red-flag them too
 
 # Fridge Market tape (overlays work in preview even while enabled is false).
