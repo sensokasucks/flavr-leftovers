@@ -278,6 +278,69 @@ body.skin-custom #alert-box.show {
   transform: none;
 }
 
+/* ============================================================
+   URL options: ?layout= ?align= ?image=0 ?message=0 (ALERTS.md)
+   ============================================================ */
+body.align-left #wrap { justify-content: flex-start; }
+body.align-right #wrap { justify-content: flex-end; }
+body.no-image #alert-image-wrap { display: none; }
+body.no-message #alert-user-message { display: none; }
+
+/* letters inside a value: one inline-block span each so a pack (or ?letters=) can animate them */
+#alert-message .animated-letter { display: inline-block; }
+#alert-message .animated-letter.animated {
+  animation-name: var(--letter-anim, none);
+  animation-duration: 1s;
+  animation-iteration-count: infinite;
+}
+
+/* layout-above is the skins' own column; side puts the picture left of the text */
+body #alert-box.layout-side {
+  flex-direction: row;
+  align-items: center;
+  text-align: left;
+  gap: 18px;
+}
+/* banner: the picture fills the box and the text sits on top of it */
+body #alert-box.layout-banner {
+  position: relative;
+  justify-content: center;
+  min-height: calc(var(--alert-image-size) * 1.6);
+}
+body #alert-box.layout-banner #alert-image-wrap {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+}
+body #alert-box.layout-banner #alert-image,
+body #alert-box.layout-banner #alert-video { object-fit: cover; }
+body #alert-box.layout-banner .alert-icon { display: none; }
+body #alert-box.layout-banner #alert-text-wrap {
+  position: relative;
+  z-index: 1;
+  padding: 14px 20px;
+}
+
+/* ============================================================
+   animate.css names (?in= ?out=, and the Custom CSS only skin). The box always
+   carries "animated fadeIn" / "animated fadeOut" (or the ?in= / ?out= names); a
+   pack's own keyframes of the same name load later and win.
+   ============================================================ */
+body.anim-named #alert-box.animated,
+body.skin-custom #alert-box.animated {
+  animation-duration: var(--alert-anim-ms, 0.6s);
+  animation-fill-mode: both;
+  animation-timing-function: ease;
+}
+/* the names come from ?in= / ?out= (set as --alert-in / --alert-out by alerts.js); keyframes
+   are in animate-lite.css */
+body.anim-named #alert-box.animated.show,
+body.skin-custom #alert-box.animated.show { animation-name: var(--alert-in, fadeIn); }
+body.anim-named #alert-box.animated.hide,
+body.skin-custom #alert-box.animated.hide { animation-name: var(--alert-out, fadeOut); }
+
 @keyframes alert-in {
   from { opacity: 0; transform: translateY(22px) scale(0.94); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -293,4 +356,6 @@ body.skin-custom #alert-box.show {
   body.skin-card #alert-box.show,
   body.skin-card #alert-box.hide { animation: none; }
   #alert-box.show { opacity: 1; transform: none; visibility: visible; }
+  body.anim-named #alert-box.animated,
+  body.skin-custom #alert-box.animated { animation-duration: 1ms; }
 }

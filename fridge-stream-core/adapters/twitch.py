@@ -37,6 +37,9 @@ PRIVMSG_RE = re.compile(
     r"^(?:@(?P<tags>[^ ]+) )?:(?P<nick>[^!]+)![^ ]+ PRIVMSG #(?P<chan>[^ ]+) :(?P<msg>.*)$"
 )
 ROOMSTATE_RE = re.compile(r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv ROOMSTATE #")
+# a mod deleted one message / timed out or banned someone (no user = /clear)
+CLEARMSG_RE = re.compile(r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv CLEARMSG #[^ ]+(?: :(?P<msg>.*))?$")
+CLEARCHAT_RE = re.compile(r"^(?:@(?P<tags>[^ ]+) )?:tmi\.twitch\.tv CLEARCHAT #[^ ]+(?: :(?P<user>[^ ]+))?$")
 USERNOTICE_RE = re.compile(
     r"^@(?P<tags>[^ ]+) :tmi\.twitch\.tv USERNOTICE #(?P<chan>[^ ]+)(?: :(?P<msg>.*))?$"
 )
@@ -317,6 +320,20 @@ class TwitchAdapter(BaseAdapter):
         rs = ROOMSTATE_RE.match(line)
         if rs:
             self.emotes3p.set_room(_parse_tags(rs.group("tags")).get("room-id", ""))
+            return
+        cm = CLEARMSG_RE.match(line)
+        if cm:
+            tags = _parse_tags(cm.group("tags"))
+            await self._emit_removed(message_id=tags.get("target-msg-id", ""))
+            return
+        cc = CLEARCHAT_RE.match(line)
+        if cc:
+            tags = _parse_tags(cc.group("tags") or "")
+            who = (cc.group("user") or "").strip()
+            if who:
+                await self._emit_removed(user_id=tags.get("target-user-id", ""), username=who)
+            else:
+                await self._emit_removed(everything=True)
             return
         un = USERNOTICE_RE.match(line)
         if un:

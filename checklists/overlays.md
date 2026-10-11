@@ -8,9 +8,9 @@ Core (:3850):
 
 | URL | Role |
 |-----|------|
-| `/overlay/chat.html` | Multi-platform chat (`?platform=` / `?platforms=`) |
+| `/overlay/chat.html` | Multi-platform chat (`?platform=` / `?platforms=`, `?template=`, `?css=`) |
 | `/overlay/overlay.html` | Stats widgets |
-| `/overlay/alerts.html` | Follow / sub / raid / bits / Super Chat / donation |
+| `/overlay/alerts.html` | Follow / sub / raid / bits / Super Chat / donation and the newer kinds; URL filters and `?css=` (ALERTS.md) |
 | `/overlay/credits.html` | End credits (crawl, Star Wars, pages, ticker, typewriter, matrix) |
 | `/overlay/market.html` | Ticker tape |
 | `/overlay/market-board.html` | Board |

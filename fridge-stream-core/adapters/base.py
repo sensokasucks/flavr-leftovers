@@ -103,6 +103,17 @@ class BaseAdapter(abc.ABC):
         self.metrics.record_message()
         await self.bus.publish_chat(event)
 
+    async def _emit_removed(self, *, message_id: str = "", user_id: str = "", username: str = "",
+                            everything: bool = False) -> None:
+        """A mod took chat away on the platform: one message (``message_id``), everything a
+        chatter said (timeout / ban: ``user_id`` and/or ``username``) or the whole chat."""
+        if not (message_id or user_id or username or everything):
+            return
+        await self.bus.publish_chat_removed({
+            "platform": self.platform.value, "message_id": str(message_id or ""),
+            "user_id": str(user_id or ""), "username": str(username or "").lower().lstrip("@"),
+            "all": bool(everything)})
+
     async def _emit_alert(
         self,
         kind: str,

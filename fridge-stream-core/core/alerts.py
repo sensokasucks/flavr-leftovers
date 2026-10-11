@@ -225,7 +225,7 @@ def build_alert(
         amount = defaults["amount"]
     if not currency and defaults.get("currency"):
         currency = str(defaults["currency"])
-    if not currency:
+    if not currency and (amount is not None or "amount" in meta["needs"]):
         currency = "USD"
     if months is None and "months" in defaults:
         months = int(defaults["months"])
@@ -243,7 +243,8 @@ def build_alert(
         months=months if months is not None else "",
         qty=qty if qty is not None else "",
         viewers=viewers if viewers is not None else "",
-        amount=amount if amount is not None else "",
+        # 500.0 bits reads "500 bits" (and matches amount_fmt so the overlay can wrap it)
+        amount=(int(amount) if isinstance(amount, float) and amount.is_integer() else amount) if amount is not None else "",
         amount_fmt=amount_fmt or (str(amount) if amount is not None else ""),
         item=item or "a gift",
     )
@@ -282,7 +283,8 @@ def build_alert(
 
 ALERT_STYLE = OverlayStyle(
     "alerts", SKINS, image_slots=tuple(KINDS), sound_slots=tuple(KINDS),
-    options={"sound_volume": 0.8}, ranges={"sound_volume": (0.0, 1.0)},
+    # tiers: the amounts where tier-2 / tier-3 / tier-4 start (bits and KICKs count 100 to the dollar)
+    options={"sound_volume": 0.8, "tiers": "5,20,100"}, ranges={"sound_volume": (0.0, 1.0)},
 )
 
 
@@ -300,9 +302,9 @@ def write_alert_settings(
     return ALERT_STYLE.write_settings(skin=skin, bump_css=bump_css, options=options, overlay_dir=overlay_dir)
 
 
-def read_custom_css(overlay_dir: Optional[Path] = None) -> str:
-    return ALERT_STYLE.read_css(overlay_dir)
+def read_custom_css(overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> str:
+    return ALERT_STYLE.read_css(overlay_dir, slot=slot)
 
 
-def write_custom_css(css: str, overlay_dir: Optional[Path] = None) -> dict[str, Any]:
-    return ALERT_STYLE.write_css(css, overlay_dir)
+def write_custom_css(css: str, overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> dict[str, Any]:
+    return ALERT_STYLE.write_css(css, overlay_dir, slot=slot)

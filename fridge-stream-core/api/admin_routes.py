@@ -110,6 +110,8 @@ class AlertStyleBody(BaseModel):
     skin: Optional[str] = None
     css: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
+    # which saved stylesheet `css` goes to: "" / "default" = the main one, else a named slot (?css=<slot>)
+    slot: Optional[str] = None
 
 
 class ChatStyleBody(BaseModel):
@@ -118,6 +120,8 @@ class ChatStyleBody(BaseModel):
     skin: Optional[str] = None
     css: Optional[str] = None
     options: Optional[Dict[str, Any]] = None
+    # which saved stylesheet `css` goes to: "" / "default" = the main one, else a named slot (?css=<slot>)
+    slot: Optional[str] = None
 
 
 class CommandTestBody(BaseModel):
@@ -1363,15 +1367,22 @@ def create_admin_router(core_state) -> APIRouter:
                 await mgr.broadcast({"type": "alert", "data": payload})
         return {"ok": True, "alert": payload}
 
+    def _saved_message(settings: Dict[str, Any]) -> str:
+        n = int(settings.get("placeholders_filled") or 0)
+        extra = f" Filled in {n} template setting{'s' if n != 1 else ''} like {{font_size}} with Core's own." if n else ""
+        return "Saved. The overlay picks it up within a few seconds." + extra
+
     @router.get("/alerts/style")
-    async def get_alert_style(x_admin_token: Optional[str] = Header(None)):
-        """Live overlay skin + custom CSS (no restart)."""
+    async def get_alert_style(slot: str = "", x_admin_token: Optional[str] = Header(None)):
+        """Live overlay skin + custom CSS (no restart). ``slot`` reads a saved extra stylesheet."""
         _auth(x_admin_token)
         settings = read_alert_settings()
         return {
             "skin": settings.get("skin") or "classic",
             "css_version": settings.get("css_version") or 0,
-            "css": read_custom_css(),
+            "css": read_custom_css(slot=slot),
+            "slot": slot,
+            "css_slots": settings.get("css_slots") or {},
             "skins": list(SKINS),
             "options": settings.get("options") or {},
             "media": settings.get("media") or {},
@@ -1395,15 +1406,16 @@ def create_admin_router(core_state) -> APIRouter:
             settings = write_alert_settings(options=body.options)
         if body.css is not None:
             try:
-                settings = write_custom_css(body.css)
+                settings = write_custom_css(body.css, slot=body.slot)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from e
         return {
             "ok": True,
             "skin": settings.get("skin") or "classic",
             "css_version": settings.get("css_version") or 0,
+            "css_slots": settings.get("css_slots") or {},
             "options": settings.get("options") or {},
-            "message": "Saved — overlay reloads CSS on the next poll (a few seconds).",
+            "message": _saved_message(settings),
         }
 
     # ------------------------------------------------------------------
@@ -1593,7 +1605,7 @@ def create_admin_router(core_state) -> APIRouter:
         return {"ok": True, **(await _red_flags_info())}
 
     @router.get("/chat/style")
-    async def get_chat_style(x_admin_token: Optional[str] = Header(None)):
+    async def get_chat_style(slot: str = "", x_admin_token: Optional[str] = Header(None)):
         _auth(x_admin_token)
         from core.chat_style import CHAT_STYLE
 
@@ -1601,7 +1613,9 @@ def create_admin_router(core_state) -> APIRouter:
         return {
             "skin": settings["skin"],
             "css_version": settings["css_version"],
-            "css": CHAT_STYLE.read_css(),
+            "css": CHAT_STYLE.read_css(slot=slot),
+            "slot": slot,
+            "css_slots": settings["css_slots"],
             "skins": list(CHAT_STYLE.skins),
             "options": settings["options"],
             "media": settings["media"],
@@ -1624,15 +1638,16 @@ def create_admin_router(core_state) -> APIRouter:
             settings = CHAT_STYLE.write_settings(options=body.options)
         if body.css is not None:
             try:
-                settings = CHAT_STYLE.write_css(body.css)
+                settings = CHAT_STYLE.write_css(body.css, slot=body.slot)
             except ValueError as e:
                 raise HTTPException(400, str(e)) from e
         return {
             "ok": True,
             "skin": settings["skin"],
             "css_version": settings["css_version"],
+            "css_slots": settings["css_slots"],
             "options": settings["options"],
-            "message": "Saved — overlay reloads on the next poll (a few seconds).",
+            "message": _saved_message(settings),
         }
 
     # ------------------------------------------------------------------
@@ -1648,6 +1663,15 @@ def create_admin_router(core_state) -> APIRouter:
         if style is None:
             raise HTTPException(404, f"Unknown overlay '{name}'")
         return style
+
+    @router.delete("/overlay-css/{name}/{slot}")
+    async def delete_overlay_css_slot(name: str, slot: str, x_admin_token: Optional[str] = Header(None)):
+        """Remove one saved extra stylesheet (alerts or chat). The default one can't be deleted."""
+        _auth(x_admin_token)
+        style = _overlay_style(name)
+        if not style.delete_css_slot(slot):
+            raise HTTPException(404, f"No saved stylesheet called '{slot}'")
+        return {"ok": True, "css_slots": style.list_css_slots()}
 
     def _assets_payload(style) -> Dict[str, Any]:
         from core.overlay_style import MAX_ASSET_BYTES

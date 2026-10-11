@@ -1421,22 +1421,89 @@
     return (el && el.value) || "classic";
   }
 
+  // Saved extra stylesheets (alerts and chat): a picker above the CSS box. "" = the main one;
+  // a named one is what ?css=<name> loads on an OBS source.
+  function cssSlotPicker(prefix, overlay, onSwitch, setMsg) {
+    const sel = $(prefix + "-css-slot");
+    const del = $(prefix + "-css-del");
+    const nameBox = $(prefix + "-css-newname");
+    if (!sel) return { get: () => "", fill() {} };
+    const cleanName = (raw) => String(raw || "").trim().toLowerCase()
+      .replace(/[^a-z0-9_-]+/g, "-").replace(/^[-_]+|[-_]+$/g, "").slice(0, 40);
+    function fill(slots, current) {
+      const names = Object.keys(slots || {}).sort();
+      if (current && !names.includes(current)) names.push(current);
+      sel.innerHTML = '<option value="">Main (every source)</option>' +
+        names.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("");
+      sel.value = current || "";
+      if (del) del.disabled = !sel.value;
+    }
+    sel.onchange = () => {
+      if (del) del.disabled = !sel.value;
+      onSwitch(sel.value);
+    };
+    if ($(prefix + "-css-new")) {
+      $(prefix + "-css-new").onclick = () => {
+        const name = cleanName(nameBox && nameBox.value);
+        if (!name || name === "default") {
+          setMsg("Type a name first (letters, numbers, - or _)", false);
+          return;
+        }
+        if (![...sel.options].some((o) => o.value === name)) sel.add(new Option(name, name));
+        sel.value = name;
+        if (del) del.disabled = false;
+        if (nameBox) nameBox.value = "";
+        $(prefix + "-css").value = "";
+        setMsg(`New stylesheet "${name}": paste CSS and Save. Use css=${name} on the source's address.`);
+        onSwitch(name, true);
+      };
+    }
+    if (del) {
+      del.onclick = async () => {
+        const name = sel.value;
+        if (!name || !confirm(`Delete the stylesheet "${name}"? Sources using css=${name} go back to the main one.`)) return;
+        try {
+          const res = await api(`/api/admin/overlay-css/${overlay}/${encodeURIComponent(name)}`, { method: "DELETE" });
+          fill(res.css_slots, "");
+          await onSwitch("");
+          setMsg("Deleted " + name);
+        } catch (e) {
+          // never saved: just drop it from the list
+          fill({}, "");
+          onSwitch("");
+          setMsg(String(e.message || e), false);
+        }
+      };
+    }
+    return { get: () => sel.value, fill };
+  }
+
+  const alertSlots = cssSlotPicker("alert", "alerts", (slot, fresh) => {
+    if (!fresh) return loadAlertStyle(slot);
+    applyPreviewSkin(selectedSkin());
+  }, setCssStatus);
+
   function applyPreviewSkin(skin) {
     const iframe = $("alert-preview");
     if (!iframe) return;
-    iframe.src = "/overlay/alerts.html?preview=1&skin=" + encodeURIComponent(skin || "classic");
+    const slot = alertSlots.get();
+    iframe.src = "/overlay/alerts.html?preview=1&skin=" + encodeURIComponent(skin || "classic") +
+      (slot ? "&css=" + encodeURIComponent(slot) : "");
   }
 
-  async function loadAlertStyle() {
+  async function loadAlertStyle(slot) {
     if (!$("alert-css")) return;
+    const want = slot == null ? alertSlots.get() : slot;
     try {
-      const data = await api("/api/admin/alerts/style");
+      const data = await api("/api/admin/alerts/style?slot=" + encodeURIComponent(want || ""));
       const skin = data.skin || "classic";
       const radio = $("alert-skin-" + skin);
       if (radio) radio.checked = true;
       $("alert-css").value = data.css || "";
+      alertSlots.fill(data.css_slots, want || "");
+      if ($("alert-opt-tiers")) $("alert-opt-tiers").value = (data.options && data.options.tiers) || "";
       applyPreviewSkin(skin);
-      setCssStatus("Loaded");
+      setCssStatus("Loaded" + (want ? " " + want : ""));
     } catch (e) {
       setCssStatus(String(e.message || e), false);
     }
@@ -1447,17 +1514,36 @@
     const skinOnly = opts && opts.skinOnly;
     const body = {};
     if (!cssOnly) body.skin = selectedSkin();
-    if (!skinOnly) body.css = $("alert-css") ? $("alert-css").value : undefined;
+    if (!skinOnly) {
+      body.css = $("alert-css") ? $("alert-css").value : undefined;
+      body.slot = alertSlots.get();
+    }
     try {
       const res = await api("/api/admin/alerts/style", {
         method: "PUT",
         body: JSON.stringify(body),
       });
+      if (!skinOnly) alertSlots.fill(res.css_slots, alertSlots.get());
       applyPreviewSkin(res.skin || selectedSkin());
       setCssStatus(res.message || "Saved");
     } catch (e) {
       setCssStatus(String(e.message || e), false);
     }
+  }
+
+  if ($("alert-opt-tiers")) {
+    $("alert-opt-tiers").onchange = async () => {
+      const raw = $("alert-opt-tiers").value.split(",").map((x) => Number(x.trim())).filter((n) => n > 0);
+      try {
+        await api("/api/admin/alerts/style", {
+          method: "PUT",
+          body: JSON.stringify({ options: { tiers: raw.slice(0, 3).join(",") || "5,20,100" } }),
+        });
+        setCssStatus("Tier amounts saved");
+      } catch (e) {
+        setCssStatus(String(e.message || e), false);
+      }
+    };
   }
 
   document.querySelectorAll('input[name="alert-skin"]').forEach((el) => {
@@ -1483,10 +1569,17 @@
     return (el && el.value) || "classic";
   }
 
+  const chatSlots = cssSlotPicker("chat", "chat", (slot, fresh) => {
+    if (!fresh) return loadChatStyle(slot);
+    applyChatPreviewSkin(selectedChatSkin());
+  }, (msg, ok) => setChatStatus("chat-css-status", msg, ok));
+
   function applyChatPreviewSkin(skin) {
     const iframe = $("chat-preview");
     if (!iframe) return;
-    iframe.src = "/overlay/chat.html?preview=1&skin=" + encodeURIComponent(skin || "classic") + "&t=" + Date.now();
+    const slot = chatSlots.get();
+    iframe.src = "/overlay/chat.html?preview=1&skin=" + encodeURIComponent(skin || "classic") +
+      (slot ? "&css=" + encodeURIComponent(slot) : "") + "&t=" + Date.now();
   }
 
   function chatOptionsFromForm() {
@@ -1511,14 +1604,16 @@
     $("chat-opt-gap").value = o.sound_min_gap_sec ?? 2;
   }
 
-  async function loadChatStyle() {
+  async function loadChatStyle(slot) {
     if (!$("chat-css")) return;
+    const want = slot == null ? chatSlots.get() : slot;
     try {
-      const data = await api("/api/admin/chat/style");
+      const data = await api("/api/admin/chat/style?slot=" + encodeURIComponent(want || ""));
       const skin = data.skin || "classic";
       const radio = $("chat-skin-" + skin);
       if (radio) radio.checked = true;
       $("chat-css").value = data.css || "";
+      chatSlots.fill(data.css_slots, want || "");
       fillChatOptions(data.options);
       applyChatPreviewSkin(skin);
       setChatStatus("chat-css-status", "Loaded");
@@ -1530,11 +1625,15 @@
   async function saveChatStyle(part) {
     const body = {};
     if (part === "skin") body.skin = selectedChatSkin();
-    if (part === "css") body.css = $("chat-css").value;
+    if (part === "css") {
+      body.css = $("chat-css").value;
+      body.slot = chatSlots.get();
+    }
     if (part === "options") body.options = chatOptionsFromForm();
     const statusId = part === "options" ? "chat-opt-status" : "chat-css-status";
     try {
       const res = await api("/api/admin/chat/style", { method: "PUT", body: JSON.stringify(body) });
+      if (part === "css") chatSlots.fill(res.css_slots, chatSlots.get());
       applyChatPreviewSkin(res.skin || selectedChatSkin());
       setChatStatus(statusId, res.message || "Saved");
     } catch (e) {

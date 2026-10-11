@@ -26,6 +26,8 @@ Since the 7 October manual. A few pictures were taken before these changes, so s
 - **Games are plugins** you add yourself from a separate download (**Settings → Game plugins**, Part 5). Core runs fine without any.
 - **Paid list** (**On stream → Paid**): every Super Chat, Super Sticker, YouTube gift, bits cheer, power-up and KICKs tip, plus subs and memberships, with a tick box so you can see who you haven't thanked yet (section 8).
 - **YouTube Super Stickers and gifts** now show in chat with their pictures, and have their own alerts (sections 9 and 13).
+- **One alerts overlay, many looks.** The alerts overlay takes filters and options in its address like the chat overlay: only some platforms or kinds, a smallest amount, its own duration, sound, layout, animations, and its own saved stylesheet (section 13).
+- **Free chat templates keep their layout.** Streamlabs, StreamElements and jChat chat CSS works with `?template=`, template settings like `{font_size}` are filled in for you, and deleted or timed-out messages leave the chat overlay (section 16).
 - **Safer:** admin and mod names are tied to a platform when Kick and Twitch are both on (section 6), CSV exports can't run as spreadsheet formulas, and Core keeps up with a busy chat.
 
 ## Contents
@@ -358,6 +360,27 @@ Super Stickers, YouTube gifts and KICKs have their own alert kinds. Until you gi
 
 ![The alerts overlay](images/sc-overlay-alerts.png)
 
+### Several alert sources, each with its own look
+
+The alerts overlay address takes options, so you can add it to OBS more than once: one source for money alerts in a big box, one for follows in a corner, one for Twitch only with purple CSS. **Sources & overlays → Stream alerts overlay → Customise** builds the address with tick boxes. The main ones:
+
+| Option | Example | What it does |
+|--------|---------|--------------|
+| Only these platforms | `platforms=kick,twitch` | Alerts from other platforms don't show on this source |
+| Only a group | `group=money` | Money and tips, subs and memberships, or follows, raids and hosts |
+| Only / never these alerts | `kinds=superchat,bits` / `hide=follow` | Pick single alert kinds |
+| Smallest amount | `min=5`, `min_bits=500`, `min_kicks=100` | Small tips are skipped on this source |
+| Show test alerts | `tests=0` | **Fire test** doesn't show here |
+| Seconds, sound, volume | `duration=8`, `sound=0`, `volume=40` | Instead of the dashboard settings |
+| Picture, message | `image=0`, `message=0` | Hide the picture or the viewer's message |
+| Layout, position | `layout=side`, `align=left` | Picture above (default), beside, or behind the text |
+| Animations | `in=bounceIn`, `out=fadeOutUp`, `letters=wiggle` | animate.css names, as in Streamlabs |
+| Saved stylesheet | `css=money` | This source uses the stylesheet saved as "money" |
+
+**Saved stylesheets.** On **Overlays → Alerts → Look (CSS)**, the **Stylesheet** list keeps more than one custom CSS. Type a name, press **Add stylesheet**, paste the CSS and **Save CSS**. A source with `css=` and that name uses it; the others keep the main one. **Delete** removes one. **Tier amounts** (5, 20, 100 by default) mark small to large amounts with `tier-1` to `tier-4`, so one stylesheet can make big Super Chats bigger, like Streamlabs alert variations. Bits and KICKs count 100 to the dollar.
+
+Pack CSS also finds the Streamlabs `#alert-text` and `[data-token]` names, the animate.css `animated fadeIn` classes, and `platform-twitch` / `platform-youtube` / `platform-kick` for a different look per channel. `overlay\ALERTS.md` lists them all.
+
 **Pictures and sounds** (the third part of the Alerts page): one picture (GIF, WebM, PNG, WebP or JPEG) and one sound (MP3, OGG or WAV) per alert kind, with **Upload** and **Remove** buttons and a **Sound volume** slider. The sound plays when the alert appears, inside OBS and XSplit without any click. You can also drop files named after the kind into `overlay\assets\alerts\` by hand (`follow.gif`, `subscribe.png`, `raid.webm`, `raid.mp3`, …). WebM is picked first, then GIF, WebP, PNG or SVG. With no picture, a glowing tile shows.
 
 ## 14. End credits
@@ -414,6 +437,16 @@ Viewer trading (`!buy`, `!sell`, `!tickers`) is designed but not switched on yet
 
 The same rules can go into OBS's own **Custom CSS** box on the browser source instead, if you prefer to keep them there.
 
+**Keeping a free chat template.** If you use a free chat CSS template, paste it into **Custom CSS** and add the family to the chat overlay's address:
+
+- `?template=streamlabs` for Streamlabs Chat Box CSS
+- `?template=streamelements` for StreamElements chat CSS
+- `?template=jchat` for jChat or Chat Is This CSS
+
+The template then decides the whole look: the K / T / Y letters, chatter pictures and word badges stay out of its way (`&badges=1` or `&avatars=1` brings them back). Templates carry their widget's settings as placeholders like `{font_size}` or `{{fontSize}}`; when you save, Core fills in the common ones with its own font size, colours and "hide after" time, and says how many it filled. Templates that come with their own HTML or JavaScript only bring their CSS. Like the alerts, the chat overlay can keep several **Stylesheets**, picked per source with `?css=` and the name.
+
+When a mod deletes a message, times out or bans someone, or clears chat on Twitch, Kick or YouTube, those lines leave the chat overlay too.
+
 
 Each overlay is a web page. Add it as a **Browser source** (OBS) or **Webpage source** (XSplit) with a transparent background, one source per overlay, so you can place and size each on its own. **Overlays → Sources & overlays** lists every address with a **Copy** button (it shows **Copied ✓** on the button). **Customise** builds an address with the switches you pick; the panel remembers your choices while the dashboard tab stays open, and **Reset switches** goes back to the defaults.
 
@@ -429,8 +462,8 @@ Most overlays take switches on their address (which platforms the chat shows, th
 
 | Overlay | Address | Notes |
 |---|---|---|
-| Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading) |
-| Alerts | `http://127.0.0.1:3850/overlay/alerts.html` | `?skin=classic` / `card` / `custom`; `?preview=1` shows a sample |
+| Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading); `?template=streamlabs` / `streamelements` / `jchat` for a free template, `?css=name` for a saved stylesheet |
+| Alerts | `http://127.0.0.1:3850/overlay/alerts.html` | `?skin=classic` / `card` / `custom`; `?preview=1` shows a sample; filters, layout, animations and `?css=` in section 13 |
 | End credits overlay | `http://127.0.0.1:3850/overlay/credits.html` | `?motion=matrix&title=THE%20CREW` overrides the saved look |
 | Replies and chat games boards | `http://127.0.0.1:3850/overlay/replies.html` | `?boards=0` hides boards, `?replies=0` shows boards only |
 | Reactions fallback | `http://127.0.0.1:3850/overlay/reactions.html` | Only needed when Stream Rooms isn't running |

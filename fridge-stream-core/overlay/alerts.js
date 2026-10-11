@@ -4,6 +4,99 @@
   const skinParam = (params.get("skin") || "").trim().toLowerCase();
   if (preview) document.body.classList.add("preview");
 
+  // ── URL filters and per-source options (ALERTS.md "URL options") ──
+  function list(key) {
+    return (params.get(key) || "").split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+  }
+  function numParam(key) {
+    const raw = params.get(key);
+    if (raw == null || raw.trim() === "") return null;
+    const n = Number(raw);
+    return isFinite(n) ? n : null;
+  }
+  function offParam(key) {
+    const v = (params.get(key) || "").trim().toLowerCase();
+    return v === "0" || v === "false" || v === "off" || v === "no";
+  }
+
+  // names streamers already use in Streamlabs / StreamElements URLs and widget settings
+  const KIND_ALIASES = {
+    follower: "follow", followers: "follow", sub: "subscribe", subs: "subscribe", subscriber: "subscribe",
+    subscription: "subscribe", member: "subscribe", membership: "subscribe", resubscribe: "resub",
+    gifted: "gift", giftsub: "gift", subgift: "gift", cheer: "bits", bit: "bits", tip: "donation",
+    tips: "donation", donate: "donation", sticker: "supersticker", jewel: "jewels", kick: "kicks",
+  };
+  const GROUPS = {
+    money: ["superchat", "supersticker", "jewels", "bits", "kicks", "donation"],
+    subs: ["subscribe", "resub", "gift"],
+    community: ["follow", "raid", "host"],
+  };
+  const kindOf = (k) => KIND_ALIASES[k] || k;
+  const onlyPlatforms = list("platforms").concat(list("platform"));
+  const onlyKinds = list("kinds").map(kindOf);
+  list("group").forEach((g) => (GROUPS[g] || []).forEach((k) => onlyKinds.push(k)));
+  const hideKinds = list("hide").map(kindOf);
+  const minMoney = numParam("min");
+  const minBits = numParam("min_bits");
+  const minKicks = numParam("min_kicks");
+  const showTests = !offParam("tests");
+  const durationSec = numParam("duration");
+  const muted = offParam("sound");
+  const volumeParam = numParam("volume");
+  const queueMax = Math.max(1, Math.min(200, numParam("queue") || 50));
+  const layout = ["above", "side", "banner"].includes((params.get("layout") || "").toLowerCase())
+    ? params.get("layout").toLowerCase() : "above";
+  const align = (params.get("align") || "").toLowerCase().replace("centre", "center");
+  const cssSlot = (params.get("css") || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40);
+  const tiersParam = params.get("tiers");
+  // animate.css names (fadeIn, bounceIn, slideInLeft ...); packs can bring their own keyframes
+  const animIn = (params.get("in") || "").replace(/[^A-Za-z]/g, "");
+  const animOut = (params.get("out") || "").replace(/[^A-Za-z]/g, "");
+
+  const wrapEl = document.getElementById("wrap");
+  if (wrapEl) wrapEl.dataset.layout = layout;      // Streamlabs: [data-layout=above|side|banner]
+  if (offParam("image")) document.body.classList.add("no-image");
+  if (offParam("message")) document.body.classList.add("no-message");
+  if (["left", "center", "right"].includes(align)) document.body.classList.add("align-" + align);
+  if (animIn || animOut) document.body.classList.add("anim-named");
+  if (animIn) document.documentElement.style.setProperty("--alert-in", animIn);
+  if (animOut) document.documentElement.style.setProperty("--alert-out", animOut);
+
+  function lower(v) { return String(v == null ? "" : v).toLowerCase(); }
+  function isTokens(cur) { return ["bits", "bit", "kicks", "kick"].includes(lower(cur)); }
+
+  // "is this alert for this source?" — every filter on the URL has to agree
+  function wanted(data) {
+    const kind = lower(data.kind);
+    if (data.is_test && !showTests) return false;
+    if (onlyPlatforms.length && !onlyPlatforms.includes(lower(data.platform))) return false;
+    if (onlyKinds.length && !onlyKinds.includes(kind)) return false;
+    if (hideKinds.includes(kind)) return false;
+    const amt = data.amount == null ? null : Number(data.amount);
+    if (amt != null && isFinite(amt)) {
+      const cur = lower(data.currency);
+      if (cur.startsWith("bit")) { if (minBits != null && amt < minBits) return false; }
+      else if (cur.startsWith("kick")) { if (minKicks != null && amt < minKicks) return false; }
+      else if (minMoney != null && GROUPS.money.includes(kind) && amt < minMoney) return false;
+    }
+    return true;
+  }
+
+  // tier-1 .. tier-4 like Streamlabs alert variations; bits and KICKs count 100 to the dollar
+  let tierCuts = [5, 20, 100];
+  function setTiers(raw) {
+    const cuts = String(raw || "").split(",").map(Number).filter((n) => isFinite(n) && n > 0).sort((a, b) => a - b);
+    if (cuts.length) tierCuts = cuts.slice(0, 3);
+  }
+  if (tiersParam) setTiers(tiersParam);
+  function tierOf(data) {
+    if (data.amount == null || !isFinite(Number(data.amount))) return 0;
+    const value = isTokens(data.currency) ? Number(data.amount) / 100 : Number(data.amount);
+    let tier = 1;
+    tierCuts.forEach((cut) => { if (value >= cut) tier += 1; });
+    return Math.min(4, tier);
+  }
+
   const box = document.getElementById("alert-box");
   const kindEl = document.getElementById("alert-kind");
   const messageEl = document.getElementById("alert-message");
@@ -63,27 +156,48 @@
 
   if (skinParam) applySkin(skinParam);
 
+  // ?letters=wiggle: every letter of the name / amount gets "animated-letter animated wiggle"
+  const letterAnim = (params.get("letters") || "").replace(/[^A-Za-z]/g, "");
+  if (letterAnim) document.documentElement.style.setProperty("--letter-anim", letterAnim);
+  function letters(escaped) {
+    const tmp = document.createElement("span");
+    tmp.innerHTML = escaped;
+    const cls = "animated-letter" + (letterAnim ? " animated " + letterAnim : "");
+    return Array.from(tmp.textContent).map((ch) =>
+      '<span class="' + cls + '">' + (ch === " " ? "&nbsp;" : escapeHtml(ch)) + "</span>").join("");
+  }
+
+  // the headline with its values wrapped like Streamlabs does: <span data-token="name">
+  // plus Core's older .name / .amount / .months / .viewers classes, so either kind of pack CSS lands
   function wrapHeadline(data) {
     let html = escapeHtml(data.headline || "");
+    // Streamlabs nests span[data-token] > span > one span per letter, which packs animate
+    // (#alert-message > span > span { display: inline-block }, .animated-letter.wiggle)
+    const wrap = (value, cls, token) =>
+      '<span class="' + cls + '" data-token="' + token + '"><span>' + letters(value) + "</span></span>";
     const name = escapeHtml(data.display_name || data.username || "");
     if (name && html.indexOf(name) !== -1) {
-      html = html.replace(name, '<span class="name alertbox-message-name">' + name + "</span>");
+      html = html.replace(name, wrap(name, "name alertbox-message-name", "name"));
     }
     const amt = data.amount_fmt ? escapeHtml(String(data.amount_fmt)) : "";
     if (amt && html.indexOf(amt) !== -1) {
-      html = html.replace(amt, '<span class="amount">' + amt + "</span>");
+      html = html.replace(amt, wrap(amt, "amount", "amount"));
+    }
+    const item = data.item ? escapeHtml(String(data.item)) : "";
+    if (item && html.indexOf(item) !== -1 && item !== name) {
+      html = html.replace(item, wrap(item, "item", "item"));
     }
     if (data.months != null) {
       const m = String(data.months);
-      html = html.replace(m + " months", '<span class="months">' + m + "</span> months");
+      html = html.replace(m + " months", wrap(m, "months", "months") + " months");
     }
     if (data.viewers != null) {
       const v = String(data.viewers);
-      html = html.replace(v + " viewers", '<span class="viewers">' + v + "</span> viewers");
+      html = html.replace(v + " viewers", wrap(v, "viewers", "count") + " viewers");
     }
     if (data.qty != null) {
       const q = String(data.qty);
-      html = html.replace(q + " sub", '<span class="amount">' + q + "</span> sub");
+      html = html.replace(q + " sub", wrap(q, "amount", "count") + " sub");
     }
     return html;
   }
@@ -125,23 +239,45 @@
   // one uploaded sound per kind (Admin → Alerts → Pictures and sounds); OBS plays without a click
   function playSound(kind, data) {
     const url = soundMap[kind] || soundMap[(data && data.falls_back) || ""];
-    if (!url) return;
+    if (!url || muted) return;
     try {
       let a = sounds[url];
       if (!a) {
         a = new Audio(url);
         sounds[url] = a;
       }
-      a.volume = Math.max(0, Math.min(1, Number(soundVolume) || 0));
+      const vol = volumeParam != null ? volumeParam / 100 : Number(soundVolume);
+      a.volume = Math.max(0, Math.min(1, vol || 0));
       a.currentTime = 0;
       a.play().catch(() => {});
     } catch (_) {}
   }
 
   function show(data) {
-    if (!data) return;
+    if (!data || !wanted(data)) return;
+    if (queue.length >= queueMax) return;     // a flood past ?queue= is dropped, not stacked up
     queue.push(data);
     pump();
+  }
+
+  // classes and data-* attributes a stylesheet can pick one alert out by
+  function boxClasses(data, kind, extra) {
+    const plat = lower(data.platform);
+    const out = ["alert-box", extra, "layout-" + layout];
+    if (plat) out.push("platform-" + plat);
+    if (plat === "youtube" && GROUPS.subs.includes(kind)) out.push("membership-alert");
+    const tier = tierOf(data);
+    if (tier) out.push("tier-" + tier);
+    if (data.is_test) out.push("test-alert");
+    return { names: out, tier };
+  }
+
+  function setData(data, kind, tier) {
+    box.dataset.kind = kind;
+    box.dataset.platform = lower(data.platform);
+    box.dataset.amount = data.amount == null ? "" : String(data.amount);
+    box.dataset.currency = data.currency || "";
+    box.dataset.tier = tier ? String(tier) : "";
   }
 
   function pump() {
@@ -171,19 +307,25 @@
 
     setMedia(kind, data);
     playSound(kind, data);
-    box.className = "alert-box " + extra + " show";
+    const cls = boxClasses(data, kind, extra);
+    setData(data, kind, cls.tier);
+    // "animated fadeIn" / "animated fadeOut" are the animate.css names packs override
+    box.className = cls.names.concat(["show", "animated", animIn || "fadeIn"]).join(" ");
 
-    const ms = Math.max(1500, Number(data.duration_ms) || 6000);
+    const ms = durationSec != null && durationSec > 0
+      ? Math.max(1500, Math.min(60000, durationSec * 1000))
+      : Math.max(1500, Number(data.duration_ms) || 6000);
+    const named = document.body.classList.contains("anim-named") || document.body.classList.contains("skin-custom");
     setTimeout(() => {
-      box.classList.remove("show");
-      box.classList.add("hide");
+      box.className = cls.names.concat(["hide", "animated", animOut || "fadeOut"]).join(" ");
       setTimeout(() => {
         box.className = "alert-box hidden";
+        delete box.dataset.kind;
         clearMedia();
         busy = false;
         if (!queue.length) setIdle(true);
         pump();
-      }, 340);
+      }, named ? 650 : 340);
     }, ms);
   }
 
@@ -196,10 +338,15 @@
       if (s.media && typeof s.media === "object") mediaMap = s.media;
       if (s.sounds && typeof s.sounds === "object") soundMap = s.sounds;
       if (s.options && s.options.sound_volume != null) soundVolume = Number(s.options.sound_volume);
-      const ver = s.css_version || 0;
-      if (customLink && ver !== lastCssVer) {
-        lastCssVer = ver;
-        customLink.href = "alerts-custom.css?v=" + ver;
+      if (s.options && s.options.tiers && !tiersParam) setTiers(s.options.tiers);
+      // ?css=money loads the saved slot "money" instead of the default custom CSS
+      const slots = s.css_slots || {};
+      const useSlot = cssSlot && cssSlot !== "default" && slots[cssSlot] != null;
+      const ver = useSlot ? slots[cssSlot] : (s.css_version || 0);
+      const href = (useSlot ? "alerts-css/" + cssSlot + ".css" : "alerts-custom.css") + "?v=" + ver;
+      if (customLink && href !== lastCssVer) {
+        lastCssVer = href;
+        customLink.href = href;
       }
     } catch (_) {}
   }
