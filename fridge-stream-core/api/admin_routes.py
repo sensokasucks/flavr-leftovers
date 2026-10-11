@@ -540,13 +540,16 @@ def create_admin_router(core_state) -> APIRouter:
         limit: int = Query(200, ge=1, le=1000),
         offset: int = Query(0, ge=0),
         flagged: bool = False,
+        flag: str = "",
         x_admin_token: Optional[str] = Header(None),
     ):
-        """Chat log rows, newest first; each says ``flagged`` (sender is red-flagged).
-        ``flagged=1`` = only red-flagged chatters' lines."""
+        """Chat log rows, newest first; each says ``flagged`` (sender is red-flagged) and
+        ``flags`` (the custom flags they are on, comma-separated ids).
+        ``flagged=1`` = only red-flagged chatters' lines; ``flag=<id>`` = only that custom flag's."""
         _auth(x_admin_token)
         return await _store().search_chat(
-            user_id=user_id, platform=platform, q=q, limit=limit, offset=offset, flagged_only=flagged
+            user_id=user_id, platform=platform, q=q, limit=limit, offset=offset, flagged_only=flagged,
+            flag=flag.strip()[:40],
         )
 
     @router.get("/chat/export")
@@ -555,11 +558,12 @@ def create_admin_router(core_state) -> APIRouter:
         platform: str = "",
         q: str = "",
         flagged: bool = False,
+        flag: str = "",
         x_admin_token: Optional[str] = Header(None),
     ):
         _auth(x_admin_token)
         csv_text = await _store().export_chat_csv(user_id=user_id, platform=platform.strip().lower(),
-                                                  q=q.strip(), flagged_only=flagged)
+                                                  q=q.strip(), flagged_only=flagged, flag=flag.strip()[:40])
         filename = f"chat_user_{user_id}.csv" if user_id else "chat_all.csv"
         return Response(
             content=csv_text,
@@ -1485,9 +1489,35 @@ def create_admin_router(core_state) -> APIRouter:
         rf.configure((getattr(core_state, "config", None) or {}).get("red_flags"))
         return rf
 
+    def _chat_flags():
+        cf = getattr(core_state, "chat_flags", None)
+        if cf is None:
+            raise HTTPException(503, "Chat flags not ready")
+        cf.configure(((getattr(core_state, "config", None) or {}).get("red_flags") or {}).get("custom"))
+        return cf
+
     async def _red_flags_info() -> Dict[str, Any]:
         rf = _red_flags()
-        return {**rf.info(), "flagged": await rf.list()}
+        out = {**rf.info(), "flagged": await rf.list()}
+        cf = getattr(core_state, "chat_flags", None)
+        if cf is not None:
+            cf = _chat_flags()
+            known = {f.id for f in cf.flags}
+            out["custom"] = cf.info()
+            out["custom_flagged"] = [r for r in await cf.list() if r.get("flag") in known]
+        # the reactions a flag can play (Reactions page)
+        eng = getattr(core_state, "reactions", None)
+        try:
+            out["reactions"] = [{"id": e["id"], "label": e.get("label") or e["id"]}
+                                for e in (eng.cfg["entries"] if eng is not None else [])]
+        except Exception:
+            out["reactions"] = []
+        return out
+
+    async def _hide_now(platform: str, uid: str, username: str, display: str) -> None:
+        hide = getattr(core_state, "red_flag_hide", None)
+        if hide is not None:
+            await hide(platform, uid, username.lower(), display)
 
     @router.get("/red-flags")
     async def get_red_flags(x_admin_token: Optional[str] = Header(None)):
@@ -1507,9 +1537,20 @@ def create_admin_router(core_state) -> APIRouter:
                 section[key] = bool(body.get(key))
         if "phrases" in body:
             section["phrases"] = parse_phrases(body.get("phrases"))
+        gone: list[str] = []
+        if "custom" in body:
+            from core.chat_flags import normalize_custom
+
+            if not isinstance(body.get("custom"), list):
+                raise HTTPException(400, "custom must be a list of flags")
+            before = {str(f.get("id") or "") for f in normalize_custom(section.get("custom") or [])}
+            section["custom"] = normalize_custom(body.get("custom"))
+            gone = sorted(before - {f["id"] for f in section["custom"]})
         cfg["red_flags"] = section
         save_config(cfg)
         core_state.config = cfg
+        if gone and getattr(core_state, "chat_flags", None) is not None:
+            await _chat_flags().forget(gone)     # a deleted flag's list goes with it
         return {"ok": True, **(await _red_flags_info())}
 
     @router.post("/red-flags/flag")
@@ -1531,19 +1572,38 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(400, "platform must be kick, twitch or youtube")
         if uid and not platform:
             raise HTTPException(400, "platform required with platform_user_id")
+        flag_id = str(body.get("flag") or "").strip()
+        if flag_id and flag_id != "red":
+            # one of the custom flags: on its list from now on (its actions don't run)
+            cf = _chat_flags()
+            flag = cf.get(flag_id)
+            if flag is None:
+                raise HTTPException(404, "No such flag (save the flags first?)")
+            await cf.flag(flag.id, platform, uid, name, display, source="manual")
+            if flag.hide:
+                await _red_flags().flag(platform, uid, name, display, source="flag:" + flag.id)
+                await _hide_now(platform, uid, name, display)
+            return {"ok": True, **(await _red_flags_info())}
         rf = _red_flags()
         await rf.flag(platform, uid, name, display, source="manual")
-        hide = getattr(core_state, "red_flag_hide", None)
-        if hide is not None:
-            await hide(platform, uid, name.lower(), display)
+        await _hide_now(platform, uid, name, display)
         return {"ok": True, **(await _red_flags_info())}
 
     @router.post("/red-flags/check-past")
-    async def check_past_chat(x_admin_token: Optional[str] = Header(None)):
+    async def check_past_chat(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
         """Run the saved phrases over the saved chat log. Flags nobody: returns who would be
         flagged (``people``), how many lines were read (``scanned``) and ``more`` when the
-        list was cut short."""
+        list was cut short. ``{"flag": id}`` = one custom flag's phrases instead."""
         _auth(x_admin_token)
+        flag_id = str((body or {}).get("flag") or "").strip()
+        if flag_id and flag_id != "red":
+            cf = _chat_flags()
+            flag = cf.get(flag_id)
+            if flag is None:
+                raise HTTPException(404, "No such flag (save the flags first?)")
+            if not flag.phrases:
+                raise HTTPException(400, f"Add some phrases to {flag.name} first")
+            return {"ok": True, "flag": flag.id, **(await cf.scan_past(flag.id))}
         rf = _red_flags()
         if not rf.phrases:
             raise HTTPException(400, "Add some red flag phrases first")
@@ -1559,6 +1619,12 @@ def create_admin_router(core_state) -> APIRouter:
         if not isinstance(people, list) or not people:
             raise HTTPException(400, "people required")
         hide = getattr(core_state, "red_flag_hide", None)
+        flag_id = str(body.get("flag") or "").strip()
+        custom = None
+        if flag_id and flag_id != "red":
+            custom = _chat_flags().get(flag_id)
+            if custom is None:
+                raise HTTPException(404, "No such flag (save the flags first?)")
         flagged = 0
         for p in people[:1000]:
             if not isinstance(p, dict):
@@ -1569,13 +1635,48 @@ def create_admin_router(core_state) -> APIRouter:
             display = str(p.get("display_name") or username).strip()[:80]
             if platform not in ("kick", "twitch", "youtube") or not (uid or username):
                 continue
+            if custom is not None:
+                await _chat_flags().flag(custom.id, platform, uid, username or display, display,
+                                         phrase=str(p.get("phrase") or ""), message=str(p.get("message") or ""),
+                                         source="past")
+                flagged += 1
+                if not custom.hide:
+                    continue
+            else:
+                flagged += 1
             await rf.flag(platform, uid, username or display, display,
                           phrase=str(p.get("phrase") or ""), message=str(p.get("message") or ""),
-                          source="past")
+                          source="past" if custom is None else "flag:" + custom.id)
             if hide is not None:
                 await hide(platform, uid, username.lower(), display)
-            flagged += 1
         return {"ok": True, "flagged_now": flagged, **(await _red_flags_info())}
+
+    @router.delete("/red-flags/custom/{row_id}")
+    async def unflag_custom(row_id: int, x_admin_token: Optional[str] = Header(None)):
+        """Take someone off a custom flag's list (a red flag it gave them stays: unflag that too)."""
+        _auth(x_admin_token)
+        removed = await _chat_flags().unflag(row_id)
+        if removed is None:
+            raise HTTPException(404, "Not on that flag's list")
+        return {"ok": True, "removed": removed, **(await _red_flags_info())}
+
+    @router.post("/red-flags/custom/restore")
+    async def restore_custom(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Undo a custom-flag Unflag: put back the row the DELETE returned as ``removed``."""
+        _auth(x_admin_token)
+        row = body.get("removed") if isinstance(body.get("removed"), dict) else body
+        cf = _chat_flags()
+        flag = cf.get(str(row.get("flag") or ""))
+        platform = str(row.get("platform") or "").strip().lower()
+        uid = str(row.get("platform_user_id") or "").strip()[:120]
+        username = str(row.get("username") or "").strip()[:80]
+        display = str(row.get("display_name") or username).strip()[:80]
+        if flag is None or platform not in ("", "kick", "twitch", "youtube") or not (uid or username):
+            raise HTTPException(400, "Nothing to put back")
+        source = str(row.get("source") or "manual").strip()[:40]
+        await cf.flag(flag.id, platform, uid, username or display, display, phrase=str(row.get("phrase") or ""),
+                      message=str(row.get("message") or ""), source=source)
+        return {"ok": True, **(await _red_flags_info())}
 
     @router.delete("/red-flags/{flag_id}")
     async def unflag(flag_id: int, x_admin_token: Optional[str] = Header(None)):
@@ -1595,7 +1696,7 @@ def create_admin_router(core_state) -> APIRouter:
         uid = str(row.get("platform_user_id") or "").strip()[:120]
         username = str(row.get("username") or "").strip()[:80]
         display = str(row.get("display_name") or username).strip()[:80]
-        source = str(row.get("source") or "manual").strip()[:20]
+        source = str(row.get("source") or "manual").strip()[:40]
         if platform not in ("", "kick", "twitch", "youtube") or not (uid or username):
             raise HTTPException(400, "Nothing to put back")
         rf = _red_flags()

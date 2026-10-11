@@ -1178,6 +1178,19 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 .rf-card .rf-past { margin-top: 12px; padding-top: 4px; border-top: 1px solid var(--border); }
 .rf-card .rf-past td.rf-msg .muted { display: block; font-size: 0.9em; }
 .rf-card .rf-past .config-actions { margin-top: 10px; }
+/* Custom flags (Red flags page) */
+.cf-flag { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; margin: 8px 0; }
+.cf-flag > summary { cursor: pointer; padding: 4px 0; }
+.cf-flag[open] > summary { margin-bottom: 6px; }
+.cf-flag .cf-body h4 { margin: 12px 0 4px; }
+.cf-flag .cf-row { display: flex; flex-wrap: wrap; gap: 4px 14px; align-items: center; }
+.cf-flag .cf-row label { flex: 0 1 auto; }
+.cf-flag .cf-row input[type="text"] { flex: 1 1 220px; width: auto; margin-top: 0; font-size: 0.8rem; }
+.cf-flag .cf-row input[type="number"] { display: inline-block; width: 7em; }
+.cf-flag td.rf-msg { max-width: 420px; }
+.cf-flag td.rf-actions { white-space: nowrap; text-align: right; }
+.cf-badge { font-size: 0.85em; color: var(--accent); white-space: nowrap; }
+.rf-add select#rf-which { max-width: 14em; }
 .toolbar label.check { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .toolbar label.check input { min-width: 0; flex: none; }
 

@@ -55,6 +55,7 @@ try:
     from core.credits import CreditsEngine
     from core.avatar_store import AvatarStore
     from core.red_flags import RedFlags, matching_recent
+    from core.chat_flags import ChatFlags
     from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, PRICED_ALERT_KINDS, split_amount_prefix
     from core.market import MarketTape
     from core.reactions import ReactionEngine
@@ -95,6 +96,11 @@ def default_player(config: dict) -> str:
         if name:
             return name
     return "Player"
+
+
+def _cmd_word(text: str) -> str:
+    """A chatter's name as one safe command word (no spaces, no command prefix tricks)."""
+    return "".join(ch for ch in str(text or "") if ch.isalnum() or ch in "_-.")[:40] or "someone"
 
 
 class StreamCore:
@@ -198,6 +204,9 @@ class StreamCore:
         self.state.red_flags = self.red_flags
         self.state.red_flag_hide = self.hide_flagged
         self.red_flags.staff = self._is_staff
+        # Custom chat flags: the streamer's own flags with their own actions (core/chat_flags.py)
+        self.chat_flags = ChatFlags(self.store, self.red_flags, (config.get("red_flags") or {}).get("custom"))
+        self.state.chat_flags = self.chat_flags
         # Paid list: every paid message, tip and sub with a tick box (core/paid.py, Admin → Paid)
         self.paid = PaidLog(lambda: self.store)
         self.state.paid = self.paid
@@ -601,14 +610,38 @@ class StreamCore:
         # Red-flagged chatters (or the line that flags them) never reach an overlay or Stream Rooms
         live = getattr(self.state, "config", None) or self.config
         self.red_flags.configure(live.get("red_flags"))
+        self.chat_flags.configure((live.get("red_flags") or {}).get("custom"))
         self.store.configure_chat_log(live.get("chat_log"))
+        u = event.user
+        plat = event.platform.value
+        # custom flags first: one set to "red-flag them too" decides whether this line shows
+        try:
+            hits = await self.chat_flags.check(event)
+        except Exception:
+            log.exception("chat flag check failed")
+            hits = []
+        newly_red = False
+        for hit in hits:
+            if hit["flag"].hide and not self.red_flags.is_flagged(plat, str(u.id or ""), u.username, u.display_name):
+                try:
+                    await self.red_flags.flag(plat, str(u.id or ""), u.username, u.display_name,
+                                              phrase=hit["phrase"], message=event.message or "",
+                                              source="flag:" + hit["flag"].id)
+                    newly_red = True
+                except Exception:
+                    log.exception("red flag from a custom flag failed")
         try:
             flagged = await self.red_flags.check(event)
         except Exception:
             log.exception("red flag check failed")
             flagged = None
+        if flagged is not None and newly_red:
+            flagged["new"] = True
+        keep = self.chat_flags.keeps_log(plat, str(u.id or ""), u.username, u.display_name)
+        if hits:
+            await self._flag_actions(event, hits, hidden=flagged is not None)
         if flagged is not None:
-            await self._on_flagged_chat(event, flagged)
+            await self._on_flagged_chat(event, flagged, keep=keep)
             return
         # Regulars' titles ride along on the chat packet (name tags in Stream Rooms)
         try:
@@ -617,7 +650,6 @@ class StreamCore:
             log.exception("chat games attendance failed")
         title = self.chat_games.title_for(event.user)
         await self.apply_avatar_settings()
-        plat = event.platform.value
         hidden = self.avatars.is_hidden(plat, event.user.username, event.user.display_name)
         picture = None if hidden else event.user.profile_image_url
         local = "" if hidden else self.avatars.local_url(plat, str(event.user.id))
@@ -687,7 +719,7 @@ class StreamCore:
         # Persist chat + award in-house points: queued for the batched database writer, so the
         # platform's read loop never waits for the disk (core/store.py start_writer)
         try:
-            self.store.submit_chat(event)
+            self.store.submit_chat(event, keep=keep)
         except Exception:
             log.exception("store.submit_chat failed")
 
@@ -1160,17 +1192,119 @@ class StreamCore:
             "games_notified": list(self.games.keys()),
         }
 
-    async def _on_flagged_chat(self, event: ChatEvent, flagged: dict) -> None:
+    async def _on_flagged_chat(self, event: ChatEvent, flagged: dict, keep: bool = False) -> None:
         """A red-flagged chatter: saved in the chat log (when it is on), shown nowhere, no points."""
         self.router.parse_message(event)      # marks is_command for the log
         try:
-            self.store.submit_chat(event, award=False, flagged=True)
+            self.store.submit_chat(event, award=False, flagged=True, keep=keep)
         except Exception:
             log.exception("store.submit_chat failed")
         await self._note_paid_chat(event, "", flagged=True)   # money is never missed
         if flagged.get("new"):
             u = event.user
             await self.hide_flagged(event.platform.value, str(u.id or ""), u.username, u.display_name)
+
+    async def _flag_actions(self, event: ChatEvent, hits: list, hidden: bool = False) -> None:
+        """Run what each custom flag that went off is set to do (core/chat_flags.py). A chatter
+        who is red-flagged (``hidden``) gets nothing on screen or in chat and no points; the
+        flag still tells game plugins, and their lines are still saved."""
+        from core.reactions import fmt
+        u = event.user
+        plat = event.platform.value
+        name = u.display_name or u.username or "Someone"
+        for hit in hits:
+            flag = hit["flag"]
+            ctx = {"name": name, "user": u.username or name, "phrase": hit["phrase"], "flag": flag.name,
+                   "message": (event.message or "")[:300], "platform": plat}
+            payload = {
+                "flag": {"id": flag.id, "name": flag.name},
+                "first": bool(hit["first"]),
+                "phrase": hit["phrase"],
+                "platform": plat,
+                "message": event.message or "",
+                "message_id": event.message_id,
+                "user": {"id": u.id, "username": u.username, "display_name": u.display_name,
+                         "is_mod": u.is_mod, "is_subscriber": u.is_subscriber},
+                "hidden": hidden,
+                "timestamp": event.timestamp,
+            }
+            if flag.notify:
+                await self.bus.publish_flag(payload)
+                for game in list(self.games.values()):
+                    if hasattr(game, "on_flag"):
+                        try:
+                            await game.on_flag(payload)
+                        except Exception:
+                            log.exception("game on_flag error")
+                if not hidden and self.state.ws_manager:
+                    try:
+                        await self.state.ws_manager.broadcast({"type": "chat_flag", "data": payload})
+                    except Exception:
+                        log.exception("chat_flag WS broadcast failed")
+            if hidden:
+                continue
+            if flag.points:
+                try:
+                    uid = await self.store.get_or_create_user(plat, u.id, u.username, u.display_name)
+                    await self.store.adjust_points(uid, int(flag.points), reason=f"flag: {flag.name}", source="flag")
+                except Exception:
+                    log.exception("flag points failed")
+            if flag.alert:
+                try:
+                    alert = build_alert(kind="flag", username=u.username or name, display_name=name,
+                                        platform=plat, message=event.message or "", item=hit["phrase"])
+                    text = fmt(flag.alert_text, **ctx).strip()
+                    if text:
+                        alert["headline"] = text
+                    alert["title"] = flag.name
+                    alert["flag"] = flag.id
+                    alert["source"] = "flag"
+                    await self.bus.publish_alert(alert)
+                except Exception:
+                    log.exception("flag alert failed")
+            if flag.reply:
+                text = fmt(flag.reply, **ctx).strip()
+                if text:
+                    await self.bus.publish_reply(ChatReply(
+                        platform=event.platform, message=text, reply_to_user=name,
+                        reply_to_message_id=event.message_id, target_platform=event.platform, source="flag",
+                    ))
+            if flag.reaction:
+                await self._flag_reaction(flag.reaction, event)
+            if flag.command:
+                await self._flag_command(fmt(flag.command, **{**ctx, "user": _cmd_word(u.username or name),
+                                                               "name": _cmd_word(name)}), event)
+
+    async def _flag_command(self, text: str, event: ChatEvent) -> None:
+        """Run a flag's chat command through the real router, as the streamer would (admin
+        rights, the chatter's name), so game commands and Core commands both work."""
+        text = text.strip()
+        if not text:
+            return
+        if not text.startswith(self.router.prefix):
+            text = self.router.prefix + text
+        u = event.user
+        try:
+            res = await self.test_command(text, username=u.username or u.display_name or "someone",
+                                          display_name=u.display_name or u.username or "",
+                                          platform=event.platform.value, is_admin=True, dry_run=False)
+            if not res.get("ok"):
+                log.info("Flag command %r not run: %s", text, res.get("error") or res.get("stage"))
+        except Exception:
+            log.exception("flag command failed")
+
+    async def _flag_reaction(self, reaction_id: str, event: ChatEvent) -> None:
+        """Play a reaction for a flag: free, whoever the chatter is, its cooldowns still apply."""
+        try:
+            entry = next((e for e in self.reactions.cfg["entries"] if e["id"] == reaction_id), None)
+            if entry is None:
+                log.info("Flag reaction %r not found (renamed or deleted on the Reactions page?)", reaction_id)
+                return
+            entry = {**entry, "enabled": True, "permission": "public", "require": [], "cost": 0}
+            # "emoji" keeps it quiet: no chat answer when a cooldown says no
+            await self.reactions.fire(entry, event, target_words=[], count=1, via="emoji", free=True)
+        except Exception:
+            log.exception("flag reaction failed")
 
     def _is_staff(self, platform: str, user_id: str, username: str) -> bool:
         """Core's own admins/mods (permissions in config) or the streamer's channel, by
