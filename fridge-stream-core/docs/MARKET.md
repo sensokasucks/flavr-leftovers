@@ -37,6 +37,10 @@ adapters ── ChatEvent ──► Stream Core
                                  POST /api/market/dividend
 ```
 
+Both POSTs are for games only: a request from a browser (`Origin` or `Sec-Fetch-Site` header) gets 403,
+even from a `127.0.0.1` page. In LAN mode a bridge on another device sends the admin token as
+`X-Admin-Token` (or `?token=`); bridges on the same PC send nothing extra.
+
 | Piece | Path |
 |-------|------|
 | Engine + schema | `core/market.py` |

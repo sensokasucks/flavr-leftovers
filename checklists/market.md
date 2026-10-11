@@ -7,7 +7,7 @@ Home: `core/market.py`. Spec: `fridge-stream-core/docs/MARKET.md`. Admin tab **M
 - [ ] Opt-in: `market.enabled` default **false**. Command group `market` binds to that flag.
 - [ ] One Core ledger. Games emit signals / flushes; they do not keep a second share book.
 - [ ] Not OpenTTD Chat Fund. `!invest` stays a one-way cash injection on group `openttd`. Market tokens stay distinct (`!buy`, `!sell`, `!tickers`, `!ticker`, `!portfolio` when those ship).
-- [ ] Public API: `GET /api/market/state`, `GET /api/market/history`, `POST /api/market/signal`, `POST /api/market/dividend`.
+- [ ] Public API: `GET /api/market/state`, `GET /api/market/history`, `POST /api/market/signal`, `POST /api/market/dividend`. The two POSTs are games only: refused (403) with a browser `Origin` / `Sec-Fetch-Site`, and from another device without the admin token (`game_caller_problem` in `core/local_guard.py`). The dashboard's test payout uses `/api/admin/market/dividend`.
 - [ ] Holdings table `market_holdings`. Dividends go through `store.pay_dividend` (dust burned if nobody is invested).
 - [ ] Preview tape ticks seed listings even while `enabled` is false so overlays can be designed.
 - [ ] Overlays: `/overlay/market.html`, `/overlay/market-board.html`, `/overlay/market-chart.html`, plus per-game tapes (`market-minecraft.html`, `market-factorio.html`, `market-openttd.html`, dynamo helper pages) that live in each plugin's `overlay/` and answer at the same `/overlay/` URLs.

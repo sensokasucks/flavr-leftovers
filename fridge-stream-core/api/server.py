@@ -16,15 +16,21 @@ import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional, Set
 
-from fastapi import APIRouter, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
 import os
 
-from api.admin_routes import create_admin_router
-from core.local_guard import LOOPBACK_ORIGIN_REGEX, LocalGuard, LocalGuardMiddleware
+from api.admin_routes import _CORE_ROOT, create_admin_router
+from core.local_guard import (
+    LOOPBACK_ORIGIN_REGEX,
+    LocalGuard,
+    LocalGuardMiddleware,
+    game_caller_problem,
+    resolve_admin_token,
+)
 
 log = logging.getLogger("api.server")
 
@@ -344,6 +350,22 @@ def create_app(core_state: "CoreState") -> FastAPI:
         )
         app.include_router(plugin_router)
 
+    def _game_problem(headers, client, token: Optional[str]) -> Optional[str]:
+        """Only games may say hello / push market signals and dividends: no web pages,
+        and from another device (LAN mode) only with the admin token."""
+        return game_caller_problem(
+            headers, client.host if client else None, token,
+            lambda: resolve_admin_token(core_state.config or {}, _CORE_ROOT, create=False),
+        )
+
+    def _require_game(request: Request) -> None:
+        token = request.headers.get("x-admin-token") or request.query_params.get("token")
+        problem = _game_problem(request.headers, request.client, token)
+        if problem:
+            log.warning("Refused %s from %s (origin=%s): %s", request.url.path,
+                        request.client.host if request.client else "?", request.headers.get("origin"), problem)
+            raise HTTPException(403, problem)
+
     def _market():
         tape = getattr(core_state, "market", None)
         if tape is None:
@@ -367,8 +389,9 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return tape.history(symbol, points=max(8, min(int(points or 120), 2000)))
 
     @app.post("/api/market/signal")
-    async def market_signal(payload: dict):
+    async def market_signal(payload: dict, request: Request):
         """Preview ingest: death / named signals honor optional cooldowns."""
+        _require_game(request)
         tape = _market()
         cfg = (getattr(core_state, "config", None) or {}).get("market") or {}
         name = str((payload or {}).get("name") or "").strip()
@@ -403,13 +426,15 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return {**gate, "applied": bool(applied), "instrument": applied, "last_event": tape.last_event}
 
     @app.post("/api/market/dividend")
-    async def market_dividend(payload: dict):
+    async def market_dividend(payload: dict, request: Request):
         """
         Vault flush from a game bridge.
         Body: { game, symbol, work, unit, reason?, points? }
         work*points_per_unit becomes a points pool paid to holders of symbol.
         Also bumps the ticker so the tape reacts even with zero holders.
+        Games only (no web pages); the dashboard's test button uses /api/admin/market/dividend.
         """
+        _require_game(request)
         tape = _market()
         cfg = (getattr(core_state, "config", None) or {}).get("market") or {}
         body = payload or {}
@@ -471,6 +496,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     async def _ws_handler(ws: WebSocket):
         await manager.connect(ws)
+        refused_game = False   # warn once per socket, not on every retry
         try:
             # Snapshot for stats overlay
             state = await build_state()
@@ -508,7 +534,22 @@ def create_app(core_state: "CoreState") -> FastAPI:
                     msg = json.loads(data)
                 except ValueError:
                     continue
-                if isinstance(msg, dict) and msg.get("type") == "avatars_hide_import":
+                if not isinstance(msg, dict):
+                    continue
+                if msg.get("type") in ("hello", "avatars_hide_import"):
+                    # Game-only messages. Overlays and the dashboard are web pages and
+                    # never send these; a web page that does is refused.
+                    body = msg.get("data") if isinstance(msg.get("data"), dict) else {}
+                    problem = _game_problem(ws.headers, ws.client,
+                                            ws.query_params.get("token") or body.get("token"))
+                    if problem:
+                        if not refused_game:
+                            refused_game = True
+                            log.warning("Refused game %s from %s (origin=%s): %s", msg.get("type"),
+                                        ws.client.host if ws.client else "?", ws.headers.get("origin"), problem)
+                        await ws.send_json({"type": "hello_refused", "data": {"reason": problem}})
+                        continue
+                if msg.get("type") == "avatars_hide_import":
                     # Stream Rooms' "hide pictures for these names" list: merged into Core's
                     importer = getattr(core_state, "import_avatar_hide", None)
                     data = msg.get("data") if isinstance(msg.get("data"), dict) else {}
@@ -519,7 +560,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
                             log.exception("avatar hide import failed")
                     continue
                 reactions = getattr(core_state, "reactions", None)
-                if reactions is not None and isinstance(msg, dict):
+                if reactions is not None:
                     try:
                         await reactions.on_client_message(ws, msg)
                     except WebSocketDisconnect:
