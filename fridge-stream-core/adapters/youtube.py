@@ -32,6 +32,7 @@ from adapters.youtube_capture import FieldScout
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
+from core.paid import parse_money
 from core.platform_links import youtube_video_id
 
 log = logging.getLogger("adapters.youtube")
@@ -186,6 +187,8 @@ class YouTubeAdapter(BaseAdapter):
         # reply thread id -> the Super Chat it belongs to, so replies can quote it
         self._superchats: OrderedDict[str, dict] = OrderedDict()
         self._superchats_max = 300
+        # gift sender's name -> channel id, from the gift animation that comes with each Jewels gift
+        self._gift_senders: OrderedDict[str, str] = OrderedDict()
         self._reached = False  # this attempt got as far as reading chat
 
     async def start(self) -> None:
@@ -365,6 +368,10 @@ class YouTubeAdapter(BaseAdapter):
             snippet = dict(snippet, textMessageDetails={"messageText": alert["message"]})
         ttd = snippet.get("textMessageDetails") or {}
         text = ttd.get("messageText") or snippet.get("displayMessage") or ""
+        if not text:
+            # a Super Chat / Sticker with no comment still belongs in chat
+            d = snippet.get("superChatDetails") or snippet.get("superStickerDetails") or {}
+            text = str(d.get("amountDisplayString") or "")
         name = author.get("displayName") or ""
         if not name or not text:
             return
@@ -380,18 +387,32 @@ class YouTubeAdapter(BaseAdapter):
             is_subscriber=bool(author.get("isChatSponsor")),
             profile_image_url=best_photo(author.get("profileImageUrl") or "") or None,
         )
-        # Super Chat / paid
+        # Super Chat / Super Sticker (superChatDetails / superStickerDetails; fanFundingEventDetails
+        # is the old name, still read in case a channel gets it)
         paid = None
         currency = None
         is_paid = False
-        ffe = snippet.get("fanFundingEventDetails") or {}
-        if ffe.get("amountMicros"):
+        paid_kind = None
+        sticker_label = ""
+        kind = snippet.get("type") or ""
+        details = (snippet.get("superChatDetails") or snippet.get("superStickerDetails")
+                   or snippet.get("fanFundingEventDetails") or {})
+        if details.get("amountMicros"):
             try:
-                paid = int(ffe["amountMicros"]) / 1_000_000.0
+                paid = int(details["amountMicros"]) / 1_000_000.0
             except (TypeError, ValueError):
                 paid = None
-            currency = ffe.get("currency")
+            currency = details.get("currency")
             is_paid = True
+            paid_kind = "supersticker" if kind == "superStickerEvent" or "superStickerDetails" in snippet else "superchat"
+        if paid_kind == "supersticker":
+            # the Data API gives only the sticker's name, no picture
+            meta = (snippet.get("superStickerDetails") or {}).get("superStickerMetadata") or {}
+            sticker_label = str(meta.get("altText") or "").strip()
+            text = (snippet.get("superStickerDetails") or {}).get("userComment") or (
+                f"Super Sticker: {sticker_label}" if sticker_label else text)
+        elif paid_kind == "superchat" and (snippet.get("superChatDetails") or {}).get("userComment"):
+            text = snippet["superChatDetails"]["userComment"]
         log.debug("[YouTube] %s: %s", user.username, text)
         await self._emit(
             ChatEvent(
@@ -403,6 +424,8 @@ class YouTubeAdapter(BaseAdapter):
                 paid_currency=currency,
                 is_paid=is_paid,
                 raw=item,
+                paid_kind=paid_kind,
+                paid_label=sticker_label or None,
             )
         )
 
@@ -603,6 +626,7 @@ class YouTubeAdapter(BaseAdapter):
 
     async def _on_innertube_action(self, action: dict) -> None:
         self.scout.check_action(action)
+        self._note_gift_sender(action)
         item = (action.get("addChatItemAction") or {}).get("item")
         if not item:
             replay = action.get("replayChatItemAction") or {}
@@ -618,6 +642,10 @@ class YouTubeAdapter(BaseAdapter):
         gift = item.get("liveChatSponsorshipsGiftPurchaseAnnouncementRenderer")
         if isinstance(gift, dict):
             await self._on_innertube_gift(gift)
+            return
+        jewels = item.get("giftMessageViewModel")
+        if isinstance(jewels, dict):
+            await self._on_innertube_jewels(jewels)
             return
 
         renderer = (
@@ -642,6 +670,17 @@ class YouTubeAdapter(BaseAdapter):
         author_id = str(renderer.get("authorExternalChannelId") or name)
 
         text, emotes = runs_to_text_and_emotes(renderer.get("message") or {})
+        sticker = item.get("liveChatPaidStickerRenderer")
+        sticker_url = sticker_label = ""
+        if isinstance(sticker, dict):
+            # A Super Sticker has no typed text: the line is the sticker, drawn like an emote
+            sticker_url, sticker_label = sticker_picture(sticker)
+            token = ":" + (sticker_label or "Super Sticker") + ":"
+            start = len(text) + (1 if text else 0)
+            text = (text + " " if text else "") + token
+            if sticker_url:
+                emotes.append({"provider": "youtube", "id": "sticker", "name": token, "start": start,
+                               "end": start + len(token) - 1, "url": sticker_url, "sticker": True})
         if "liveChatMembershipItemRenderer" in item and name:
             # New member: only headerSubtext ("Welcome to …!"). Milestone: headerPrimaryText
             # ("Member for 6 months") plus the viewer's own optional message.
@@ -703,6 +742,8 @@ class YouTubeAdapter(BaseAdapter):
             amt_text = amt.get("simpleText") or ""
             if not amt_text and isinstance(amt.get("runs"), list):
                 amt_text = "".join(r.get("text", "") for r in amt["runs"])
+            paid, currency = parse_money(amt_text)
+            currency = currency or None
             # Keep amount as display string in message prefix if parse fails
             if amt_text and not text.startswith(amt_text):
                 prefix = f"[{amt_text}] "
@@ -733,6 +774,9 @@ class YouTubeAdapter(BaseAdapter):
                 raw=renderer,
                 emotes=emotes,
                 reply_to=reply_to,
+                paid_kind=("supersticker" if sticker is not None else "superchat") if is_paid else None,
+                paid_image=sticker_url or None,
+                paid_label=sticker_label or None,
             )
         )
 
@@ -752,6 +796,52 @@ class YouTubeAdapter(BaseAdapter):
         author_id = str(gift.get("authorExternalChannelId") or "")
         await self._emit_alert("gift", username=name, display_name=name, user_id=author_id, qty=qty)
 
+    def _note_gift_sender(self, action: dict) -> None:
+        """The gift animation that comes with a Jewels gift names the sender's channel id
+        (the gift chat line itself has only the name)."""
+        w = (((action.get("updateOrAddInteractivityWidgetAction") or {}).get("widgetRenderer") or {})
+             .get("interactivityWidgetRenderer") or {})
+        if w.get("type") != "INTERACTIVITY_WIDGET_TYPE_GIFT":
+            return
+        body = json.dumps(w)
+        cid = re.search(r'"liveChatAuthorExternalChannelId":\s*"([^"]+)"', body)
+        who = re.search(r'"giftA11yLabel":\s*"(@?[^"\s]+) sent', body)
+        if cid and who:
+            self._gift_senders[who.group(1).lstrip("@").lower()] = cid.group(1)
+            while len(self._gift_senders) > 100:
+                self._gift_senders.popitem(last=False)
+
+    async def _on_innertube_jewels(self, vm: dict) -> None:
+        """A YouTube gift bought with Jewels ("@name sent Star" plus the gift's picture).
+        YouTube gives no Jewel count, so it's listed by the gift's name."""
+        mid = str(vm.get("id") or "")
+        if mid and mid in self._seen_ids:
+            return
+        if mid:
+            self._remember(mid)
+        name = str((vm.get("authorName") or {}).get("content") or "").strip()
+        said = str((vm.get("text") or {}).get("content") or "").strip()
+        if not name or not said:
+            return
+        gift_name = said[5:].strip() if said.lower().startswith("sent ") else said
+        image = _best_source((vm.get("giftImage") or {}).get("sources"))
+        avatar = _best_source((((vm.get("authorAvatar") or {}).get("avatarViewModel") or {})
+                               .get("image") or {}).get("sources"))
+        author_id = self._gift_senders.get(name.lstrip("@").lower(), "")
+        token = ":" + (gift_name or "gift") + ":"
+        text = said + " " + token
+        emotes = []
+        if image:
+            start = len(said) + 1
+            emotes.append({"provider": "youtube", "id": "gift", "name": token, "start": start,
+                           "end": start + len(token) - 1, "url": image, "gift": True})
+        user = ChatUser(platform=Platform.YOUTUBE, id=author_id or name, username=name, display_name=name,
+                        profile_image_url=best_photo(avatar) or None)
+        await self._emit(ChatEvent(
+            platform=Platform.YOUTUBE, user=user, message=text, message_id=mid or None, is_paid=True,
+            raw=vm, emotes=emotes, paid_kind="jewels", paid_image=image or None, paid_label=gift_name or None,
+        ))
+
     @staticmethod
     def _runs_to_text(node: Any) -> str:
         return runs_to_text_and_emotes(node)[0]
@@ -766,6 +856,27 @@ class YouTubeAdapter(BaseAdapter):
 # ----------------------------------------------------------------------
 # Message runs -> text + emote ranges
 # ----------------------------------------------------------------------
+
+def _best_source(sources: Any) -> str:
+    """The widest url in a ``sources`` / ``thumbnails`` list, made https."""
+    best, best_w = "", -1
+    for t in sources or []:
+        if isinstance(t, dict) and t.get("url"):
+            w = int(t.get("width") or 0)
+            if w > best_w:
+                best, best_w = str(t["url"]), w
+    if best.startswith("//"):
+        best = "https:" + best
+    return best
+
+
+def sticker_picture(renderer: dict) -> tuple[str, str]:
+    """Super Sticker -> (picture url, its name, e.g. "Dancing cat")."""
+    st = renderer.get("sticker") or {}
+    url = _best_source(st.get("thumbnails"))
+    label = str((((st.get("accessibility") or {}).get("accessibilityData") or {}).get("label")) or "").strip()
+    return url, label[:60]
+
 
 def _emoji_image(emoji: dict) -> str:
     thumbs = ((emoji.get("image") or {}).get("thumbnails") or [])

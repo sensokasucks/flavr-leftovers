@@ -25,6 +25,9 @@
     bits: "cheer-alert bits-alert kind-bits",
     superchat: "superchat-alert donation-alert kind-superchat",
     donation: "donation-alert kind-donation",
+    supersticker: "sticker-alert superchat-alert donation-alert kind-supersticker",
+    jewels: "jewels-alert gift-alert donation-alert kind-jewels",
+    kicks: "kicks-alert donation-alert kind-kicks",
   };
 
   const queue = [];
@@ -99,9 +102,11 @@
     }
   }
 
-  function setMedia(kind) {
+  // a newer kind (Super Sticker, YouTube gift, KICKs) uses its older cousin's picture / sound
+  // until it has its own; a sticker or gift's own picture comes before both
+  function setMedia(kind, data) {
     clearMedia();
-    const src = mediaMap[kind];
+    const src = mediaMap[kind] || (data && data.image) || mediaMap[(data && data.falls_back) || ""];
     if (!src || !imgWrap) return;
     if (/\.webm$/i.test(src) && videoEl) {
       videoEl.src = src;
@@ -118,8 +123,8 @@
   }
 
   // one uploaded sound per kind (Admin → Alerts → Pictures and sounds); OBS plays without a click
-  function playSound(kind) {
-    const url = soundMap[kind];
+  function playSound(kind, data) {
+    const url = soundMap[kind] || soundMap[(data && data.falls_back) || ""];
     if (!url) return;
     try {
       let a = sounds[url];
@@ -164,8 +169,8 @@
       )
       .join(" · ");
 
-    setMedia(kind);
-    playSound(kind);
+    setMedia(kind, data);
+    playSound(kind, data);
     box.className = "alert-box " + extra + " show";
 
     const ms = Math.max(1500, Number(data.duration_ms) || 6000);

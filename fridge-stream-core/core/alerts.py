@@ -91,6 +91,34 @@ KINDS: dict[str, dict[str, Any]] = {
         "needs": ["amount"],
         "defaults": {"amount": 10, "currency": "USD"},
     },
+    # Kinds below borrow the picture / sound of `falls_back` until they have their own.
+    "supersticker": {
+        "label": "Super Sticker",
+        "title": "Super Sticker",
+        "template": "{name} sent a Super Sticker ({amount_fmt})!",
+        "accent": "youtube",
+        "needs": ["amount"],
+        "defaults": {"amount": 1.99, "currency": "USD", "item": "Dancing cat"},
+        "falls_back": "superchat",
+    },
+    "jewels": {
+        "label": "YouTube gift (Jewels)",
+        "title": "Gift",
+        "template": "{name} sent {item}!",
+        "accent": "youtube",
+        "needs": ["item"],
+        "defaults": {"item": "Star"},
+        "falls_back": "superchat",
+    },
+    "kicks": {
+        "label": "KICKs",
+        "title": "KICKs",
+        "template": "{name} sent {amount_fmt}!",
+        "accent": "kick",
+        "needs": ["amount"],
+        "defaults": {"amount": 100, "currency": "KICKs"},
+        "falls_back": "donation",
+    },
 }
 
 # Streamlabs / StreamElements class names applied to #alert-box.
@@ -104,6 +132,9 @@ KIND_CLASSES: dict[str, list[str]] = {
     "bits": ["cheer-alert", "bits-alert", "kind-bits"],
     "superchat": ["superchat-alert", "donation-alert", "kind-superchat"],
     "donation": ["donation-alert", "kind-donation"],
+    "supersticker": ["sticker-alert", "superchat-alert", "donation-alert", "kind-supersticker"],
+    "jewels": ["jewels-alert", "gift-alert", "donation-alert", "kind-jewels"],
+    "kicks": ["kicks-alert", "donation-alert", "kind-kicks"],
 }
 
 PLATFORMS = ("kick", "twitch", "youtube")
@@ -127,6 +158,7 @@ def kind_catalog() -> list[dict[str, Any]]:
                 "needs": list(meta["needs"]),
                 "defaults": dict(meta["defaults"]),
                 "accent": meta.get("accent") or "kick",
+                "falls_back": meta.get("falls_back") or "",
                 "css_classes": list(KIND_CLASSES.get(key, ["kind-" + key])),
             }
         )
@@ -171,6 +203,9 @@ def build_alert(
     duration_ms: Optional[int] = None,
     is_test: bool = False,
     alert_id: Optional[str] = None,
+    item: str = "",
+    image: str = "",
+    amount_text: str = "",
 ) -> dict[str, Any]:
     """Normalize an alert payload for WS + overlay."""
     kind_key = (kind or "follow").strip().lower()
@@ -186,7 +221,7 @@ def build_alert(
     name = (display_name or username or "Someone").strip() or "Someone"
     user = (username or name).strip().lstrip("@") or "someone"
 
-    if amount is None and "amount" in defaults:
+    if amount is None and "amount" in defaults and not amount_text:
         amount = defaults["amount"]
     if not currency and defaults.get("currency"):
         currency = str(defaults["currency"])
@@ -198,8 +233,11 @@ def build_alert(
         qty = int(defaults["qty"])
     if viewers is None and "viewers" in defaults:
         viewers = int(defaults["viewers"])
+    if not item and defaults.get("item"):
+        item = str(defaults["item"])
 
-    amount_fmt = _fmt_amount(amount, currency)
+    # the platform's own text ("CA$10.00") when the amount couldn't be read as a number
+    amount_fmt = _fmt_amount(amount, currency) if amount is not None else (amount_text or "")
     headline = meta["template"].format(
         name=name,
         months=months if months is not None else "",
@@ -207,6 +245,7 @@ def build_alert(
         viewers=viewers if viewers is not None else "",
         amount=amount if amount is not None else "",
         amount_fmt=amount_fmt or (str(amount) if amount is not None else ""),
+        item=item or "a gift",
     )
 
     dur = duration_ms if duration_ms is not None else 6000
@@ -230,6 +269,10 @@ def build_alert(
         "qty": qty,
         "viewers": viewers,
         "message": (message or "").strip(),
+        # the sticker / gift's name and picture (shown when no picture is uploaded for the kind)
+        "item": item or "",
+        "image": image or "",
+        "falls_back": meta.get("falls_back") or "",
         "duration_ms": dur,
         "is_test": bool(is_test),
         "css_classes": css_classes_for(kind_key),

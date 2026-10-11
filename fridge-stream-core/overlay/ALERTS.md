@@ -51,6 +51,11 @@ Kind classes on `#alert-box` (Streamlabs names):
 | Bits / cheer | `cheer-alert bits-alert kind-bits` |
 | Super Chat | `superchat-alert donation-alert kind-superchat` |
 | Donation | `donation-alert kind-donation` |
+| Super Sticker | `sticker-alert superchat-alert donation-alert kind-supersticker` |
+| YouTube gift (Jewels) | `jewels-alert gift-alert donation-alert kind-jewels` |
+| KICKs | `kicks-alert donation-alert kind-kicks` |
+
+Super Sticker, YouTube gift and KICKs use the Super Chat's / Super Chat's / Donation's picture and sound until you give them their own (`supersticker.png`, `jewels.mp3`, `kicks.webm` …). A sticker or gift with no picture of its own shows the sticker or gift.
 
 StreamElements aliases also present: `.alertbox-message`, `.alertbox-message-name`, `.alertbox-message-announcement`, `.alertbox-message-message`.
 

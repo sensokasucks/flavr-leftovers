@@ -143,9 +143,13 @@ def kick_event_alert(event_name: str, data: dict[str, Any]) -> Optional[dict[str
         msg = data.get("message")       # (the viewer's message sits beside the gift, not inside it)
         if isinstance(msg, dict):
             msg = msg.get("content") or msg.get("message") or ""
-        return {"kind": "donation", "username": name, "display_name": name,
+        # the gift's own name / picture when Kick sends them (not seen in a capture yet)
+        item = str(gift.get("name") or gift.get("title") or "")
+        image = next((str(gift[k]) for k in ("image_url", "image", "icon_url", "icon")
+                      if isinstance(gift.get(k), str) and str(gift[k]).startswith("http")), "")
+        return {"kind": "kicks", "username": name, "display_name": name,
                 "user_id": str(sender.get("id") or ""), "amount": amount, "currency": "KICKs",
-                "message": str(msg or "")}
+                "message": str(msg or ""), "item": item, "image": image}
     return None
 
 

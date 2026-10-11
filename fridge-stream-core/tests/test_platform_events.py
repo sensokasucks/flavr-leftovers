@@ -83,11 +83,11 @@ class KickHostsAndKicks(unittest.TestCase):
     def test_kicks(self):
         a = kick_event_alert("KicksGifted", {"message": "gg", "sender": {"id": 5, "username": "Tipper"},
                                              "gift": {"amount": 100, "name": "Rage Quit"}})
-        self.assertEqual((a["kind"], a["amount"], a["currency"], a["message"], a["user_id"]),
-                         ("donation", 100.0, "KICKs", "gg", "5"))
+        self.assertEqual((a["kind"], a["amount"], a["currency"], a["message"], a["user_id"], a["item"]),
+                         ("kicks", 100.0, "KICKs", "gg", "5", "Rage Quit"))
         self.assertIsNone(kick_event_alert("KicksGifted", {"sender": {"username": "Tipper"}, "gift": {}}))
-        self.assertEqual(build_alert(kind="donation", username="Tipper", amount=100, currency="KICKs")["headline"],
-                         "Tipper donated 100 KICKs!")
+        self.assertEqual(build_alert(kind="kicks", username="Tipper", amount=100, currency="KICKs")["headline"],
+                         "Tipper sent 100 KICKs!")
 
     def test_pusher_frames_alert_once(self):
         rig = Rig(KickAdapter, {"kick": {"channel_slug": "fridge", "chatroom_id": 1, "avatars": False}})
@@ -98,7 +98,7 @@ class KickHostsAndKicks(unittest.TestCase):
         tip = json.dumps({"event": "KicksGifted", "channel": "channel_9",
                           "data": json.dumps({"sender": {"username": "Tipper"}, "gift": {"amount": 50}})})
         run(rig.adapter._handle_raw(tip))
-        self.assertEqual([(a["kind"], a["platform"]) for a in rig.alerts], [("raid", "kick"), ("donation", "kick")])
+        self.assertEqual([(a["kind"], a["platform"]) for a in rig.alerts], [("raid", "kick"), ("kicks", "kick")])
 
 
 if __name__ == "__main__":

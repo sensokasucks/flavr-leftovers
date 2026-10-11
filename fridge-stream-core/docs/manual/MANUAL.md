@@ -24,6 +24,8 @@ Since the 7 October manual. A few pictures were taken before these changes, so s
 - **Highlighted messages:** Twitch "Highlight My Message" shows in a purple box on the chat overlay, gigantified emotes are drawn big, and Super Chats, Kicks and Bits are marked as paid (section 9).
 - **YouTube replies to Super Chats** show "↩ Replying to", and Twitch emotes in replies land in the right place (section 9).
 - **Games are plugins** you add yourself from a separate download (**Settings → Game plugins**, Part 5). Core runs fine without any.
+- **Paid list** (**On stream → Paid**): every Super Chat, Super Sticker, YouTube gift, bits cheer, power-up and KICKs tip, plus subs and memberships, with a tick box so you can see who you haven't thanked yet (section 8).
+- **YouTube Super Stickers and gifts** now show in chat with their pictures, and have their own alerts (sections 9 and 13).
 - **Safer:** admin and mod names are tied to a platform when Kick and Twitch are both on (section 6), CSV exports can't run as spreadsheet formulas, and Core keeps up with a busy chat.
 
 ## Contents
@@ -235,6 +237,21 @@ Core shows chat live without keeping it. If you want a record, turn on **Chat hi
 
 ![Chat history](images/sc-chat-history.png)
 
+### Paid list
+
+**On stream → Paid** lists every paid message and tip from every platform, so none gets missed while chat is busy: YouTube Super Chats, Super Stickers and gifts bought with Jewels, Twitch bits cheers and bits power-ups (giant emotes, message effects), Kick KICKs, plus subs, resubs, gifted subs and YouTube memberships. Each row has the time, platform, type, name, amount, message and the sticker or gift picture. **Tick** a row once you've read it out or thanked them. The number next to **Paid** in the menu counts the paid messages and tips you haven't ticked.
+
+The list is saved with the chat history (`data\stream_core.db`), so it survives a Core restart, and it is kept even when **Save chat history** is off. A red-flagged chatter's paid message is still listed, marked 🚩, but never shown on stream.
+
+- **Filters:** not ticked / ticked / all; this stream, today, the last 7 days, dates you pick, or everything; **Money and tips**, **Subs and memberships** or everything; platforms; **Types** (tick the kinds you want); **At least** (an amount in each row's own unit, so 5 means 5.00 of any money, 5 bits or 5 KICKs); with or without a message; a name or words; oldest, newest or biggest first. The page remembers your filters.
+- The line above the table adds up what is shown, per currency (for example *$42.00 · €5.00 · 1,200 bits · 300 KICKs · 3 × Jewels gift*).
+- **Tick all shown** ticks every row the filters match. **Download CSV** saves them as a spreadsheet.
+- **Delete ticked rows older than … days** tidies the list. Nothing is deleted unless you press it, and unticked rows are never deleted.
+
+YouTube doesn't say what a Jewels gift is worth, so gifts show their name and picture instead of an amount. Twitch's chat doesn't say how many bits a power-up cost either.
+
+![Paid list](images/sc-paid.png)
+
 ## 9. What Core adds to a message
 
 Every message that reaches an overlay or Stream Rooms carries:
@@ -242,6 +259,7 @@ Every message that reaches an overlay or Stream Rooms carries:
 - the platform, the chatter's name, colour and badges (mod, sub, VIP) and their **profile picture** (YouTube sends it; Kick is looked up; Twitch is looked up once you connect your Twitch account, section 5), saved by Core;
 - whether it's **paid** (Super Chats, Kicks, Bits) or **highlighted** with Twitch channel points: the chat overlay draws "Highlight My Message" in Twitch's purple box and a "Gigantify an Emote" message with its emote three times bigger, and Stream Rooms gives them a purple or gold bubble;
 - **emotes** as pictures: Twitch emotes plus BetterTTV, FrankerFaceZ and 7TV (animated ones move), Kick emotes, and YouTube's custom emoji;
+- YouTube **Super Stickers** and **gifts bought with Jewels** as their pictures, drawn bigger than an emote, with the amount in front of a sticker ("[$2.00]") and "sent Star" in front of a gift;
 - **who it replies to**: a message sent with Kick's or Twitch's reply button shows "↩ Replying to *Name*: what they said" on the chat overlay and in Stream Rooms. (On Twitch the "@Name" at the start of such a reply is left out, because the reply line already says who it's for, and the reply's emotes land in the right place. On YouTube a reply to a Super Chat shows the same way.)
 - the chatter's **title** from chat games (*Regular*, *Die-hard*, *Legend*), once they have one.
 
@@ -330,7 +348,9 @@ Boards (polls, predictions, the hype meter, heist crews, trivia) show on the **r
 
 ## 13. Alerts
 
-Alerts fire from real events as they happen: follows, subs, resubs and gifted subs (Twitch, YouTube memberships, Kick subs), raids and hosts, Twitch cheers, Kick Kicks gifts, YouTube Super Chats. Points can be awarded for them (section 7).
+Alerts fire from real events as they happen: follows, subs, resubs and gifted subs (Twitch, YouTube memberships, Kick subs), raids and hosts, Twitch cheers, Kick KICKs, YouTube Super Chats, Super Stickers and gifts bought with Jewels. Points can be awarded for subs, follows and gifted subs (section 7).
+
+Super Stickers, YouTube gifts and KICKs have their own alert kinds. Until you give one its own picture or sound, it borrows another's: Super Stickers and gifts use the Super Chat's, KICKs use the Donation's. A Super Sticker or gift with no picture of its own shows the sticker or gift itself.
 
 **Overlays → Alerts** is the test bench: fire any kind as **TestViewer** without a live event, pick a **skin** (**Classic**, **Card**, or **Custom CSS only**) and paste **Custom CSS**. How long an alert stays is `overlay.alert_duration_ms` in `config.yaml` (six seconds by default). The overlay uses the same ids and classes as Streamlabs and StreamElements alert boxes, so CSS you wrote or bought for those works here with little or no change: paste it, save, and the overlay picks it up without a restart. If the pack still fights the default look, switch the skin to **Custom CSS only**. **Live controls** has the same test buttons.
 

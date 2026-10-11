@@ -1233,3 +1233,45 @@ button.copied { border-color: var(--accent); color: var(--accent); }
 #chat-count { margin: 6px 16px; }
 .merge-results { display: flex; flex-direction: column; gap: 6px; margin: 6px 0 10px; }
 .merge-pick { text-align: left; }
+
+/* ---- Paid list (Admin → Paid) ---- */
+.nav-badge {
+  display: inline-block;
+  min-width: 1.5em;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #e0b000;
+  color: #111;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  text-align: center;
+}
+.paid-filters select, .paid-filters input[type="search"] { flex: none; min-width: 0; }
+.paid-filters #paid-q { flex: 1; min-width: 160px; }
+.paid-plats { display: inline-flex; gap: 10px; align-items: center; }
+.toolbar input.num-sm { width: 6em; min-width: 0; flex: none; }
+.toolbar label:not(.check) { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.toolbar .spacer { flex: 1; }
+.paid-kinds-box { position: relative; }
+.paid-kinds-box summary { cursor: pointer; padding: 6px 4px; }
+.paid-kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px 14px;
+  padding: 8px 0; min-width: min(640px, 80vw); }
+.paid-kinds label.check { display: flex; align-items: center; gap: 6px; }
+.paid-totals { margin: 4px 0 10px; font-size: 15px; }
+.paid-totals b { color: #ffd34d; }
+#paid-table td { vertical-align: middle; }
+#paid-table td:first-child { width: 2.4em; text-align: center; }
+#paid-table td:first-child input { width: 20px; height: 20px; }
+#paid-table tr.paid-done td { opacity: 0.55; }
+#paid-table tr.rf-row td { background: rgba(255, 92, 92, 0.08); }
+#paid-table .paid-who { display: inline-flex; align-items: center; gap: 8px; }
+#paid-table .paid-who img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+#paid-table .paid-amount { font-weight: 700; color: #ffd34d; white-space: nowrap; }
+#paid-table .paid-pic { height: 40px; width: auto; vertical-align: middle; margin-right: 6px; }
+#paid-table .paid-item { color: var(--muted); }
+.plat-chip { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 700; color: #111; }
+.plat-chip.youtube { background: #ff4e45; color: #fff; }
+.plat-chip.twitch { background: #a970ff; color: #fff; }
+.plat-chip.kick { background: #53fc18; }

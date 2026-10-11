@@ -35,6 +35,7 @@
       <button class="tab" data-keywords="stream roll alert fire test quick buttons" data-tab="live">Live controls</button>
       <button class="tab" data-keywords="poll predict prediction trivia rate rating request queue moments clip heist slots duel hype combo emote launch cheer boo streak claim seat games" data-tab="fun">Chat games</button>
       <button class="tab" data-keywords="running adapters platforms health metrics viewers" data-tab="status">Status</button>
+      <button class="tab" data-keywords="paid super chat super sticker jewels gift bits power-up cheer kicks tip donation sub member checklist thank missed money" data-tab="paid" data-title="Paid">Paid <span class="nav-badge" id="paid-badge" hidden title="Paid messages and tips not ticked yet"></span></button>
     </div>
 
     <div class="nav-group">
@@ -775,6 +776,9 @@
               <input id="alert-duration" type="number" min="1500" max="30000" step="500" value="6000" />
             </label>
           </div>
+          <label>Gift or sticker name (YouTube gift, Super Sticker)
+            <input id="alert-item" type="text" placeholder="Star" maxlength="60" />
+          </label>
           <label>Optional message
             <input id="alert-message" type="text" placeholder="Thanks for the raid!" />
           </label>
@@ -1030,6 +1034,72 @@
       </thead>
       <tbody></tbody>
     </table>
+  </section>
+
+  <!-- Paid list (core/paid.py): every paid message, tip and sub with a tick box -->
+  <section id="tab-paid" class="panel">
+    <p class="tab-intro">Every Super Chat, Super Sticker, YouTube gift, bits cheer, power-up and KICKs tip, plus subs and memberships, from every platform. Tick a row once you've read it out or thanked them. The list is saved, so nothing is lost when Core restarts.</p>
+    <div class="toolbar paid-filters">
+      <select id="paid-status" title="Which rows to show">
+        <option value="open">Not ticked</option>
+        <option value="done">Ticked</option>
+        <option value="all">All</option>
+      </select>
+      <select id="paid-when" title="When">
+        <option value="stream">This stream</option>
+        <option value="today">Today</option>
+        <option value="week">Last 7 days</option>
+        <option value="dates">Pick dates…</option>
+        <option value="all">Everything</option>
+      </select>
+      <span id="paid-dates" hidden>
+        <input type="date" id="paid-from" aria-label="From" /> to <input type="date" id="paid-to" aria-label="To" />
+      </span>
+      <select id="paid-group" title="Money and tips, or subs and memberships">
+        <option value="money">Money and tips</option>
+        <option value="subs">Subs and memberships</option>
+        <option value="all">Everything</option>
+      </select>
+      <span class="paid-plats" role="group" aria-label="Platforms">
+        <label class="check"><input type="checkbox" class="paid-plat" value="youtube" checked /> YouTube</label>
+        <label class="check"><input type="checkbox" class="paid-plat" value="twitch" checked /> Twitch</label>
+        <label class="check"><input type="checkbox" class="paid-plat" value="kick" checked /> Kick</label>
+      </span>
+    </div>
+    <div class="toolbar paid-filters">
+      <details class="paid-kinds-box">
+        <summary>Types <span id="paid-kinds-summary" class="muted">(all)</span></summary>
+        <div id="paid-kinds" class="paid-kinds"></div>
+      </details>
+      <label title="Only amounts this big or bigger, in each row's own unit: 5 = 5.00 of any money, 5 bits or 5 KICKs">At least <input id="paid-min" type="number" min="0" step="any" placeholder="any" class="num-sm" /></label>
+      <select id="paid-has-msg" title="Rows with a message">
+        <option value="">With or without a message</option>
+        <option value="yes">With a message</option>
+        <option value="no">Without a message</option>
+      </select>
+      <input id="paid-q" type="search" placeholder="Name or words…" />
+      <select id="paid-sort" title="Order">
+        <option value="oldest">Oldest first</option>
+        <option value="newest">Newest first</option>
+        <option value="biggest">Biggest first</option>
+      </select>
+    </div>
+    <p id="paid-totals" class="paid-totals" role="status" aria-live="polite"></p>
+    <div class="toolbar">
+      <button type="button" id="paid-tick-all" title="Tick every row these filters show">Tick all shown</button>
+      <button type="button" id="paid-export" title="Every row these filters match, as a spreadsheet">Download CSV</button>
+      <span class="spacer"></span>
+      <label title="Ticked rows older than this many days are deleted. Unticked rows are never deleted.">Delete ticked rows older than <input id="paid-del-days" type="number" min="0" value="30" class="num-sm" /> days</label>
+      <button type="button" id="paid-del">Delete</button>
+      <span id="paid-msg" class="action-msg" role="status" aria-live="polite"></span>
+    </div>
+    <table id="paid-table">
+      <thead>
+        <tr><th title="Ticked = read out or thanked">✓</th><th>Time</th><th>Platform</th><th>Type</th><th>Name</th><th>Amount</th><th>Message</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="paid-empty" class="muted" hidden></p>
   </section>
 
   <!-- Red flags: phrases that hide a chatter from every overlay and Stream Rooms -->

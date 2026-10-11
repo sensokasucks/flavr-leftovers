@@ -688,5 +688,6 @@ class CoreState:
         self.reactions = None
         self.chat_games = None
         self.avatars = None
+        self.paid = None         # core.paid.PaidLog (Admin → Paid)
         self.apply_avatar_settings = None
         self.import_avatar_hide = None

@@ -101,6 +101,7 @@ class AlertTestBody(BaseModel):
     viewers: Optional[int] = None
     message: str = ""
     duration_ms: Optional[int] = None
+    item: str = ""            # a YouTube gift's / Super Sticker's name
 
 
 class AlertStyleBody(BaseModel):
@@ -561,6 +562,112 @@ def create_admin_router(core_state) -> APIRouter:
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    # ------------------------------------------------------------------
+    # Paid list (core/paid.py): paid messages, tips and subs with a tick box
+    # ------------------------------------------------------------------
+
+    def _paid():
+        paid = getattr(core_state, "paid", None)
+        if paid is None:
+            raise HTTPException(503, "Paid list not ready")
+        return paid
+
+    def _paid_filters(status: str, since: Optional[float], until: Optional[float], platforms: str,
+                      group: str, kinds: str, min: Optional[float], has_message: str, q: str, sort: str) -> dict:
+        return {"status": status, "since": since, "until": until, "platforms": platforms, "group": group,
+                "kinds": kinds, "min": min, "has_message": has_message, "q": q, "sort": sort}
+
+    @router.get("/paid")
+    async def list_paid(
+        status: str = "open", since: Optional[float] = None, until: Optional[float] = None,
+        platforms: str = "", group: str = "money", kinds: str = "", min: Optional[float] = None,
+        has_message: str = "", q: str = "", sort: str = "oldest", when: str = "",
+        limit: int = Query(500, ge=1, le=2000),
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        """Rows matching the filters, the totals per currency, and how many are still unticked.
+
+        ``status`` open | done | all; ``since`` / ``until`` unix seconds; ``platforms`` and ``kinds``
+        comma lists; ``group`` money | subs | all; ``min`` smallest amount in each row's own unit;
+        ``has_message`` yes | no; ``sort`` oldest | newest | biggest."""
+        _auth(x_admin_token)
+        from core.paid import kind_catalog
+        started = await _stream_started()
+        if when == "stream" and since is None:
+            # "This stream": since chat came back after a quiet gap (else since midnight)
+            since = started or _midnight()
+        out = await _paid().list(_paid_filters(status, since, until, platforms, group, kinds, min,
+                                               has_message, q, sort), limit=limit)
+        out["kinds"] = kind_catalog()
+        out["stream_started"] = started
+        return out
+
+    def _midnight() -> float:
+        t = time.localtime()
+        return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
+
+    async def _stream_started() -> Optional[float]:
+        """Start of the current stream (chat games' streams table), for the "This stream" filter."""
+        store = getattr(core_state, "store", None)
+        if store is None:
+            return None
+
+        def _q():
+            with store._connect() as conn:
+                row = conn.execute("SELECT started FROM streams ORDER BY id DESC LIMIT 1").fetchone()
+                return float(row[0]) if row else None
+        try:
+            return await store._run(_q)
+        except Exception:
+            return None
+
+    @router.get("/paid/count")
+    async def paid_count(x_admin_token: Optional[str] = Header(None)):
+        """Paid messages and tips not ticked yet (the Paid tab's badge)."""
+        _auth(x_admin_token)
+        return {"unticked": await _paid().unticked()}
+
+    @router.post("/paid/tick")
+    async def tick_paid(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """``{"ids": [1, 2], "done": true}``, or ``{"filters": {...}, "done": true}`` for every row
+        the filters match ("Tick all shown")."""
+        _auth(x_admin_token)
+        done = bool(body.get("done", True))
+        if isinstance(body.get("filters"), dict):
+            f = dict(body["filters"])
+            if f.get("when") == "stream" and f.get("since") in (None, ""):
+                f["since"] = (await _stream_started()) or _midnight()
+            n = await _paid().tick_matching(f, done)
+        else:
+            ids = body.get("ids") if isinstance(body.get("ids"), list) else []
+            n = await _paid().tick(ids, done)
+        return {"ok": True, "changed": n, "unticked": await _paid().unticked()}
+
+    @router.post("/paid/delete-ticked")
+    async def delete_ticked_paid(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Delete ticked rows older than ``days`` (0 = every ticked row). Never runs on its own."""
+        _auth(x_admin_token)
+        try:
+            days = float(body.get("days", 30))
+        except (TypeError, ValueError):
+            raise HTTPException(400, "days must be a number")
+        return {"ok": True, "deleted": await _paid().delete_ticked(days)}
+
+    @router.get("/paid/export")
+    async def export_paid(
+        status: str = "all", since: Optional[float] = None, until: Optional[float] = None,
+        platforms: str = "", group: str = "", kinds: str = "", min: Optional[float] = None,
+        has_message: str = "", q: str = "", sort: str = "oldest", when: str = "",
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        if when == "stream" and since is None:
+            since = (await _stream_started()) or _midnight()
+        csv_text = await _paid().export_csv(_paid_filters(status, since, until, platforms, group, kinds, min,
+                                                          has_message, q, sort))
+        return Response(content=csv_text, media_type="text/csv",
+                        headers={"Content-Disposition": 'attachment; filename="paid.csv"'})
 
     # ------------------------------------------------------------------
     # Config + commands editor (hybrid GUI)
@@ -1241,6 +1348,7 @@ def create_admin_router(core_state) -> APIRouter:
                 message=body.message,
                 duration_ms=duration,
                 is_test=True,
+                item=body.item.strip()[:60],
             )
         except ValueError as e:
             raise HTTPException(400, str(e)) from e

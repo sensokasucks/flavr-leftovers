@@ -103,7 +103,9 @@
       if (e.start < pos || e.end >= chars.length) continue;
       if (e.start > pos) parts.push(escapeHtml(chars.slice(pos, e.start).join("")));
       const name = escapeHtml(e.name || chars.slice(e.start, e.end + 1).join(""));
-      parts.push(`<img class="emote" src="${escapeHtml(e.url)}" alt="${name}" title="${name}" loading="lazy" />`);
+      // YouTube Super Stickers and Jewels gifts are drawn bigger (.emote.sticker / .emote.gift)
+      const cls = e.sticker ? "emote sticker" : e.gift ? "emote gift" : "emote";
+      parts.push(`<img class="${cls}" src="${escapeHtml(e.url)}" alt="${name}" title="${name}" loading="lazy" />`);
       pos = e.end + 1;
     }
     if (pos < chars.length) parts.push(escapeHtml(chars.slice(pos).join("")));

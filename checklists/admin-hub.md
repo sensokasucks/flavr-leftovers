@@ -7,6 +7,7 @@ Home: `fridge-stream-core/admin/` (`index.html`, `admin.js`, `admin.css`) + `api
 Tabs, in order:
 
 - [ ] **Status** — adapters, games, credits on/off + unique count, points on/off
+- [ ] **Paid** (On stream, `#paid`) — paid messages, tips and subs with tick boxes, filters remembered in `localStorage`, badge in the menu (`data-title="Paid"` keeps the page title clean); see [paid.md](paid.md)
 - [ ] **Sources & overlays** — copyable Webpage URLs + descriptions, including sibling Fridge apps
 - [ ] **Integrations** — command tester (dry-run / live), per-game sub-panels, health recheck, metrics test, overlay preview
 - [ ] **Market** — tape + per-game vault/dynamo knobs (see [market.md](market.md)); one sub-page per game plugin with `market` fields, drawn from its `plugin.json`
