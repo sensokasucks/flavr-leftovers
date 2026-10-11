@@ -66,11 +66,15 @@ KINDS: dict[str, dict[str, str]] = {
     "subscribe": {"label": "Sub / new member", "group": "subs", "platform": ""},
     "resub": {"label": "Resub / member milestone", "group": "subs", "platform": ""},
     "gift": {"label": "Gifted subs / memberships", "group": "subs", "platform": ""},
+    "member": {"label": "New member", "group": "subs", "platform": "youtube"},
+    "member_milestone": {"label": "Member milestone", "group": "subs", "platform": "youtube"},
+    "member_gift": {"label": "Gifted memberships", "group": "subs", "platform": "youtube"},
 }
 
 # Alert kinds (core/alerts.py) that go on the list when a platform sends them. Paid chat
 # (Super Chats, bits ...) is listed from the chat message itself, not from its alert.
-ALERT_KINDS = ("subscribe", "resub", "gift", "kicks", "donation", "jewels")
+ALERT_KINDS = ("subscribe", "resub", "gift", "kicks", "donation", "jewels",
+               "member", "member_milestone", "member_gift")
 
 GROUPS = ("money", "subs")
 SORTS = {

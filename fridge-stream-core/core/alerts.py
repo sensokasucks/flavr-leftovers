@@ -119,6 +119,35 @@ KINDS: dict[str, dict[str, Any]] = {
         "defaults": {"amount": 100, "currency": "KICKs"},
         "falls_back": "donation",
     },
+    # YouTube memberships: their own kinds, so a membership can look and sound different
+    # from a Twitch / Kick sub. Until they have their own picture they borrow the sub's.
+    "member": {
+        "label": "YouTube new member",
+        "title": "New member",
+        "template": "{name} became a member!",
+        "accent": "youtube",
+        "needs": [],
+        "defaults": {},
+        "falls_back": "subscribe",
+    },
+    "member_milestone": {
+        "label": "YouTube member milestone",
+        "title": "Member milestone",
+        "template": "{name} has been a member for {months} months!",
+        "accent": "youtube",
+        "needs": ["months"],
+        "defaults": {"months": 6},
+        "falls_back": "resub",
+    },
+    "member_gift": {
+        "label": "YouTube gifted memberships",
+        "title": "Gifted memberships",
+        "template": "{name} gifted {qty} membership(s)!",
+        "accent": "youtube",
+        "needs": ["qty"],
+        "defaults": {"qty": 5},
+        "falls_back": "gift",
+    },
 }
 
 # Streamlabs / StreamElements class names applied to #alert-box.
@@ -135,6 +164,9 @@ KIND_CLASSES: dict[str, list[str]] = {
     "supersticker": ["sticker-alert", "superchat-alert", "donation-alert", "kind-supersticker"],
     "jewels": ["jewels-alert", "gift-alert", "donation-alert", "kind-jewels"],
     "kicks": ["kicks-alert", "donation-alert", "kind-kicks"],
+    "member": ["member-alert", "subscriber-alert", "kind-member"],
+    "member_milestone": ["member-alert", "subscriber-alert", "resub-alert", "kind-member_milestone"],
+    "member_gift": ["member-alert", "sub-gift-alert", "gift-alert", "kind-member_gift"],
 }
 
 PLATFORMS = ("kick", "twitch", "youtube")

@@ -90,14 +90,16 @@ class TwitchTests(unittest.TestCase):
 class YouTubeTests(unittest.TestCase):
     def test_official(self):
         author = {"displayName": "Ann", "channelId": "UC1"}
-        self.assertEqual(official_member_alert({"type": "newSponsorEvent"}, author)[1]["kind"], "subscribe")
+        _, n = official_member_alert({"type": "newSponsorEvent",
+                                      "newSponsorDetails": {"memberLevelName": "Gold"}}, author)
+        self.assertEqual((n["kind"], n["item"]), ("member", "Gold"))
         _, r = official_member_alert({"type": "memberMilestoneChatEvent",
                                       "memberMilestoneChatDetails": {"memberMonth": 4, "userComment": "yo"}},
                                      author)
-        self.assertEqual((r["kind"], r["months"], r["message"]), ("resub", 4, "yo"))
+        self.assertEqual((r["kind"], r["months"], r["message"]), ("member_milestone", 4, "yo"))
         _, g = official_member_alert({"type": "membershipGiftingEvent",
                                       "membershipGiftingDetails": {"giftMembershipsCount": 5}}, author)
-        self.assertEqual((g["kind"], g["qty"]), ("gift", 5))
+        self.assertEqual((g["kind"], g["qty"]), ("member_gift", 5))
         self.assertEqual(official_member_alert({"type": "giftMembershipReceivedEvent"}, author), (True, None))
         self.assertEqual(official_member_alert({"type": "textMessageEvent"}, author), (False, None))
 
@@ -108,7 +110,7 @@ class YouTubeTests(unittest.TestCase):
             "snippet": {"type": "newSponsorEvent", "displayMessage": "Ann is a new member"},
             "authorDetails": {"displayName": "Ann", "channelId": "UC1"},
         }))
-        self.assertEqual([a["kind"] for a in rig.alerts], ["subscribe"])
+        self.assertEqual([a["kind"] for a in rig.alerts], ["member"])
         self.assertEqual(rig.chat, [])
 
     def test_innertube_new_member(self):
@@ -118,7 +120,8 @@ class YouTubeTests(unittest.TestCase):
                 "id": "a", "authorName": {"simpleText": "Ann"}, "authorExternalChannelId": "UC1",
                 "headerSubtext": {"runs": [{"text": "Welcome to Fridge!"}]},
             }}}}))
-        self.assertEqual([a["kind"] for a in rig.alerts], ["subscribe"])
+        self.assertEqual([(a["kind"], a["item"]) for a in rig.alerts], [("member", "Fridge")])
+        self.assertEqual(rig.alerts[0]["falls_back"], "subscribe")
         self.assertEqual(rig.chat, [])
 
     def test_innertube_milestone_keeps_chat(self):
@@ -130,7 +133,7 @@ class YouTubeTests(unittest.TestCase):
                 "message": {"runs": [{"text": "love it"}]},
             }}}}))
         a = rig.alerts[0]
-        self.assertEqual((a["kind"], a["months"], a["message"]), ("resub", 12, "love it"))
+        self.assertEqual((a["kind"], a["months"], a["message"]), ("member_milestone", 12, "love it"))
         self.assertEqual([e.message for e in rig.chat], ["love it"])
 
     def test_innertube_gift(self):
@@ -144,7 +147,7 @@ class YouTubeTests(unittest.TestCase):
                 }},
             }}}}))
         a = rig.alerts[0]
-        self.assertEqual((a["kind"], a["qty"], a["display_name"]), ("gift", 20, "Gus"))
+        self.assertEqual((a["kind"], a["qty"], a["display_name"]), ("member_gift", 20, "Gus"))
 
 
 class KickTests(unittest.TestCase):
@@ -194,6 +197,19 @@ class PointsTests(unittest.TestCase):
         self.assertEqual(self.alert("subscribe", user_id="1")["points_awarded"], 500)
         self.assertEqual(self.alert("resub", user_id="1", months=2)["points_awarded"], 500)
         self.assertEqual(self.alert("gift", username="amy", user_id="2", qty=3)["points_awarded"], 3000)
+
+    def test_youtube_memberships_pay_like_subs(self):
+        self.assertEqual(self.alert("member", platform="youtube", user_id="UC1")["points_awarded"], 500)
+        self.assertEqual(self.alert("member_milestone", platform="youtube", user_id="UC1",
+                                    months=6)["points_awarded"], 500)
+        self.assertEqual(self.alert("member_gift", platform="youtube", user_id="UC2",
+                                    qty=2)["points_awarded"], 2000)
+
+    def test_jewels_gift_points_default_off(self):
+        self.assertNotIn("points_awarded", self.alert("jewels", platform="youtube", user_id="UC3", item="Star"))
+        self.core.config["points"]["jewels_points"] = 75
+        p = self.alert("jewels", platform="youtube", user_id="UC3", item="Star")
+        self.assertEqual(p["points_awarded"], 75)
 
     def test_follow_pays_once(self):
         self.assertEqual(self.alert("follow", user_id="1")["points_awarded"], 250)

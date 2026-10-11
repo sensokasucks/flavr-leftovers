@@ -112,6 +112,7 @@ points:
   sub_points: 500         # new sub or resub (Twitch / YouTube member / Kick)
   follow_points: 250      # first follow only (unfollow + refollow pays nothing)
   gift_points: 1000       # to the gifter, for each sub they gift
+  jewels_points: 0        # per YouTube gift bought with Jewels (0 = off)
   # Header X-Admin-Token for /admin. "change-me" is NOT accepted: leave it and
   # Core generates a random token in data/admin_token.txt. The console shows only
   # its first characters; double-click data/Open dashboard.url to sign in.

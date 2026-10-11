@@ -22,16 +22,21 @@
   // names streamers already use in Streamlabs / StreamElements URLs and widget settings
   const KIND_ALIASES = {
     follower: "follow", followers: "follow", sub: "subscribe", subs: "subscribe", subscriber: "subscribe",
-    subscription: "subscribe", member: "subscribe", membership: "subscribe", resubscribe: "resub",
+    subscription: "subscribe", membership: "member", members: "member", milestone: "member_milestone",
+    giftmembership: "member_gift", resubscribe: "resub",
     gifted: "gift", giftsub: "gift", subgift: "gift", cheer: "bits", bit: "bits", tip: "donation",
     tips: "donation", donate: "donation", sticker: "supersticker", jewel: "jewels", kick: "kicks",
   };
   const GROUPS = {
     money: ["superchat", "supersticker", "jewels", "bits", "kicks", "donation"],
-    subs: ["subscribe", "resub", "gift"],
+    subs: ["subscribe", "resub", "gift", "member", "member_milestone", "member_gift"],
     community: ["follow", "raid", "host"],
   };
   const kindOf = (k) => KIND_ALIASES[k] || k;
+  // YouTube memberships used to arrive as subscribe / resub / gift: a URL that names those
+  // still gets the matching membership alerts (?platforms=twitch,kick keeps them out)
+  const FAMILY = { member: "subscribe", member_milestone: "resub", member_gift: "gift" };
+  const listed = (kinds, kind) => kinds.includes(kind) || (FAMILY[kind] && kinds.includes(FAMILY[kind]));
   const onlyPlatforms = list("platforms").concat(list("platform"));
   const onlyKinds = list("kinds").map(kindOf);
   list("group").forEach((g) => (GROUPS[g] || []).forEach((k) => onlyKinds.push(k)));
@@ -70,8 +75,8 @@
     const kind = lower(data.kind);
     if (data.is_test && !showTests) return false;
     if (onlyPlatforms.length && !onlyPlatforms.includes(lower(data.platform))) return false;
-    if (onlyKinds.length && !onlyKinds.includes(kind)) return false;
-    if (hideKinds.includes(kind)) return false;
+    if (onlyKinds.length && !listed(onlyKinds, kind)) return false;
+    if (listed(hideKinds, kind)) return false;
     const amt = data.amount == null ? null : Number(data.amount);
     if (amt != null && isFinite(amt)) {
       const cur = lower(data.currency);
@@ -121,6 +126,9 @@
     supersticker: "sticker-alert superchat-alert donation-alert kind-supersticker",
     jewels: "jewels-alert gift-alert donation-alert kind-jewels",
     kicks: "kicks-alert donation-alert kind-kicks",
+    member: "member-alert subscriber-alert kind-member",
+    member_milestone: "member-alert subscriber-alert resub-alert kind-member_milestone",
+    member_gift: "member-alert sub-gift-alert gift-alert kind-member_gift",
   };
 
   const queue = [];

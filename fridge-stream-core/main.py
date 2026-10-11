@@ -1336,6 +1336,9 @@ class StreamCore:
             ov = self.config.get("overlay") or {}
             payload["duration_ms"] = max(1500, min(30000, int(ov.get("alert_duration_ms") or 6000)))
             await self._award_alert_points(payload)
+        elif payload.get("source") == "chat" and payload.get("kind") == "jewels":
+            # a YouTube gift arrives as a chat line; its alert is where the gifter gets points
+            await self._award_alert_points(payload)
         self.recent_alerts.append(payload)
         if len(self.recent_alerts) > self.recent_alerts_max:
             del self.recent_alerts[: -self.recent_alerts_max]
@@ -1359,8 +1362,10 @@ class StreamCore:
     async def _award_alert_points(self, payload: dict) -> None:
         """Points for a real sub / resub / follow / gift (never Alert-test ones).
 
-        `points.sub_points` per sub or resub, `points.follow_points` once per viewer,
-        `points.gift_points` to the gifter for each sub gifted. Sets `points_awarded`.
+        `points.sub_points` per sub or resub (YouTube new member and member milestone too),
+        `points.follow_points` once per viewer, `points.gift_points` to the gifter for each
+        sub or membership gifted, `points.jewels_points` per YouTube gift bought with Jewels
+        (default 0 = none). Sets `points_awarded`.
         """
         self._sync_live_config()
         pts = self.config.get("points") or {}
@@ -1377,11 +1382,16 @@ class StreamCore:
         once = False
         if kind in ("subscribe", "resub"):
             delta, reason = amount("sub_points"), "subscribed"
+        elif kind in ("member", "member_milestone"):
+            delta, reason = amount("sub_points"), "became a member" if kind == "member" else "member milestone"
         elif kind == "follow":
             delta, reason, once = amount("follow_points"), "followed", True
-        elif kind == "gift":
+        elif kind in ("gift", "member_gift"):
             qty = max(1, int(payload.get("qty") or 1))
-            delta, reason = amount("gift_points") * qty, f"gifted {qty} sub(s)"
+            what = "membership(s)" if kind == "member_gift" else "sub(s)"
+            delta, reason = amount("gift_points") * qty, f"gifted {qty} {what}"
+        elif kind == "jewels":
+            delta, reason = amount("jewels_points"), "sent " + (payload.get("item") or "a gift")
         else:
             return
         try:
@@ -1460,7 +1470,10 @@ class StreamCore:
         except ValueError:
             return
         payload["source"] = "chat"
-        payload["user_id"] = str(event.user.id or "")
+        uid = str(event.user.id or "")
+        if kind == "jewels" and uid.lower() == event.user.username:
+            uid = ""        # no channel id on this gift: let points find the chatter by name
+        payload["user_id"] = uid
         await self.bus.publish_alert(payload)
 
     async def _on_execute(self, req: ExecuteRequest) -> None:

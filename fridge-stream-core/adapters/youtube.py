@@ -76,6 +76,12 @@ def _member_months(header: str) -> int:
     return n * 12 if "year" in (header or "").lower() else n
 
 
+def _member_level(subtext: str) -> str:
+    """'Welcome to Gold Tier!' → 'Gold Tier' (the membership level). Anything else → ''."""
+    t = (subtext or "").strip().rstrip("!").strip()
+    return t[len("welcome to "):].strip() if t.lower().startswith("welcome to ") else ""
+
+
 # ----------------------------------------------------------------------
 # Replies to Super Chats (InnerTube)
 # ----------------------------------------------------------------------
@@ -140,14 +146,16 @@ def official_member_alert(snippet: dict, author: dict) -> tuple[bool, Optional[d
     # Same name as the chatter's ChatUser.username so Credits can tag them.
     who = {"username": name, "display_name": name, "user_id": str(author.get("channelId") or "")}
     if kind == "newSponsorEvent":
-        return True, {"kind": "subscribe", **who}
+        d = snippet.get("newSponsorDetails") or {}
+        return True, {"kind": "member", **who, "item": str(d.get("memberLevelName") or "")}
     if kind == "memberMilestoneChatEvent":
         d = snippet.get("memberMilestoneChatDetails") or {}
-        return True, {"kind": "resub", **who, "months": max(1, int(d.get("memberMonth") or 1)),
-                      "message": d.get("userComment") or ""}
+        return True, {"kind": "member_milestone", **who, "months": max(1, int(d.get("memberMonth") or 1)),
+                      "message": d.get("userComment") or "", "item": str(d.get("memberLevelName") or "")}
     if kind == "membershipGiftingEvent":
         d = snippet.get("membershipGiftingDetails") or {}
-        return True, {"kind": "gift", **who, "qty": max(1, int(d.get("giftMembershipsCount") or 1))}
+        return True, {"kind": "member_gift", **who, "qty": max(1, int(d.get("giftMembershipsCount") or 1)),
+                      "item": str(d.get("giftMembershipsLevelName") or "")}
     if kind == "giftMembershipReceivedEvent":
         return True, None
     return False, None
@@ -703,10 +711,11 @@ class YouTubeAdapter(BaseAdapter):
             # ("Member for 6 months") plus the viewer's own optional message.
             primary = self._runs_to_text(renderer.get("headerPrimaryText") or {})
             if primary:
-                await self._emit_alert("resub", username=name, display_name=name, user_id=author_id,
+                await self._emit_alert("member_milestone", username=name, display_name=name, user_id=author_id,
                                        months=_member_months(primary), message=text)
             else:
-                await self._emit_alert("subscribe", username=name, display_name=name, user_id=author_id)
+                level = _member_level(self._runs_to_text(renderer.get("headerSubtext") or {}))
+                await self._emit_alert("member", username=name, display_name=name, user_id=author_id, item=level)
         if not name or not text:
             return
 
@@ -811,7 +820,7 @@ class YouTubeAdapter(BaseAdapter):
             return
         qty = _first_int(self._runs_to_text(header.get("primaryText") or {})) or 1
         author_id = str(gift.get("authorExternalChannelId") or "")
-        await self._emit_alert("gift", username=name, display_name=name, user_id=author_id, qty=qty)
+        await self._emit_alert("member_gift", username=name, display_name=name, user_id=author_id, qty=qty)
 
     def _note_gift_sender(self, action: dict) -> None:
         """The gift animation that comes with a Jewels gift names the sender's channel id

@@ -4,7 +4,7 @@ Home: `core/paid.py` (`PaidLog`, table `paid_events` in `data/stream_core.db`). 
 
 ## Must keep
 
-- [ ] Every paid chat line goes on the list from `StreamCore._note_paid_chat`: `ChatEvent.paid_kind` superchat / supersticker / jewels (YouTube), bits / powerup (Twitch; power-ups are `highlight` gigantified / animated, no bits count in IRC), kicks (Kick). Platform alerts in `core.paid.ALERT_KINDS` (subscribe / resub / gift / kicks / donation) go on it from `StreamCore._on_alert` when `source:"platform"`. Paid chat's own alert has `source:"chat"` and is never listed twice.
+- [ ] Every paid chat line goes on the list from `StreamCore._note_paid_chat`: `ChatEvent.paid_kind` superchat / supersticker / jewels (YouTube), bits / powerup (Twitch; power-ups are `highlight` gigantified / animated, no bits count in IRC), kicks (Kick). Platform alerts in `core.paid.ALERT_KINDS` (subscribe / resub / gift / kicks / donation / member / member_milestone / member_gift) go on it from `StreamCore._on_alert` when `source:"platform"`. Paid chat's own alert has `source:"chat"` and is never listed twice.
 - [ ] Alert tests, the overlay showcase and anything without `source:"platform"` never land on the list.
 - [ ] Red-flagged chatters' paid messages and alerts **are** listed (`flagged`), and still never shown on an overlay.
 - [ ] The list is kept whether or not `chat_log.enabled` is on. Nothing is deleted except by **Delete ticked rows older than…** (`POST /paid/delete-ticked`), which never touches unticked rows.
