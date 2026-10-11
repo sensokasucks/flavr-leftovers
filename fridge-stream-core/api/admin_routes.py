@@ -1138,26 +1138,28 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         from core.reaction_images import MAX_BYTES
 
-        return {"images": _images().list(), "max_bytes": MAX_BYTES}
+        return {"images": sorted(_images().list(), key=lambda i: i["name"]), "max_bytes": MAX_BYTES}
 
     @router.post("/reactions/images")
     async def upload_reaction_image(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
-        """{name, data} where data is the file as base64 (a data: URL is fine)."""
+        """{name, data} where data is the file as base64 (a data: URL is fine). Lands in Stored
+        files under exactly that name; a name taken by a different stored file is refused."""
         _auth(x_admin_token)
         lib = _images()
         try:
             info = lib.save_base64(str(body.get("name") or ""), str(body.get("data") or ""))
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
-        return {"ok": True, "image": info, "images": lib.list()}
+        return {"ok": True, "image": info, "images": sorted(lib.list(), key=lambda i: i["name"])}
 
     @router.delete("/reactions/images/{name}")
     async def delete_reaction_image(name: str, x_admin_token: Optional[str] = Header(None)):
         _auth(x_admin_token)
         lib = _images()
         if not lib.delete(name):
-            raise HTTPException(404, "Only uploaded images can be deleted (built-in ones stay).")
-        return {"ok": True, "images": lib.list()}
+            raise HTTPException(404, "Built-in pictures stay, and stored ones are deleted on the Stored files page "
+                                     "(they may be used elsewhere).")
+        return {"ok": True, "images": sorted(lib.list(), key=lambda i: i["name"])}
 
     @router.post("/reactions/test")
     async def test_reaction(body: Dict[str, Any], x_admin_token: Optional[str] = Header(None)):
@@ -1834,12 +1836,72 @@ def create_admin_router(core_state) -> APIRouter:
 
         return getattr(core_state, "media", None) or default_library()
 
+    class _ReactionPictures:
+        """Reactions whose object is "img:<stored file>" (config.yaml reactions entries)."""
+
+        @staticmethod
+        def _cfg() -> Dict[str, Any]:
+            from core.reactions import normalize_config
+
+            live = getattr(core_state, "config", None) or {}
+            return normalize_config(live.get("reactions"))
+
+        @staticmethod
+        def _save(cfg: Dict[str, Any]) -> None:
+            live = dict(getattr(core_state, "config", None) or load_config())
+            live["reactions"] = cfg
+            save_config(live)
+            core_state.config = load_config()
+
+        def media_refs(self) -> list:
+            out = []
+            for e in self._cfg().get("entries") or []:
+                obj = str((e.get("params") or {}).get("object") or "").strip()
+                if obj.lower().startswith("img:"):
+                    out.append({"name": obj[4:].strip().lower(), "overlay": "reactions",
+                                "slot": e.get("label") or e["id"], "kind": "image"})
+            return out
+
+        def _rewrite(self, old: str, new: Optional[str]) -> int:
+            cfg = self._cfg()
+            n = 0
+            for e in cfg.get("entries") or []:
+                params = e.get("params") or {}
+                obj = str(params.get("object") or "").strip()
+                if obj.lower().startswith("img:") and obj[4:].strip().lower() == old:
+                    if new is None:
+                        params.pop("object", None)          # back to the effect's own default
+                    else:
+                        params["object"] = "img:" + new
+                    e["params"] = params
+                    n += 1
+            if n:
+                self._save(cfg)
+            return n
+
+        def media_renamed(self, old: str, new: str) -> int:
+            return self._rewrite(old, new)
+
+        def media_forgotten(self, name: str) -> int:
+            # a built-in (or older upload) of that name keeps img:<name> working: leave it alone
+            imgs = getattr(getattr(core_state, "reactions", None), "images", None)
+            if imgs is not None and (name in imgs._scan(imgs.builtin_dir, "built-in")
+                                     or name in imgs._scan(imgs.custom_dir, "custom")):
+                return 0
+            return self._rewrite(name, None)
+
+        def write_settings(self, **_kw) -> None:
+            """Reactions look the picture up on every play; nothing to nudge."""
+
     def _media_users():
-        """Everything that points at stored files (alerts and chat overlay slots for now)."""
+        """Everything that points at stored files: alerts and chat overlay slots, reactions."""
         from core.alerts import ALERT_STYLE
         from core.chat_style import CHAT_STYLE
 
-        return [ALERT_STYLE, CHAT_STYLE]
+        users: list = [ALERT_STYLE, CHAT_STYLE]
+        if getattr(core_state, "reactions", None) is not None:
+            users.append(_ReactionPictures())
+        return users
 
     def _media_payload() -> Dict[str, Any]:
         from core.media_library import MAX_BYTES, MAX_FILES, MAX_VIDEO_BYTES

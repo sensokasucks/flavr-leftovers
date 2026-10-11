@@ -22,11 +22,13 @@ Home: `fridge-stream-core/core/media_library.py`; slots in `core/overlay_style.p
 - [ ] `/media/<name>` and `/media/<name>.<anything>` serve by name, read-only, with the right content type;
       `library.json`, paths and unknown names are 404. Overlay links carry `?v=<time>`.
 - [ ] Overlay pages stay dumb: they get finished urls in `media` / `sounds` from the settings, as before.
+- [ ] Reaction pictures: any stored picture is `img:<name>` (see [reactions.md](reactions.md)); reactions show in
+      "Used by" (`overlay: "reactions"`), Rename rewrites their `img:` object, Delete resets it (unless a built-in
+      has the name). Older `data/reaction_images/` uploads move in at start under the same names.
 - [ ] Tests write to their own folders (`OverlayStyle(..., library=MediaLibrary(tmp))`), never `data/media`.
 
 ## Not yet (later steps)
 
-- Reaction pictures (`img:name`, `data/reaction_images/`) still have their own store.
 - Custom chat flags, command sounds, Stream Rooms and game plugins could point at stored files next.
 
 ## After-change verify

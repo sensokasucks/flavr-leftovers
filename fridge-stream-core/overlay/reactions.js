@@ -58,8 +58,8 @@
     const el = document.createElement("div");
     el.className = "rx-obj";
     const pic = p && p.object_image && p.object_image.url;
-    // Core's own pictures, or an emote's picture from its platform CDN (https only)
-    if (pic && (String(pic).startsWith("/reactions/images/") || /^https:\/\/[^\s"'<>]+$/.test(String(pic)))) {
+    // Core's own pictures (built-in or Stored files), or an emote's picture from its platform CDN (https only)
+    if (pic && (String(pic).startsWith("/reactions/images/") || String(pic).startsWith("/media/") || /^https:\/\/[^\s"'<>]+$/.test(String(pic)))) {
       const img = document.createElement("img");
       img.className = "rx-img";
       img.alt = "";
