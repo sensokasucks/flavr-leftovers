@@ -144,13 +144,21 @@ live like the main one. They are saved in `overlay/alerts-css/<name>.css` (the c
 }
 ```
 
-## Images / WebM
+## Images / videos / sounds
 
-Drop files in `overlay/assets/alerts/` named after the kind:
+Pick them in **Admin → Alerts → Pictures and sounds**: each kind takes a picture or video (PNG, JPEG, GIF, WebP,
+WebM, MP4; videos play muted) and a sound. They come from **Stored files** (`data/media/`, served at `/media/`),
+so one file can serve many kinds; **Upload new** stores the file there and uses it in one step.
+
+Dropping files into `overlay/assets/alerts/` named after the kind still works for a kind with nothing picked:
 
 `follow.gif` `subscribe.png` `raid.webm` `superchat.webp` …
 
-The overlay picks WebM, then GIF / WebP / PNG / SVG. If none exist, a glowing tile is shown (hidden in the custom skin).
+The overlay picks WebM, then MP4 / GIF / WebP / PNG / SVG. Core copies those files into Stored files at start (the
+originals stay). If a kind has nothing, a glowing tile is shown (hidden in the custom skin).
+
+Custom CSS can use any stored picture or font by name: `background: url(/media/confetti);`,
+`@font-face { font-family: "Fancy"; src: url(/media/fancy); }` (**Copy CSS** on the Stored files page).
 
 ## Tokens in the headline
 

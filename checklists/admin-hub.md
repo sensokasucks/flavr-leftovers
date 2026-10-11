@@ -12,6 +12,7 @@ Tabs, in order:
 - [ ] **Integrations** — command tester (dry-run / live), per-game sub-panels, health recheck, metrics test, overlay preview
 - [ ] **Market** — tape + per-game vault/dynamo knobs (see [market.md](market.md)); one sub-page per game plugin with `market` fields, drawn from its `plugin.json`
 - [ ] **Settings → Game plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
+- [ ] **Stored files** (Overlays, `#files`) — every uploaded picture / video / sound / font once; Upload (several at a time), Copy CSS, Rename, Replace…, Delete (asks, names the places it empties), "Used by" per file (see [stored-files.md](stored-files.md))
 - [ ] **Credits** — enable, roll/loop/once/hold/once-then-clear, pause, restart, CSV download, live list over `/ws`, style editor, pins, preview (see [credits-core.md](credits-core.md))
 - [ ] **Alert test** — fire kinds + skin + custom CSS (see [alerts.md](alerts.md))
 - [ ] **Users & Points** — search, adjust, link another platform account **by name** (`POST /users/{id}/link` with `username` and no `platform_user_id`: the known account by that name, else a `name:` placeholder their first chat line claims), merge by name search (confirm names both people and their points), per-person Chat log / Download CSV / Red-flag
@@ -34,6 +35,7 @@ APIs that the tabs depend on must not disappear:
 - [ ] `GET /api/admin/credits` including `cast` + the Credits write routes
 - [ ] Market admin routes used by the Market tab
 - [ ] `GET/PUT /api/admin/reactions` + `POST /api/admin/reactions/test` (see [reactions.md](reactions.md))
+- [ ] `GET/POST /api/admin/media`, `PUT/DELETE /api/admin/media/{name}`; `POST /api/admin/overlays/{alerts|chat}/assets/{slot}` takes `{file, kind}` or `{data, filename}` (see [stored-files.md](stored-files.md))
 
 Auth:
 

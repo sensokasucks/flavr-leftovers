@@ -49,11 +49,13 @@ try:
     from core.permissions import PermissionManager
     from core.command_router import CommandRouter
     from core.models import ChatEvent, ChatReply, ChatUser, ExecuteRequest, Platform
-    from core.alerts import build_alert
+    from core.alerts import ALERT_STYLE, build_alert
+    from core.chat_style import CHAT_STYLE
     from core.store import Store
     from core.local_guard import is_placeholder_token, resolve_admin_token
     from core.credits import CreditsEngine
     from core.avatar_store import AvatarStore
+    from core.media_library import default_library
     from core.red_flags import RedFlags, matching_recent
     from core.chat_flags import ChatFlags
     from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, PRICED_ALERT_KINDS, split_amount_prefix
@@ -191,6 +193,15 @@ class StreamCore:
         )
         self.state.chat_games = self.chat_games
         self.credits.extra = self._credits_extra
+        # Stored files (Files tab): one copy of each upload, used by alerts / chat / custom CSS.
+        # Files dropped into overlay/assets/alerts|chat/ by hand are copied in once.
+        self.state.media = default_library()
+        for style in (ALERT_STYLE, CHAT_STYLE):
+            try:
+                style.import_legacy()
+            except Exception as e:  # never let a bad file stop Core from starting
+                log.warning("Couldn't move %s files into the file library: %s", style.name, e)
+
         # Chatter profile pictures saved by Core and served at /avatars/... (core/avatar_store.py)
         self.avatars = AvatarStore()
         self._avatars_cfg: dict = {}

@@ -10,6 +10,7 @@
 | Chat games | [chat-games.md](chat-games.md) | `core/chat_games/`, Admin Chat games page, `board` frames, streams / attendance tables |
 | Paid list | [paid.md](paid.md) | `core/paid.py`, Admin → Paid, `/api/admin/paid*`, paid kinds on chat events |
 | Alerts | [alerts.md](alerts.md) | Alert overlay, skins, custom CSS, test tab |
+| Stored files | [stored-files.md](stored-files.md) | `core/media_library.py`, `data/media/`, `/media/`, Stored files page, picture / sound slots |
 | Credits (Core) | [credits-core.md](credits-core.md) | Built-in credits overlay, cast styles, Admin Credits |
 | Fridge Market | [market.md](market.md) | Tape, vaults, dividends, Market tab, game pricing |
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |

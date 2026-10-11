@@ -44,6 +44,7 @@
       <button class="tab" data-keywords="end credits roll crawl star wars matrix typewriter teletype ticker motion preset font letterbox grain movie cast job pin csv" data-tab="credits">Credits</button>
       <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look sound picture gif webm upload" data-tab="alerts">Alerts</button>
       <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom" data-tab="chatlook">Chat overlay</button>
+      <button class="tab" data-keywords="stored files library upload picture image sound video mp4 webm gif font reuse media replace css url" data-tab="files">Stored files</button>
     </div>
 
     <div class="nav-group">
@@ -857,8 +858,10 @@
         <fieldset class="cfg-card">
           <legend>Pictures and sounds</legend>
           <p class="hint">
-            One picture (GIF, WebM, PNG, WebP, JPEG) and one sound (MP3, OGG, WAV) per alert kind. Uploads land in
-            <code>overlay/assets/alerts/</code>; dropping files there by hand works too (<code>follow.gif</code>, <code>raid.mp3</code>…).
+            One picture or video (GIF, PNG, WebP, JPEG, WebM, MP4) and one sound (MP3, OGG, WAV, M4A) per alert kind.
+            Pick a file you already have in <a href="#files">Stored files</a>, or upload a new one (it's kept there too,
+            so one file can serve many kinds). Videos play muted; give the kind a sound for audio.
+            Dropping files into <code>overlay/assets/alerts/</code> by hand still works (<code>follow.gif</code>, <code>raid.mp3</code>…).
           </p>
           <label>Sound volume <span class="field-help"><span id="alert-opt-volume-val">80</span>%</span>
             <input id="alert-opt-volume" type="range" min="0" max="100" step="5" value="80" />
@@ -983,7 +986,8 @@
           <legend>Pictures and sounds</legend>
           <p class="hint">
             A background picture, picture badges instead of the text chips, a sound for new messages and one for paid
-            messages. Uploads land in <code>overlay/assets/chat/</code>; dropping files there by hand works too
+            messages. Pick a file from <a href="#files">Stored files</a> or upload a new one (it's kept there too);
+            dropping files into <code>overlay/assets/chat/</code> by hand still works
             (<code>background.png</code>, <code>badge-mod.png</code>, <code>message.mp3</code>…).
             Sounds play inside OBS / XSplit; a normal browser tab needs one click first.
           </p>
@@ -1007,6 +1011,40 @@
       </div>
       </details>
     </div>
+  </section>
+
+  <!-- Stored files: every upload once, reused anywhere (core/media_library.py) -->
+  <section id="tab-files" class="panel">
+    <p class="tab-intro">
+      Every picture, video, sound and font you upload is kept here once and can be used in as many places as you like:
+      pick it in <a href="#alerts/media">Alerts</a> or <a href="#chatlook/media">Chat overlay</a> → Pictures and sounds,
+      or use it in custom CSS with <code>url(/media/name)</code> (<strong>Copy CSS</strong> copies that).
+      <strong>Replace</strong> swaps the file everywhere it's used. Files live in <code>data/media/</code>.
+    </p>
+    <fieldset class="cfg-card">
+      <legend>Add files</legend>
+      <p class="hint">Pictures (PNG, JPEG, GIF, WebP) and sounds (MP3, OGG, WAV, M4A) up to 15 MB, videos (WebM, MP4) up to 50 MB,
+        fonts (WOFF2, WOFF, TTF, OTF) for custom CSS. Uploading a file that's already stored reuses it.</p>
+      <div class="asset-actions">
+        <input id="files-upload-input" type="file" multiple
+               accept="image/png,image/jpeg,image/gif,image/webp,video/webm,video/mp4,audio/*,.m4a,.woff2,.woff,.ttf,.otf" />
+        <button type="button" id="files-upload">Upload</button>
+      </div>
+      <p id="files-status" class="muted" role="status"></p>
+    </fieldset>
+    <div class="toolbar">
+      <label>Show
+        <select id="files-filter">
+          <option value="">Everything</option>
+          <option value="image">Pictures</option>
+          <option value="video">Videos</option>
+          <option value="sound">Sounds</option>
+          <option value="font">Fonts</option>
+        </select>
+      </label>
+      <button type="button" id="files-refresh">Refresh list</button>
+    </div>
+    <div id="files-list" class="asset-list"></div>
   </section>
 
   <!-- Users -->

@@ -371,7 +371,7 @@ def build_alert(
 
 
 ALERT_STYLE = OverlayStyle(
-    "alerts", SKINS, image_slots=tuple(KINDS), sound_slots=tuple(KINDS),
+    "alerts", SKINS, image_slots=tuple(KINDS), sound_slots=tuple(KINDS), allow_video=True,
     # tiers: the amounts where tier-2 / tier-3 / tier-4 start (bits and KICKs count 100 to the dollar)
     options={"sound_volume": 0.8, "tiers": "5,20,100"}, ranges={"sound_volume": (0.0, 1.0)},
 )

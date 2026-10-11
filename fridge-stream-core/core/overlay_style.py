@@ -9,9 +9,11 @@ Each styled overlay has three things in ``overlay/``:
     and small options (hide messages after N s, sound volume, ...).
   - ``<name>-css/<slot>.css``: extra saved stylesheets ("money", "twitch"); a page picks one
     with ``?css=<slot>`` so each OBS source can have its own look.
-  - ``assets/<name>/``: pictures, videos and sounds by slot name (``follow.gif``, ``raid.webm``,
-    ``message.mp3``, ``badge-mod.png``). Uploaded from the dashboard or dropped in by hand;
-    the page gets the list of what exists so it never probes for missing files.
+  - pictures, videos and sounds per slot: a pick of a file in the shared library
+    (``core/media_library.py``, ``data/media/``, served at ``/media/``), kept as ``picks`` in the
+    settings. A slot with no pick still uses a file dropped by hand into ``assets/<name>/``
+    (``follow.gif``, ``raid.webm``, ``message.mp3``); Core copies those into the library at start.
+    The page gets the list of what exists so it never probes for missing files.
 
 ``core/alerts.py`` wraps one of these for the alerts overlay; the chat overlay has its own.
 """
@@ -38,7 +40,7 @@ _CSS_BLOCK = re.compile(r"<\s*/?\s*script|<\s*/?\s*style|javascript:|expression\
 _SLOT_RE = re.compile(r"[^a-z0-9_-]+")
 
 # preference order when several formats of one slot exist (video first, as the alerts always did)
-IMAGE_EXTS = ("webm", "gif", "webp", "png", "jpg", "jpeg", "svg")
+IMAGE_EXTS = ("webm", "mp4", "gif", "webp", "png", "jpg", "jpeg", "svg")
 SOUND_EXTS = ("mp3", "ogg", "wav", "m4a")
 
 
@@ -61,7 +63,16 @@ def sniff(data: bytes) -> Optional[str]:
     if data[:3] == b"ID3" or (len(data) > 1 and data[0] == 0xFF and data[1] in (0xFB, 0xF3, 0xF2, 0xFA)):
         return "mp3"
     if data[4:8] == b"ftyp":
-        return "m4a"
+        # one container for both: the brand says whether it's audio only (M4A) or a video (MP4)
+        return "m4a" if data[8:11] in (b"M4A", b"M4B", b"M4P") else "mp4"
+    if data[:4] == b"wOF2":
+        return "woff2"
+    if data[:4] == b"wOFF":
+        return "woff"
+    if data[:4] in (b"\x00\x01\x00\x00", b"true"):
+        return "ttf"
+    if data[:4] == b"OTTO":
+        return "otf"
     return None
 
 
@@ -72,7 +83,8 @@ def clean_slot(raw: str) -> str:
 class OverlayStyle:
     def __init__(self, name: str, skins: tuple[str, ...], image_slots: tuple[str, ...] = (),
                  sound_slots: tuple[str, ...] = (), options: Optional[dict[str, Any]] = None,
-                 ranges: Optional[dict[str, tuple[float, float]]] = None, overlay_dir: Optional[Path] = None):
+                 ranges: Optional[dict[str, tuple[float, float]]] = None, overlay_dir: Optional[Path] = None,
+                 allow_video: bool = False, library: Any = None):
         self.name = name
         self.skins = skins
         self.image_slots = image_slots
@@ -80,6 +92,8 @@ class OverlayStyle:
         self.default_options = dict(options or {})
         self.ranges = dict(ranges or {})
         self.overlay_dir = overlay_dir or OVERLAY_DIR
+        self.allow_video = allow_video      # picture slots may hold a WebM / MP4 (alerts) or not (chat)
+        self._library = library             # core.media_library.MediaLibrary; None = data/media
 
     # ── paths ───────────────────────────────────────────────
     def _root(self, overlay_dir: Optional[Path]) -> Path:
@@ -154,6 +168,9 @@ class OverlayStyle:
         if options:
             current["options"].update(self.clean_options(options))
         payload = {"skin": current["skin"], "css_version": current["css_version"], "options": current["options"]}
+        picks = self.read_picks(overlay_dir)
+        if picks["image"] or picks["sound"]:
+            payload["picks"] = picks
         path = self.settings_path(overlay_dir)
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
@@ -225,19 +242,81 @@ class OverlayStyle:
         return True
 
     # ── assets (pictures, videos, sounds) ───────────────────
+    # A slot points at a file in the shared library (core/media_library.py) by name ("picks" in
+    # <name>-settings.json). A slot with no pick still shows a file dropped by hand into
+    # assets/<name>/ (``follow.gif``); Core copies those into the library at start (import_legacy).
+    @property
+    def library(self):
+        if self._library is None:
+            from core.media_library import default_library
+
+            return default_library()
+        return self._library
+
+    def read_picks(self, overlay_dir: Optional[Path] = None) -> dict[str, dict[str, str]]:
+        """{"image": {slot: file name}, "sound": {slot: file name}}"""
+        out: dict[str, dict[str, str]] = {"image": {}, "sound": {}}
+        path = self.settings_path(overlay_dir)
+        if not path.is_file():
+            return out
+        try:
+            data = json.loads(path.read_text(encoding="utf-8") or "{}")
+        except (OSError, ValueError):
+            return out
+        picks = data.get("picks") if isinstance(data, dict) else None
+        if not isinstance(picks, dict):
+            return out
+        for kind, slots in (("image", self.image_slots), ("sound", self.sound_slots)):
+            raw = picks.get(kind)
+            if isinstance(raw, dict):
+                out[kind] = {k: str(v) for k, v in raw.items() if k in slots and isinstance(v, str) and v}
+        return out
+
+    def _write_picks(self, picks: dict[str, dict[str, str]], overlay_dir: Optional[Path]) -> None:
+        path = self.settings_path(overlay_dir)
+        data: dict[str, Any] = {}
+        if path.is_file():
+            try:
+                loaded = json.loads(path.read_text(encoding="utf-8") or "{}")
+                data = loaded if isinstance(loaded, dict) else {}
+            except (OSError, ValueError):
+                data = {}
+        if picks.get("image") or picks.get("sound"):
+            data["picks"] = {"image": dict(sorted(picks.get("image", {}).items())),
+                             "sound": dict(sorted(picks.get("sound", {}).items()))}
+        else:
+            data.pop("picks", None)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+
+    def _picture_kinds(self) -> tuple[str, ...]:
+        return ("image", "video") if self.allow_video else ("image",)
+
     def list_assets(self, overlay_dir: Optional[Path] = None) -> tuple[dict[str, str], dict[str, str]]:
-        """({image slot: url}, {sound slot: url}) for the files that exist, relative to the overlay page."""
-        folder = self.assets_dir(overlay_dir)
+        """({image slot: url}, {sound slot: url}). A library pick gives ``/media/<file>?v=…``; a file
+        dropped in by hand gives a url relative to the overlay page (``assets/<name>/<file>``)."""
         media: dict[str, str] = {}
         sounds: dict[str, str] = {}
+        picks = self.read_picks(overlay_dir)
+        lib = self.library
+        for kind, out in (("image", media), ("sound", sounds)):
+            for slot, name in picks[kind].items():
+                entry = lib.get(name)
+                if entry and (entry["kind"] == "sound") == (kind == "sound"):
+                    out[slot] = entry["url"]
+        folder = self.assets_dir(overlay_dir)
         if not folder.is_dir():
             return media, sounds
         for slot in self.image_slots:
+            if slot in media:
+                continue
             for ext in IMAGE_EXTS:
                 if (folder / f"{slot}.{ext}").is_file():
                     media[slot] = f"assets/{self.name}/{slot}.{ext}"
                     break
         for slot in self.sound_slots:
+            if slot in sounds:
+                continue
             for ext in SOUND_EXTS:
                 if (folder / f"{slot}.{ext}").is_file():
                     sounds[slot] = f"assets/{self.name}/{slot}.{ext}"
@@ -257,43 +336,70 @@ class OverlayStyle:
             return "sound"
         return None
 
-    def save_asset(self, slot: str, data: bytes, overlay_dir: Optional[Path] = None) -> str:
-        """Store an upload for a slot; the old file of that slot (any format) is replaced. Returns the url."""
+    def _check_for_slot(self, slot: str, ext: Optional[str]) -> str:
+        """The slot's kind for a file of this type, or ValueError."""
+        if self.slot_kind(slot) is None:
+            raise ValueError(f"Unknown slot '{slot}'.")
+        kind = self.slot_kind(slot, ext)
+        pictures = ("png", "jpeg", "jpg", "gif", "webp") + (("webm", "mp4") if self.allow_video else ())
+        if kind == "image" and ext not in pictures:
+            raise ValueError("Pictures must be PNG, JPEG, GIF, WebP or a WebM / MP4 video." if self.allow_video
+                             else "Pictures must be PNG, JPEG, GIF or WebP.")
+        if kind == "sound" and ext not in ("mp3", "ogg", "wav", "m4a"):
+            raise ValueError("Sounds must be MP3, OGG, WAV or M4A.")
+        return kind  # type: ignore[return-value]
+
+    def _default_name(self, slot: str, kind: str) -> str:
+        """Stored-file name for an upload with no file name: alerts-follow, alerts-follow-sound."""
+        both = slot in self.image_slots and slot in self.sound_slots
+        return f"{self.name}-{slot}" + ("-sound" if both and kind == "sound" else "")
+
+    def pick(self, slot: str, file_name: str, kind: Optional[str] = None,
+             overlay_dir: Optional[Path] = None) -> str:
+        """Point a slot at a library file. Returns the url."""
+        slot = clean_slot(slot)
+        entry = self.library.get(file_name)
+        if entry is None:
+            raise ValueError(f"No stored file called '{file_name}'.")
+        if entry["kind"] == "font":
+            raise ValueError("Fonts can only be used from custom CSS.")
+        if kind == "sound" and entry["kind"] != "sound":
+            raise ValueError("That's a picture; pick a sound.")
+        if kind == "image" and entry["kind"] == "sound":
+            raise ValueError("That's a sound; pick a picture.")
+        slot_kind = self._check_for_slot(slot, entry["ext"])
+        if kind in ("image", "sound") and slot_kind != kind:
+            raise ValueError(f"'{slot}' has no {kind} slot.")
+        picks = self.read_picks(overlay_dir)
+        picks[slot_kind][slot] = entry["name"]
+        self._write_picks(picks, overlay_dir)
+        return entry["url"]
+
+    def save_asset(self, slot: str, data: bytes, overlay_dir: Optional[Path] = None, filename: str = "") -> str:
+        """Store an upload in the library and point the slot at it. Returns the url."""
+        from core.media_library import MAX_BYTES, MAX_VIDEO_BYTES, name_from_filename
+
         slot = clean_slot(slot)
         if self.slot_kind(slot) is None:
             raise ValueError(f"Unknown slot '{slot}'.")
         if not data:
             raise ValueError("The file is empty.")
-        if len(data) > MAX_ASSET_BYTES:
-            raise ValueError(f"Too big ({len(data) // 1024} KB). The limit is {MAX_ASSET_BYTES // (1024 * 1024)} MB.")
         ext = sniff(data)
-        kind = self.slot_kind(slot, ext)
-        if kind == "image" and ext not in ("png", "jpeg", "gif", "webp", "webm"):
-            raise ValueError("Pictures must be PNG, JPEG, GIF, WebP or WebM video.")
-        if kind == "sound" and ext not in ("mp3", "ogg", "wav", "m4a"):
-            raise ValueError("Sounds must be MP3, OGG, WAV or M4A.")
-        ext = "jpg" if ext == "jpeg" else ext
-        folder = self.assets_dir(overlay_dir)
-        folder.mkdir(parents=True, exist_ok=True)
-        self._remove_slot_files(slot, kind, folder)
-        path = folder / f"{slot}.{ext}"
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_bytes(data)
-        tmp.replace(path)
-        return f"assets/{self.name}/{slot}.{ext}"
+        limit = MAX_VIDEO_BYTES if ext in ("webm", "mp4") else MAX_BYTES
+        if len(data) > limit:
+            raise ValueError(f"Too big ({len(data) // 1024} KB). The limit is {limit // (1024 * 1024)} MB.")
+        kind = self._check_for_slot(slot, ext)
+        entry, _reused = self.library.save(data, name_from_filename(filename) or self._default_name(slot, kind))
+        return self.pick(slot, entry["name"], kind, overlay_dir)
 
-    def save_asset_base64(self, slot: str, b64: str, overlay_dir: Optional[Path] = None) -> str:
-        raw = str(b64 or "")
-        if raw.startswith("data:") and "," in raw:
-            raw = raw.split(",", 1)[1]
-        try:
-            data = base64.b64decode(raw, validate=True)
-        except Exception as e:
-            raise ValueError("Couldn't read the upload.") from e
-        return self.save_asset(slot, data, overlay_dir)
+    def save_asset_base64(self, slot: str, b64: str, overlay_dir: Optional[Path] = None, filename: str = "") -> str:
+        from core.media_library import decode_base64
+
+        return self.save_asset(slot, decode_base64(b64), overlay_dir, filename)
 
     def delete_asset(self, slot: str, kind: Optional[str] = None, overlay_dir: Optional[Path] = None) -> bool:
-        """Remove a slot's file. ``kind`` ("image" / "sound") matters for slots that take both."""
+        """Empty a slot: forget its pick and remove a file dropped in by hand (the library file stays).
+        ``kind`` ("image" / "sound") matters for slots that take both."""
         slot = clean_slot(slot)
         if kind not in ("image", "sound"):
             kind = self.slot_kind(slot)
@@ -303,7 +409,11 @@ class OverlayStyle:
             return False
         if kind == "image" and slot not in self.image_slots:
             return False
-        return self._remove_slot_files(slot, kind, self.assets_dir(overlay_dir)) > 0
+        picks = self.read_picks(overlay_dir)
+        had_pick = picks[kind].pop(slot, None) is not None
+        if had_pick:
+            self._write_picks(picks, overlay_dir)
+        return self._remove_slot_files(slot, kind, self.assets_dir(overlay_dir)) > 0 or had_pick
 
     def _remove_slot_files(self, slot: str, kind: str, folder: Path) -> int:
         exts = IMAGE_EXTS if kind == "image" else SOUND_EXTS
@@ -316,4 +426,65 @@ class OverlayStyle:
                     n += 1
                 except OSError as e:
                     log.debug("could not delete %s: %s", path, e)
+        return n
+
+    def import_legacy(self, overlay_dir: Optional[Path] = None) -> int:
+        """Copy files dropped into assets/<name>/ into the library and point their slots at them
+        (only slots with no pick yet). The old files stay, so an older Core still finds them."""
+        folder = self.assets_dir(overlay_dir)
+        if not folder.is_dir():
+            return 0
+        picks = self.read_picks(overlay_dir)
+        done = 0
+        for kind, slots, exts in (("image", self.image_slots, IMAGE_EXTS), ("sound", self.sound_slots, SOUND_EXTS)):
+            for slot in slots:
+                if slot in picks[kind]:
+                    continue
+                for ext in exts:
+                    path = folder / f"{slot}.{ext}"
+                    if not path.is_file():
+                        continue
+                    try:
+                        entry, _ = self.library.save(path.read_bytes(), self._default_name(slot, kind))
+                    except (OSError, ValueError) as e:
+                        log.warning("Couldn't move %s into the file library: %s", path, e)
+                        break
+                    if (entry["kind"] == "sound") == (kind == "sound"):
+                        picks[kind][slot] = entry["name"]
+                        done += 1
+                    break
+        if done:
+            self._write_picks(picks, overlay_dir)
+            log.info("Moved %d %s file(s) into the file library (data/media)", done, self.name)
+        return done
+
+    # ── shared library hooks (core/media_library.py) ────────
+    def media_refs(self, overlay_dir: Optional[Path] = None) -> list[dict[str, str]]:
+        """Every slot that uses a library file: [{name, overlay, slot, kind}]."""
+        picks = self.read_picks(overlay_dir)
+        return [{"name": n, "overlay": self.name, "slot": slot, "kind": kind}
+                for kind in ("image", "sound") for slot, n in sorted(picks[kind].items())]
+
+    def media_renamed(self, old: str, new: str, overlay_dir: Optional[Path] = None) -> int:
+        picks = self.read_picks(overlay_dir)
+        n = 0
+        for kind in ("image", "sound"):
+            for slot, name in list(picks[kind].items()):
+                if name == old:
+                    picks[kind][slot] = new
+                    n += 1
+        if n:
+            self._write_picks(picks, overlay_dir)
+        return n
+
+    def media_forgotten(self, name: str, overlay_dir: Optional[Path] = None) -> int:
+        picks = self.read_picks(overlay_dir)
+        n = 0
+        for kind in ("image", "sound"):
+            for slot, used in list(picks[kind].items()):
+                if used == name:
+                    del picks[kind][slot]
+                    n += 1
+        if n:
+            self._write_picks(picks, overlay_dir)
         return n
