@@ -56,13 +56,14 @@ try:
     from core.avatar_store import AvatarStore
     from core.red_flags import RedFlags, matching_recent
     from core.chat_flags import ChatFlags
-    from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, split_amount_prefix
+    from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, PRICED_ALERT_KINDS, split_amount_prefix
     from core.market import MarketTape
     from core.reactions import ReactionEngine
     from core.reaction_images import ReactionImages
     from core.chat_games import ChatGames
     from adapters.kick import KickAdapter
     from adapters.twitch import POWERUP_KINDS, TwitchAdapter
+    from adapters.twitch_eventsub import bits_live as twitch_bits_live
     from adapters.youtube import YouTubeAdapter
     from core import plugin_manifest
     from core.plugins import PluginManager
@@ -1426,15 +1427,20 @@ class StreamCore:
             str(payload.get("platform") or ""), "", str(payload.get("username") or ""))
         if (payload.get("source") == "platform" and not payload.get("is_test")
                 and payload.get("kind") in PAID_ALERT_KINDS):
-            # subs, gifted subs, KICKs ... (paid chat is listed from the chat line instead)
+            # subs, gifted subs, KICKs, Twitch power-ups ... (paid chat is listed from the chat line instead)
+            kind = payload.get("kind") or ""
+            priced = kind in PRICED_ALERT_KINDS
+            item = payload.get("item") or ""
+            if kind == "hypetrain" and payload.get("level"):
+                item = f"{item} level {payload['level']}"
             await self.paid.add(
-                platform=payload.get("platform") or "", kind=payload.get("kind") or "",
+                platform=payload.get("platform") or "", kind=kind,
                 user_id=payload.get("user_id") or "", username=payload.get("username") or "",
                 display_name=payload.get("display_name") or "", message=payload.get("message") or "",
-                amount=payload.get("amount") if payload.get("kind") in ("kicks", "donation") else None,
-                currency=(payload.get("currency") or "") if payload.get("kind") in ("kicks", "donation") else "",
-                qty=payload.get("qty"), months=payload.get("months"), item=payload.get("item") or "",
-                image_url=payload.get("image") or "", flagged=hidden,
+                amount=payload.get("amount") if priced else None,
+                currency=(payload.get("currency") or "") if priced else "",
+                qty=payload.get("qty"), months=payload.get("months"), item=item,
+                image_url=payload.get("image") or "", message_id=payload.get("event_id") or "", flagged=hidden,
             )
         if hidden:
             log.info("[alert/%s] hidden: %s is red-flagged", payload.get("kind"), payload.get("username"))
@@ -1443,6 +1449,9 @@ class StreamCore:
             # Sub / resub / gift from an adapter: adapters don't see overlay settings.
             ov = self.config.get("overlay") or {}
             payload["duration_ms"] = max(1500, min(30000, int(ov.get("alert_duration_ms") or 6000)))
+            await self._award_alert_points(payload)
+        elif payload.get("source") == "chat" and payload.get("kind") == "jewels":
+            # a YouTube gift arrives as a chat line; its alert is where the gifter gets points
             await self._award_alert_points(payload)
         self.recent_alerts.append(payload)
         if len(self.recent_alerts) > self.recent_alerts_max:
@@ -1467,8 +1476,10 @@ class StreamCore:
     async def _award_alert_points(self, payload: dict) -> None:
         """Points for a real sub / resub / follow / gift (never Alert-test ones).
 
-        `points.sub_points` per sub or resub, `points.follow_points` once per viewer,
-        `points.gift_points` to the gifter for each sub gifted. Sets `points_awarded`.
+        `points.sub_points` per sub or resub (YouTube new member and member milestone too),
+        `points.follow_points` once per viewer, `points.gift_points` to the gifter for each
+        sub or membership gifted, `points.jewels_points` per YouTube gift bought with Jewels
+        (default 0 = none). Sets `points_awarded`.
         """
         self._sync_live_config()
         pts = self.config.get("points") or {}
@@ -1485,11 +1496,16 @@ class StreamCore:
         once = False
         if kind in ("subscribe", "resub"):
             delta, reason = amount("sub_points"), "subscribed"
+        elif kind in ("member", "member_milestone"):
+            delta, reason = amount("sub_points"), "became a member" if kind == "member" else "member milestone"
         elif kind == "follow":
             delta, reason, once = amount("follow_points"), "followed", True
-        elif kind == "gift":
+        elif kind in ("gift", "member_gift"):
             qty = max(1, int(payload.get("qty") or 1))
-            delta, reason = amount("gift_points") * qty, f"gifted {qty} sub(s)"
+            what = "membership(s)" if kind == "member_gift" else "sub(s)"
+            delta, reason = amount("gift_points") * qty, f"gifted {qty} {what}"
+        elif kind == "jewels":
+            delta, reason = amount("jewels_points"), "sent " + (payload.get("item") or "a gift")
         else:
             return
         try:
@@ -1515,6 +1531,8 @@ class StreamCore:
         kind = event.paid_kind if event.is_paid else None
         item = event.paid_label or ""
         if not kind and event.platform == Platform.TWITCH and event.highlight in POWERUP_KINDS:
+            if twitch_bits_live():
+                return          # EventSub lists this power-up with its bits instead
             kind = "powerup"
             item = "Gigantified emote" if event.highlight == "gigantified" else "Message effect"
         if not kind and event.is_paid:
@@ -1568,7 +1586,10 @@ class StreamCore:
         except ValueError:
             return
         payload["source"] = "chat"
-        payload["user_id"] = str(event.user.id or "")
+        uid = str(event.user.id or "")
+        if kind == "jewels" and uid.lower() == event.user.username:
+            uid = ""        # no channel id on this gift: let points find the chatter by name
+        payload["user_id"] = uid
         await self.bus.publish_alert(payload)
 
     async def _on_execute(self, req: ExecuteRequest) -> None:

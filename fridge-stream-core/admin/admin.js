@@ -1674,6 +1674,10 @@
       bits: "Bits / cheer", superchat: "Super Chat", donation: "Donation",
       supersticker: "Super Sticker (else Super Chat's)", jewels: "YouTube gift (else the gift's own picture)",
       kicks: "KICKs (else Donation's)",
+      member: "YouTube new member (else Subscribe's)", member_milestone: "YouTube member milestone (else Resub's)",
+      member_gift: "YouTube gifted memberships (else Gifted sub's)",
+      powerup: "Bits power-up (else Bits')", celebration: "On-screen celebration (else Bits')",
+      charity: "Charity donation (else Donation's)", hypetrain: "Hype Train summary (else Raid's)",
     },
     chat: {
       background: "Background picture", "badge-broadcaster": "Host badge", "badge-mod": "Mod badge",
@@ -3138,6 +3142,7 @@
     $("cfg-tw-channel").value = tw.channel ?? "";
     $("cfg-tw-3p").checked = tw.third_party_emotes !== false;
     $("cfg-tw-avatars").checked = tw.avatars !== false;
+    $("cfg-tw-paid").checked = tw.paid_events !== false;
     $("cfg-tw-client-id").value = tw.client_id ?? "";
     $("cfg-tw-client-secret").value = tw.client_secret ?? "";
     if (tw.client_id || tw.client_secret) document.querySelector(".tw-advanced").open = true;
@@ -3155,6 +3160,7 @@
     $("cfg-pts-sub").value = pts.sub_points ?? 500;
     $("cfg-pts-follow").value = pts.follow_points ?? 250;
     $("cfg-pts-gift").value = pts.gift_points ?? 1000;
+    $("cfg-pts-jewels").value = pts.jewels_points ?? 0;
     $("cfg-pts-token").value = pts.admin_token ?? "";
     syncTokenHint();
 
@@ -3227,6 +3233,11 @@
       $("tw-auth-connect").textContent = "Connect Twitch";
     }
     if (s.error) state.textContent += ` — ${s.error}`;
+    if (s.connected && !pending && (s.missing_scopes || []).length) {
+      state.textContent += " — press Reconnect once so Twitch also sends bits power-ups, celebrations, charity and Hype Trains";
+    }
+    const paid = $("tw-paid-state");
+    if (paid) paid.textContent = (s.paid_events && s.paid_events.message) || "";
     clearTimeout(twAuthTimer);
     if (pending) twAuthTimer = setTimeout(loadTwitchAuth, 3000);
   }
@@ -3324,6 +3335,7 @@
         channel: cleanTwitch($("cfg-tw-channel").value),
         third_party_emotes: $("cfg-tw-3p").checked,
         avatars: $("cfg-tw-avatars").checked,
+        paid_events: $("cfg-tw-paid").checked,
         client_id: $("cfg-tw-client-id").value.trim(),
         client_secret: $("cfg-tw-client-secret").value.trim(),
       },
@@ -3371,6 +3383,7 @@
         sub_points: num($("cfg-pts-sub").value, 500),
         follow_points: num($("cfg-pts-follow").value, 250),
         gift_points: num($("cfg-pts-gift").value, 1000),
+        jewels_points: num($("cfg-pts-jewels").value, 0),
         // empty = keep the token in use (Core never blanks or resets it from this form)
         admin_token: $("cfg-pts-token").value.trim(),
       },
@@ -4619,7 +4632,7 @@
 
   function fmtPaidAmount(r) {
     if (r.amount == null) {
-      if (r.qty) return `${r.qty} ${r.kind === "gift" ? "gifted" : ""}`.trim();
+      if (r.qty) return `${r.qty} ${(r.kind === "gift" || r.kind === "member_gift") ? "gifted" : ""}`.trim();
       if (r.months) return `${r.months} months`;
       return "";
     }

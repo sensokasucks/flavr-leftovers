@@ -880,7 +880,9 @@ def create_admin_router(core_state) -> APIRouter:
     async def twitch_auth_status(x_admin_token: Optional[str] = Header(None)):
         """Connected? As whom? Is a sign-in code waiting to be entered?"""
         _auth(x_admin_token)
-        return _twitch_auth().status()
+        from adapters.twitch_eventsub import status as paid_status
+
+        return {**_twitch_auth().status(), "paid_events": paid_status()}
 
     @router.post("/twitch/auth/start")
     async def twitch_auth_start(x_admin_token: Optional[str] = Header(None)):

@@ -61,16 +61,28 @@ KINDS: dict[str, dict[str, str]] = {
     "jewels": {"label": "Jewels gift", "group": "money", "platform": "youtube"},
     "bits": {"label": "Bits cheer", "group": "money", "platform": "twitch"},
     "powerup": {"label": "Bits power-up", "group": "money", "platform": "twitch"},
+    "celebration": {"label": "On-screen celebration", "group": "money", "platform": "twitch"},
+    "charity": {"label": "Charity donation", "group": "money", "platform": "twitch"},
+    "hypetrain": {"label": "Hype Train", "group": "money", "platform": "twitch"},
     "kicks": {"label": "KICKs", "group": "money", "platform": "kick"},
     "donation": {"label": "Tip", "group": "money", "platform": ""},
     "subscribe": {"label": "Sub / new member", "group": "subs", "platform": ""},
     "resub": {"label": "Resub / member milestone", "group": "subs", "platform": ""},
     "gift": {"label": "Gifted subs / memberships", "group": "subs", "platform": ""},
+    "member": {"label": "New member", "group": "subs", "platform": "youtube"},
+    "member_milestone": {"label": "Member milestone", "group": "subs", "platform": "youtube"},
+    "member_gift": {"label": "Gifted memberships", "group": "subs", "platform": "youtube"},
 }
 
 # Alert kinds (core/alerts.py) that go on the list when a platform sends them. Paid chat
 # (Super Chats, bits ...) is listed from the chat message itself, not from its alert.
-ALERT_KINDS = ("subscribe", "resub", "gift", "kicks", "donation", "jewels")
+ALERT_KINDS = ("subscribe", "resub", "gift", "kicks", "donation", "jewels",
+               "member", "member_milestone", "member_gift",
+               # Twitch EventSub: power-ups with their bits, celebrations, charity, Hype Trains
+               "powerup", "celebration", "charity", "hypetrain")
+
+# Platform alerts whose amount goes on the list (subs are counted, not priced)
+PRICED_ALERT_KINDS = ("kicks", "donation", "powerup", "celebration", "charity")
 
 GROUPS = ("money", "subs")
 SORTS = {

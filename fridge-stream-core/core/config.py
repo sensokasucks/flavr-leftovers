@@ -58,6 +58,9 @@ DEFAULTS: Dict[str, Any] = {
         # chatter profile pictures through the Twitch API (needs "Connect Twitch" in the dashboard;
         # cached in data/twitch_avatars.json)
         "avatars": True,
+        # bits power-ups with their bits, on-screen celebrations, charity donations and Hype
+        # Train summaries through Twitch EventSub (needs "Connect Twitch" as the channel owner)
+        "paid_events": True,
         # Advanced: your own Twitch app instead of Stream Core's built-in public one.
         # Empty = built-in. A secret only exists for a "Confidential" app; keep it out of git.
         "client_id": "",
@@ -119,6 +122,7 @@ DEFAULTS: Dict[str, Any] = {
         "sub_points": 500,       # per sub / resub (live platform events only)
         "follow_points": 250,    # once per viewer
         "gift_points": 1000,     # to the gifter, per sub gifted
+        "jewels_points": 0,      # per YouTube gift bought with Jewels (0 = none)
         "admin_token": "change-me",
     },
     "market": {

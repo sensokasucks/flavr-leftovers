@@ -112,8 +112,15 @@ Kind classes on `#alert-box` (Streamlabs names):
 | Super Sticker | `sticker-alert superchat-alert donation-alert kind-supersticker` |
 | YouTube gift (Jewels) | `jewels-alert gift-alert donation-alert kind-jewels` |
 | KICKs | `kicks-alert donation-alert kind-kicks` |
+| Bits power-up | `powerup-alert cheer-alert bits-alert kind-powerup` |
+| On-screen celebration | `celebration-alert powerup-alert cheer-alert bits-alert kind-celebration` |
+| Charity donation | `charity-alert donation-alert kind-charity` |
+| Hype Train summary | `hypetrain-alert hype-train-alert kind-hypetrain` |
+| YouTube new member | `member-alert subscriber-alert kind-member` |
+| YouTube member milestone | `member-alert subscriber-alert resub-alert kind-member_milestone` |
+| YouTube gifted memberships | `member-alert sub-gift-alert gift-alert kind-member_gift` |
 
-Super Sticker, YouTube gift and KICKs use the Super Chat's / Super Chat's / Donation's picture and sound until you give them their own (`supersticker.png`, `jewels.mp3`, `kicks.webm` …). A sticker or gift with no picture of its own shows the sticker or gift.
+Super Sticker, YouTube gift and KICKs use the Super Chat's / Super Chat's / Donation's picture and sound until you give them their own (`supersticker.png`, `jewels.mp3`, `kicks.webm` …). Twitch's bits power-ups, on-screen celebrations, charity donations and Hype Train summaries come through EventSub (Connect Twitch as the channel owner) and use the Bits / Bits / Donation / Raid picture and sound until you give them their own; the Hype Train alert carries `level` and its top contributors as the message. YouTube memberships have their own kinds too (`member`, `member_milestone`, `member_gift`) and use the Subscribe / Resub / Gifted sub picture and sound until you give them their own. `kinds=subscribe` (or `hide=subscribe`) still covers new members, `resub` covers milestones and `gift` gifted memberships; add `platforms=` to split them. A sticker or gift with no picture of its own shows the sticker or gift.
 
 StreamElements aliases also present: `.alertbox-message`, `.alertbox-message-name`, `.alertbox-message-announcement`, `.alertbox-message-message`.
 
