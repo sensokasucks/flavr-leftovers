@@ -1,6 +1,10 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";
+  // Plugin pages (#plg-...) are added after the page loads: remember where the address pointed
+  const bootHash = location.hash;
+  let bootLastTab = "";
+  try { bootLastTab = (JSON.parse(localStorage.getItem("stream_core_admin_nav") || "{}") || {}).lastTab || ""; } catch (_) { /* none */ }
   // Game plugins' Market sub-pages are drawn after the page loads: remember which one the link asked for
   let marketPluginSub = (/^#market\/(plg-[\w-]+)/.exec(location.hash) || [])[1] || "";
 
@@ -182,6 +186,7 @@
     refreshStats();
     loadStatus();
     loadUsers();
+    addPluginPages();
     if ($("tab-alerts") && $("tab-alerts").classList.contains("active")) {
       initAlertsTab(true);
     }
@@ -966,7 +971,7 @@
       }
       html += `</ul></section>`;
 
-      html += `<section class="cfg-card"><h3 class="card-legend">Game plugins</h3><ul class="status-list">`;
+      html += `<section class="cfg-card"><h3 class="card-legend">Plugins</h3><ul class="status-list">`;
       const gameRows = Object.entries(s.games || {});
       for (const [name, g] of gameRows) {
         html += `<li><strong>${escapeHtml(g.name || name)}</strong> ${g.running ? pill(true, "running") : pill(false, "stopped")}
@@ -2123,7 +2128,7 @@
       const prefix = integData.prefix || "!";
       const games = integData.games || [];
       if (!games.length) {
-        host.innerHTML = `<p class="integ-empty">No game plugins installed. Copy a game's folder from the game plugins download into the plugins folder, switch a game on under Settings → Game plugins and restart Core.</p>`;
+        host.innerHTML = `<p class="integ-empty">No game plugins installed. Copy a game's folder from the game plugins download into the plugins folder, switch a game on under Settings → Plugins and restart Core.</p>`;
       } else {
         host.innerHTML = games.map((g) => renderGamePanel(g, prefix)).join("");
       }
@@ -3225,13 +3230,13 @@
     const host = $("plugin-cards");
     if (!host) return;
     if (!pluginsInfo.length) {
-      host.innerHTML = `<p class="integ-empty">No game plugins installed. Stream Core works without them.
+      host.innerHTML = `<p class="integ-empty">No plugins installed. Stream Core works without them.
         To add Minecraft, Factorio, Granvir or OpenTTD, get them from
         <a href="https://github.com/sensokasucks/flavr-game-plugins" target="_blank" rel="noopener">flavr-game-plugins</a>: copy the game's folder into
         <code>fridge-stream-core\\plugins\\</code> and restart Core.</p>`;
       return;
     }
-    host.innerHTML = pluginsInfo.map((p) => {
+    const card = (p) => {
       const section = (cfg || {})[p.id] || {};
       const state = p.error
         ? pill(false, "error")
@@ -3247,10 +3252,80 @@
         ${err}
         ${fields.map((f) => pluginFieldHtml("cfg", p.id, f, pathGet(section, f.key))).join("")}
         ${p.market ? `<p class="hint">Stock / vault rates live on the <strong>Market</strong> page.</p>` : ""}
+        ${(p.pages || []).length && p.running ? `<p class="hint">Its own page${p.pages.length > 1 ? "s" : ""} in the menu: ${p.pages.map((pg) => `<strong>${escapeHtml(pg.title)}</strong>`).join(", ")}.</p>` : ""}
         ${pluginLinks(p)}
       </fieldset>`;
-    }).join("");
+    };
+    // Features (a market, ...) first, then games; headings only when both kinds are installed
+    const features = pluginsInfo.filter((p) => p.category === "feature");
+    const games = pluginsInfo.filter((p) => p.category !== "feature");
+    if (!features.length || !games.length) {
+      host.innerHTML = pluginsInfo.map(card).join("");
+      return;
+    }
+    host.innerHTML = `<h3 class="plugin-group-heading">Features</h3>${features.map(card).join("")}` +
+      `<h3 class="plugin-group-heading">Games</h3>${games.map(card).join("")}`;
   }
+
+  // ------------------------------------------------------------------
+  // Plugin pages (plugin.json "pages"): a menu entry + a page showing the plugin's own HTML
+  // (/plugin-pages/<id>/...) in a frame. Only for running plugins. The frame uses
+  // /admin/plugin-page.js to call the API with this browser's admin token.
+  // ------------------------------------------------------------------
+  async function addPluginPages() {
+    if (!token()) return;
+    let list = [];
+    try {
+      list = await loadPlugins();
+    } catch (_) {
+      return;
+    }
+    const main = document.querySelector(".admin-main");
+    let added = 0;
+    list.filter((p) => p.running).forEach((p) => {
+      (p.pages || []).forEach((pg) => {
+        const tabId = "plg-" + slug(p.id) + "-" + slug(pg.id);
+        if ($("tab-" + tabId)) return;
+        const heading = Array.from(document.querySelectorAll(".admin-nav .nav-heading"))
+          .find((h) => h.textContent.trim() === pg.nav);
+        const group = heading ? heading.parentElement : document.querySelector(".admin-nav .nav-group:last-of-type");
+        const btn = document.createElement("button");
+        btn.className = "tab";
+        btn.dataset.tab = tabId;
+        btn.dataset.keywords = (pg.keywords || "") + " plugin " + p.name;
+        btn.textContent = pg.title;
+        btn.onclick = () => {
+          go(tabId);
+          setNavOpen(false);
+        };
+        group.appendChild(btn);
+        const panel = document.createElement("section");
+        panel.id = "tab-" + tabId;
+        panel.className = "panel plugin-page-panel";
+        panel.innerHTML = `<div class="page-head"><h2 class="page-title"></h2></div>
+          <iframe class="plugin-page-frame" title="${escapeHtml(pg.title)}" src="${escapeHtml(pg.url)}"></iframe>`;
+        main.appendChild(panel);
+        added += 1;
+      });
+    });
+    if (!added) return;
+    try { buildSearchIndex(); } catch (_) { /* search index is optional */ }
+    const want = decodeURIComponent((bootHash || "").replace(/^#/, "")).split("/")[0];
+    if (want.startsWith("plg-") && $("tab-" + want)) activateTab(want);
+    else if (!bootHash && bootLastTab.startsWith("plg-") && $("tab-" + bootLastTab)) activateTab(bootLastTab);
+  }
+
+  window.addEventListener("message", (ev) => {
+    if (ev.origin !== location.origin || !ev.data || typeof ev.data !== "object") return;
+    const frame = Array.from(document.querySelectorAll(".plugin-page-frame")).find((f) => f.contentWindow === ev.source);
+    if (!frame) return;
+    if (ev.data.type === "plugin-page-height") {
+      const h = Number(ev.data.height);
+      if (Number.isFinite(h) && h > 0) frame.style.height = Math.min(h + 4, 20000) + "px";
+    } else if (ev.data.type === "plugin-page-go" && $("tab-" + String(ev.data.tab || ""))) {
+      go(String(ev.data.tab), ev.data.sub ? String(ev.data.sub) : undefined);
+    }
+  });
 
   /** {plugin id: section} for the config.yaml save (sections merged over the loaded ones). */
   function collectPluginSections() {
@@ -6310,4 +6385,5 @@
     const last = loadJson(navStateKey, {}).lastTab;
     activateTab(last && $("tab-" + last) ? last : "live");
   }
+  addPluginPages();
 })();

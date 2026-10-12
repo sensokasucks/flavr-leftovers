@@ -230,7 +230,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
         # up on the next reload without clearing the browser-source cache.
         response = await call_next(request)
         path = request.url.path
-        if path.startswith(("/overlay/", "/admin")) and (
+        if path.startswith(("/overlay/", "/admin", "/plugin-pages/")) and (
             path.endswith((".html", ".js", ".css", "/")) or path == "/admin"
         ):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
@@ -349,6 +349,22 @@ def create_app(core_state: "CoreState") -> FastAPI:
             lambda pid: (lambda: (core_state.games or {}).get(pid)),
         )
         app.include_router(plugin_router)
+
+    @app.get("/plugin-pages/{plugin_id}/{rel:path}")
+    async def plugin_page(plugin_id: str, rel: str):
+        """A plugin's dashboard pages (plugin.json "pages"), shown inside the dashboard.
+        Only files under the plugin's own pages/ folder; the page itself asks the admin API
+        with the dashboard's token, like the dashboard does."""
+        from core import plugin_manifest as _pm
+
+        m = _pm.find(plugin_id)
+        if m is None:
+            raise HTTPException(404, "No such plugin")
+        base = (m.path / "pages").resolve()
+        target = (base / rel).resolve()
+        if base not in target.parents or not target.is_file():
+            raise HTTPException(404, "Not found")
+        return FileResponse(str(target))
 
     def _game_problem(headers, client, token: Optional[str]) -> Optional[str]:
         """Only games may say hello / push market signals and dividends: no web pages,

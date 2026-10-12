@@ -39,10 +39,46 @@ class PluginContext:
     store: Any = None                            # core.store.Store: points, get_or_create_user, pay_dividend
     bus: Any = None                              # core.event_bus.EventBus
     broadcast: Optional[Callable[[dict], Awaitable[None]]] = None   # WebSocket fan-out to overlays
+    plugins: Any = None                          # core.plugins.PluginDirectory: other plugins + services
+    _db: Any = field(default=None, init=False, repr=False)
 
     @property
     def config(self) -> dict:
         return self.get_config() or {}
+
+    @property
+    def db(self):
+        """This plugin's own SQLite file, data/plugins/<id>/<id>.db (core.plugin_db.PluginDB)."""
+        if self._db is None:
+            from core.plugin_db import PluginDB
+            self._db = PluginDB(self.data_dir / f"{self.id}.db")
+        return self._db
+
+    def service(self, name: str) -> Any:
+        """What the running plugin that "provides" name hands out (None when none is running)."""
+        return self.plugins.service(name) if self.plugins is not None else None
+
+    def require_admin(self, token: Optional[str]) -> None:
+        """For a plugin's own routes: 401 unless token is Core's admin token (what the dashboard sends)."""
+        from fastapi import HTTPException
+        from core.local_guard import resolve_admin_token, token_matches
+        if not token_matches(token, resolve_admin_token(self.config, self.root)):
+            raise HTTPException(401, "Invalid or missing X-Admin-Token")
+
+    def require_game(self, request) -> None:
+        """For routes only a game or bridge program may call (they can spend or mint points):
+        403 for anything a web browser sends, and from another device without the admin token."""
+        from fastapi import HTTPException
+        from core.local_guard import game_caller_problem, resolve_admin_token
+        token = request.headers.get("x-admin-token") or request.query_params.get("token")
+        problem = game_caller_problem(
+            request.headers, request.client.host if request.client else None, token,
+            lambda: resolve_admin_token(self.config, self.root, create=False),
+        )
+        if problem:
+            log.warning("Refused %s from %s (origin=%s): %s", request.url.path,
+                        request.client.host if request.client else "?", request.headers.get("origin"), problem)
+            raise HTTPException(403, problem)
 
     @property
     def section(self) -> dict:
@@ -120,6 +156,8 @@ class BasePlugin(abc.ABC):
     # status() -> dict                                    extra Status-row fields (detail, error ...)
     # async state_fragment() -> dict                      merged into the overlay "update" payload
     # market_status() -> list[str]                        lines under the plugin's Market sub-page
+    # service(name) -> Any                                what ctx.plugins.service(name) hands other
+    #                                                     plugins, for each name in "provides"
     # apply_config(config) -> None                        after a dashboard save (hot settings)
     # attach_market(tape) / attach_store(store)           older style; ctx.market / ctx.store also work
     #

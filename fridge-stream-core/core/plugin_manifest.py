@@ -12,6 +12,7 @@ A plugin folder:
       plugin.py        Python client (kind "python"; not needed for kind "http")
       commands.json    default chat commands for group <id> (optional)
       overlay/         pages served at /overlay/<file> next to Core's own (optional)
+      pages/           dashboard pages served at /plugin-pages/<id>/<file> (optional, "pages" in plugin.json)
 
 Writing one: docs/PLUGINS.md.
 """
@@ -31,8 +32,9 @@ log = logging.getLogger("core.plugin_manifest")
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Bumped when the plugin contract changes in a way older plugins can't follow.
-PLUGIN_API_VERSION = 1
+# Bumped when the plugin contract changes. A plugin asks for the version it needs ("core_api");
+# 2 added "category", "provides" / "after", "pages", "config_moved_from" and ctx.plugins / ctx.db.
+PLUGIN_API_VERSION = 2
 
 # Game ids that used to be built into Core. Their command groups only switch on while the
 # game is actually running, even when someone's config still says enabled: true but the
@@ -42,6 +44,10 @@ LEGACY_GAME_IDS = ("minecraft", "factorio", "granvir", "openttd")
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 FIELD_TYPES = {"text", "url", "number", "password", "checkbox", "list", "lines", "map", "select"}
 KINDS = {"python", "http"}
+CATEGORIES = {"game", "feature"}
+# Sidebar groups a plugin page can go under (admin/index.html .nav-heading)
+NAV_GROUPS = {"On stream", "Overlays", "Games", "People", "Settings"}
+PAGE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
 _cache: Optional[List["Manifest"]] = None
 _reserved: set[str] = set()
@@ -65,6 +71,34 @@ class Manifest:
     @property
     def kind(self) -> str:
         return str(self.data.get("kind") or "python")
+
+    @property
+    def category(self) -> str:
+        """"game" (a game link) or "feature" (adds something to Core itself, e.g. a market)."""
+        return str(self.data.get("category") or "game")
+
+    @property
+    def provides(self) -> List[str]:
+        """Services other plugins can ask for with ctx.plugins.service(name)."""
+        return [str(x) for x in self.data.get("provides") or []]
+
+    @property
+    def after(self) -> List[str]:
+        """Plugin ids or service names this plugin starts after (when they are installed)."""
+        return [str(x) for x in self.data.get("after") or []]
+
+    @property
+    def pages(self) -> List[Dict[str, Any]]:
+        out = []
+        for pg in self.data.get("pages") or []:
+            out.append({
+                "id": str(pg["id"]),
+                "title": str(pg.get("title") or self.name),
+                "file": str(pg["file"]).replace("\\", "/").lstrip("/"),
+                "nav": str(pg.get("nav") or ("Games" if self.category == "game" else "On stream")),
+                "keywords": str(pg.get("keywords") or ""),
+            })
+        return out
 
     def get(self, key: str, default: Any = None) -> Any:
         return self.data.get(key, default)
@@ -98,6 +132,27 @@ def _check_fields(fields: Any, where: str) -> str:
             return f"{where}[{i}] needs a key"
         if str(f.get("type") or "text") not in FIELD_TYPES:
             return f"{where}[{i}] has unknown type {f.get('type')!r}"
+    return ""
+
+
+def _check_pages(pages: Any, folder: Path) -> str:
+    if pages is None:
+        return ""
+    if not isinstance(pages, list):
+        return "pages must be a list"
+    seen = set()
+    for i, pg in enumerate(pages):
+        if not isinstance(pg, dict):
+            return f"pages[{i}] must be an object"
+        pid = str(pg.get("id") or "")
+        if not PAGE_ID_RE.match(pid) or pid in seen:
+            return f"pages[{i}] needs a unique id (lowercase letters, digits, - or _)"
+        seen.add(pid)
+        rel = str(pg.get("file") or "").replace("\\", "/").lstrip("/")
+        if not rel.startswith("pages/") or ".." in rel.split("/") or not (folder / rel).is_file():
+            return f"pages[{i}] file must be an existing file in the plugin's pages/ folder"
+        if pg.get("nav") is not None and str(pg.get("nav")) not in NAV_GROUPS:
+            return f"pages[{i}] nav must be one of {sorted(NAV_GROUPS)}"
     return ""
 
 
@@ -139,6 +194,18 @@ def validate(data: Any, folder: Path) -> str:
         err = _check_fields(data.get(key), where)
         if err:
             return err
+    if str(data.get("category") or "game") not in CATEGORIES:
+        return f"category must be one of {sorted(CATEGORIES)}"
+    for key in ("provides", "after", "config_moved_from"):
+        val = data.get(key)
+        if val is not None and (not isinstance(val, list) or not all(isinstance(x, str) and ID_RE.match(x) for x in val)):
+            return f"{key} must be a list of ids (lowercase letters, digits, _)"
+    for old in data.get("config_moved_from") or []:
+        if old == pid:
+            return "config_moved_from can't name the plugin's own id"
+    err = _check_pages(data.get("pages"), folder)
+    if err:
+        return err
     market = data.get("market")
     if market is not None:
         if not isinstance(market, dict):
@@ -240,6 +307,36 @@ def default_commands() -> Dict[str, Dict[str, Any]]:
             data.setdefault("group", m.id)
             out[name] = data
     return out
+
+
+def moved_sections() -> Dict[str, str]:
+    """{old config section: plugin id} for plugins that took over a section under a new name."""
+    out: Dict[str, str] = {}
+    for m in installed():
+        for old in m.get("config_moved_from") or []:
+            out.setdefault(str(old), m.id)
+    return out
+
+
+def start_order(manifests: Iterable[Manifest]) -> List[Manifest]:
+    """Plugins sorted so each starts after what its "after" names (ids or provided services).
+    Ties keep id order; a loop is broken by id order rather than refusing to start."""
+    pending = sorted(manifests, key=lambda m: m.id)
+    owners: Dict[str, set] = {}
+    for m in pending:
+        owners.setdefault(m.id, set()).add(m.id)
+        for svc in m.provides:
+            owners.setdefault(svc, set()).add(m.id)
+    deps = {m.id: {o for name in m.after for o in owners.get(name, ()) if o != m.id} for m in pending}
+    done: List[Manifest] = []
+    placed: set = set()
+    while pending:
+        ready = [m for m in pending if deps[m.id] <= placed] or pending[:1]
+        m = ready[0]
+        done.append(m)
+        placed.add(m.id)
+        pending.remove(m)
+    return done
 
 
 def overlay_dirs() -> List[Path]:

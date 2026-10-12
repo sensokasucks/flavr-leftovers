@@ -172,7 +172,7 @@ fridge-stream-core/
 Minecraft, Factorio, Granvir and OpenTTD are plugins: folders in `plugins/`. They live in their
 own repository, **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)**, and don't ship with Core. Copy the folder
 of each game you want into `plugins/` (for example `plugins/minecraft/plugin.json`) and restart
-Core. Each one adds a card under **Settings → Game plugins** (switch it on there, then restart
+Core. Each one adds a card under **Settings → Plugins** (switch it on there, then restart
 Core), its command group, its overlays and its Market listings. Core runs fine with the folder empty.
 
 Adding a game: a new `plugins/<id>/` folder. If the game already has a bridge program that

@@ -1,7 +1,7 @@
 # Game plugins
 
 One folder per game (`minecraft/`, `factorio/`, `granvir/`, `openttd/` ...). Stream Core ships with
-this folder empty; each plugin folder here adds its card under **Settings → Game plugins**.
+this folder empty; each plugin folder here adds its card under **Settings → Plugins**.
 The games live in their own repository: https://github.com/sensokasucks/flavr-game-plugins
 (git ignores the folders you put here, so they never end up in Core's repo).
 

@@ -1,9 +1,11 @@
-# Game plugins
+# Plugins
 
 Every game Stream Core talks to is a plugin: a folder in `fridge-stream-core/plugins/`.
+A plugin can also add a feature to Core itself (`"category": "feature"`), such as a market.
 Core runs fine with none. Each folder that is there adds a card under
-**Settings → Game plugins**, its chat command group, its overlays, its Market listings and
-(if it has market settings) a sub-page on the **Market** page.
+**Settings → Plugins**, its chat command group, its overlays, its Market listings,
+(if it has market settings) a sub-page on the **Market** page, and (if it has `pages`) its
+own pages in the dashboard menu.
 
 Minecraft, Factorio, Granvir and OpenTTD don't ship with Core. They live in their own repository,
 **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)** (its Releases page has a zip), together with the
@@ -16,7 +18,7 @@ Plugins are ordinary Python running inside Core with no sandbox. Install only pl
 - Install: copy the plugin's folder into `plugins/` (so you get `plugins/<id>/plugin.json`), restart Core.
   Or keep a clone of flavr-game-plugins somewhere and start Core with `STREAM_CORE_PLUGINS_DIR`
   set to its `plugins` folder; `git pull` there then updates the games.
-- Switch on: Settings → Game plugins → tick **Enabled** → **Save & apply** → restart Core.
+- Switch on: Settings → Plugins → tick **Enabled** → **Save & apply** → restart Core.
 - Remove: switch it off, delete its folder, restart Core. Its settings stay in `config.yaml`
   (harmless) in case you put it back.
 
@@ -77,8 +79,13 @@ name, and not one of Core's own config sections (`core`, `market`, `points` ...)
 
 | Key | Meaning |
 |-----|---------|
-| `core_api` | Plugin API version the plugin needs. This Core has **1**. A higher number is refused with "update Stream Core". |
+| `core_api` | Plugin API version the plugin needs. This Core has **2**. A higher number is refused with "update Stream Core". Ask for 2 when you use anything marked *(2)*. |
 | `kind` | `python` (default) or `http`. |
+| `category` *(2)* | `game` (default) or `feature` (adds something to Core, e.g. a market). Features get their own heading on Settings → Plugins. Both are opt-in. |
+| `provides` *(2)* | Names other plugins can ask for: `["market"]`. See *Plugins using each other*. |
+| `after` *(2)* | Plugin ids or `provides` names to start after, when installed: `["market"]`. They also stop before them. |
+| `pages` *(2)* | Its own dashboard pages: `{"id", "title", "file", "nav", "keywords"}`. See *Dashboard pages*. |
+| `config_moved_from` *(2)* | Old config sections this plugin's settings used to live in: `["market"]`. See *Moving settings*. |
 | `entry` | python kind: `"module:ClassName"`, e.g. `"plugin:MinecraftIntegration"` for `plugin.py`. |
 | `config_defaults` | The plugin's block in `config.yaml`, filled in under whatever the user has. `enabled` is always forced to `false` by default (games are opt-in). |
 | `command_group` | Its group in Settings → Command groups. Bound to the game running: the group's commands only work while the plugin is running. |
@@ -139,7 +146,12 @@ class MyGame(BasePlugin):
 | `ctx.data_dir` | `data/plugins/<id>/` for files the plugin keeps (create it on first use) |
 | `ctx.folder` | the plugin's own folder |
 | `ctx.market` | the Fridge Market tape (`quote`, `upsert`, `apply_return`, `try_signal`) |
-| `ctx.store` | points / users (`get_or_create_user`, `pay_dividend` ...) |
+| `ctx.store` | points / users (`get_or_create_user`, `adjust_points`, `pay_dividend` ...) |
+| `ctx.db` *(2)* | the plugin's own SQLite file, `data/plugins/<id>/<id>.db` (below) |
+| `ctx.plugins` *(2)* | the other plugins: `running(id)`, `installed(id)`, `ids()`, `service(name)`, `class_hook(id, name)`, `manifest(id)` |
+| `ctx.service(name)` *(2)* | same as `ctx.plugins.service(name)` |
+| `ctx.require_admin(token)` *(2)* | in a plugin route: 401 unless it is Core's admin token (the dashboard sends it as `X-Admin-Token`) |
+| `ctx.require_game(request)` *(2)* | in a plugin route only games / bridges may call (it spends or mints points): 403 for web pages, and from another device without the admin token. Same check as Core's `/api/market/signal`. |
 | `ctx.core_url()` | `http://127.0.0.1:3850` (or the configured address) for overlay links |
 | `await ctx.reply(platform, text, to_user)` | say something in chat as Core |
 | `await ctx.alert(payload)` | send an alert to the alerts overlay |
@@ -155,10 +167,79 @@ Optional methods Core uses when they exist:
 | `status()` | extra fields on the Status page (`detail`, `error`) |
 | `async state_fragment()` | keys merged into the overlay `update` payload (Minecraft: `stats`, `inventory`) |
 | `market_status()` | lines of live numbers on its Market sub-page |
+| `service(name)` *(2)* | what another plugin gets from `ctx.plugins.service(name)` for each name in `provides` (without it, the plugin itself) |
 | `apply_config(config)` | after a dashboard save |
 | `async on_flag(payload)` | a chatter set off one of the streamer's custom flags (Red flags page) that has **Tell game plugins and overlays** on: `{flag: {id, name}, first, phrase, platform, message, message_id, user: {id, username, display_name, is_mod, is_subscriber}, hidden, timestamp}`. `first` = they just got the flag; `hidden` = they are red-flagged (show nothing of theirs). `ctx.bus.on_flag(handler)` gets the same. |
 | `@classmethod routes(cls, router, get_running)` | own API routes; they exist even while the game is off, `get_running()` returns the running instance or `None` |
 | `@staticmethod dividend_defaults(body, market_cfg)` | symbol / rates for `POST /api/market/dividend` from a bridge that sends none |
+
+## Plugins using each other *(2)*
+
+A plugin that offers something to others lists it under `provides` and may write `service(name)`:
+
+```python
+class Market(BasePlugin):          # plugin.json: "provides": ["market"]
+    def service(self, name):
+        return self.tape if name == "market" else None
+```
+
+Another plugin asks for it when it starts (put `"after": ["market"]` in its manifest so the
+market is running by then) and copes with `None`: the other plugin may not be installed or on.
+
+```python
+async def start(self):
+    self.market = self.ctx.service("market")     # None when there is no market
+```
+
+`ctx.plugins.class_hook(id, name)` reaches a class-level hook (a `@staticmethod`) of an installed
+plugin, running or not; `ctx.plugins.manifest(id)` reads another plugin's `plugin.json`, so a
+feature can use keys it defines itself (the way the Market page reads every game's `market` block).
+
+## Own database *(2)*
+
+`ctx.db` is the plugin's own SQLite file, so removing the plugin never touches Core's
+`stream_core.db`. Calls run off the event loop; rows come back as dicts.
+
+```python
+await self.ctx.db.script("CREATE TABLE IF NOT EXISTS holdings (user_id INTEGER, symbol TEXT, qty INTEGER)")
+await self.ctx.db.execute("INSERT INTO holdings VALUES (?, ?, ?)", (uid, "FRG", 5))
+rows = await self.ctx.db.fetchall("SELECT * FROM holdings WHERE user_id = ?", (uid,))
+row = await self.ctx.db.fetchone("SELECT qty FROM holdings WHERE user_id = ? AND symbol = ?", (uid, "FRG"))
+await self.ctx.db.transaction(lambda conn: ...)   # plain sqlite3 inside one transaction
+```
+
+Points stay in Core: use `ctx.store` (`get_or_create_user`, `get_user`, `adjust_points`).
+
+## Dashboard pages *(2)*
+
+```json
+"pages": [{"id": "main", "title": "Gamer Stonks", "file": "pages/index.html", "nav": "On stream",
+           "keywords": "market stocks tickers"}]
+```
+
+Each page gets an entry in the dashboard menu under `nav` (`On stream`, `Overlays`, `Games`,
+`People` or `Settings`; default `Games` for games, `On stream` for features) while the plugin is
+running. The file must be in the plugin's `pages/` folder; everything in that folder is served at
+`/plugin-pages/<id>/...` (so `pages/app.js` is `app.js` next to the page). The dashboard shows the
+page in a frame at `#plg-<id>-<page id>`. Start the page with:
+
+```html
+<link rel="stylesheet" href="/admin/admin.css" />
+<script src="/admin/plugin-page.js"></script>
+```
+
+`plugin-page.js` gives the page the dashboard's look (high contrast too), keeps the frame as tall
+as the page, and offers `StreamCore.api(path, opts)` (fetch with this browser's admin token, JSON
+back, errors thrown), `StreamCore.token()`, `StreamCore.escapeHtml(text)`,
+`StreamCore.go(tab, sub)` (open another dashboard page) and `StreamCore.resize()`.
+The page talks to the plugin's own routes; protect them with `ctx.require_admin`.
+
+## Moving settings *(2)*
+
+A plugin that takes over something Core used to do can keep the user's settings:
+`"config_moved_from": ["market"]` copies the `market:` block of `config.yaml` into the plugin's
+own block (under its id) when the plugin has none yet. The old block stays in the file, so an
+older Core still finds it. The plugin's `config_defaults` fill in anything missing.
 
 Import the plugin's own modules relatively (`from .admin import Client`): the folder is loaded
 as the package `plugins.<id>`.
