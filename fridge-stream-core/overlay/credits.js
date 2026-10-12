@@ -58,6 +58,8 @@
     typeHoldUntil: 0,
     typeState: "idle",
     typeAcc: 0,
+    typeScale: 1,
+    typePageStart: 0,
     matrix: null,
     observer: null,
   };
@@ -110,7 +112,19 @@
     return num(pick(theme.perspective_px, theme.sw_perspective_px), 420);
   }
 
+  // Target time (duration_sec) is one whole roll, title hold included, loop gap not.
+  function targetMs() {
+    return Math.max(0, num(theme.duration_sec, 0)) * 1000;
+  }
+
+  function pageCount() {
+    if (engine.motion === "matrix") return Math.max(1, (engine.matrix && engine.matrix.sections.length) || 1);
+    return Math.max(1, engine.pages.length || 1);
+  }
+
   function pageHoldMs() {
+    const target = targetMs();
+    if (target > 0) return Math.max(800, (target - titleHoldMs()) / pageCount());
     return Math.max(800, num(pick(theme.page_duration_sec, theme.page_hold_sec), 4.5) * 1000);
   }
 
@@ -938,9 +952,18 @@
     restartCrawlFromTop(ts);
   }
 
+  // Seconds of a crawl roll spent standing still: opening cards (or the title hold), end hold, stinger.
+  function crawlExtraSec() {
+    const lead = openingCards().length ? cardHoldTotal() : titleHoldMs() / 1000;
+    const mode = currentMode();
+    const ends = mode === "once" || mode === "clear" || endHoldSec() > 0;
+    const stinger = ends && showStingerSoon() ? num(roster.cast.stinger.hold_sec, 4) : 0;
+    return lead + endHoldSec() + stinger;
+  }
+
   function crawlSpeed(travel) {
     const target = num(theme.duration_sec, 0);
-    const budget = target > 0 ? Math.max(6, target - cardHoldTotal() - endHoldSec()) : 0;
+    const budget = target > 0 ? Math.max(6, target - crawlExtraSec()) : 0;
     return budget > 0 ? Math.max(4, travel / budget) : Math.max(8, num(theme.speed_px_per_sec, 42));
   }
 
@@ -1068,7 +1091,29 @@
     engine.typeAcc = 0;
     engine.typeState = "typing";
     engine.lastTs = ts;
+    engine.typePageStart = ts;
+    engine.typeScale = typeScaleFor(engine.typeLines, engine.pageIndex);
     attachCaret(engine.typeLines[0]);
+  }
+
+  function typeStepMs() {
+    return Math.max(10, num(theme.type_ms, 55));
+  }
+
+  // Time to type one page at normal speed (scale 1), line pauses included.
+  function typingMsFor(lines) {
+    if (typewriterUnit() === "name") return lines.length * typeStepMs();
+    const chars = lines.reduce((n, el) => n + (el.getAttribute("data-text") || "").length, 0);
+    const breaks = typewriterUnit() === "line" ? Math.max(0, lines.length - 1) : 0;
+    return (chars / typewriterCps()) * 1000 + breaks * 280;
+  }
+
+  // With a target time, type faster when a page wouldn't fit its share otherwise.
+  function typeScaleFor(lines, i) {
+    if (!targetMs()) return 1;
+    const room = pageHoldFor(i) * 0.75;
+    const need = typingMsFor(lines);
+    return room > 0 && need > room ? need / room : 1;
   }
 
   function fillTypedPage() {
@@ -1155,14 +1200,14 @@
     let result = "typing";
     if (unit === "name") {
       engine.typeAcc += dt * 1000;
-      const step = Math.max(10, num(theme.type_ms, 55));
+      const step = typeStepMs() / engine.typeScale;
       while (engine.typeAcc >= step && result !== "done") {
         engine.typeAcc -= step;
         result = revealNextLine();
       }
       if (!engine.typeLines.length) result = "done";
     } else {
-      engine.typeAcc += typewriterCps() * dt;
+      engine.typeAcc += typewriterCps() * engine.typeScale * dt;
       const chars = Math.floor(engine.typeAcc);
       if (chars < 1) return;
       engine.typeAcc -= chars;
@@ -1170,12 +1215,15 @@
     }
     if (result === "done") {
       engine.typeState = "hold";
-      engine.typeHoldUntil = ts + pageHoldFor(engine.pageIndex);
+      // Target time: the page's share covers typing and reading together.
+      engine.typeHoldUntil = targetMs() > 0
+        ? Math.max(ts + 400, engine.typePageStart + pageHoldFor(engine.pageIndex))
+        : ts + pageHoldFor(engine.pageIndex);
       return;
     }
     if (result === "line-break") {
       engine.typeState = "line-pause";
-      engine.typeHoldUntil = ts + 280;
+      engine.typeHoldUntil = ts + 280 / engine.typeScale;
     }
   }
 
@@ -1201,16 +1249,27 @@
     el.style.transform = "translate3d(" + engine.x + "px,-50%,0)";
   }
 
+  // First pass: the strip enters from the right edge and runs one whole list (it is doubled for a seamless loop).
+  function tickerTravel(half) {
+    return half + (($("stage") && $("stage").clientWidth) || window.innerWidth || 1280);
+  }
+
+  function tickerSpeed(half) {
+    const target = targetMs();
+    if (target > 0 && half > 0) return Math.max(4, tickerTravel(half) / (target / 1000));
+    return Math.max(20, num(theme.speed_px_per_sec, 42) * 1.8);
+  }
+
   function tickTicker(ts) {
     if (engine.gapUntil && ts < engine.gapUntil) return;
     engine.gapUntil = 0;
     if (!engine.lastTs) engine.lastTs = ts;
     const dt = Math.min(0.05, (ts - engine.lastTs) / 1000);
     engine.lastTs = ts;
-    const speed = Math.max(20, num(theme.speed_px_per_sec, 42) * 1.8);
-    engine.x -= speed * dt;
     const el = $("ticker");
     const half = el.scrollWidth / 2;
+    const speed = tickerSpeed(half);
+    engine.x -= speed * dt;
     if (half > 0 && engine.x <= -half) {
       engine.x += half;
       if (endOfRoll()) return;
@@ -1677,8 +1736,54 @@
     }
   });
 
+  // ---------------------------------------------------------------- estimate
+
+  function pagesHoldTotal() {
+    let ms = 0;
+    for (let i = 0; i < pageCount(); i++) ms += pageHoldFor(i);
+    return ms;
+  }
+
+  function typewriterTotal() {
+    let ms = 0;
+    pageNodes().forEach((page, i) => {
+      const lines = collectTwLines(page);
+      const typing = typingMsFor(lines) / typeScaleFor(lines, i);
+      ms += targetMs() > 0 ? Math.max(pageHoldFor(i), typing + 400) : typing + pageHoldFor(i);
+    });
+    return ms;
+  }
+
+  // Seconds for one roll as it is laid out right now (loop gap not included).
+  function estimate() {
+    const motion = engine.motion;
+    let sec = 0;
+    if (CRAWL_MOTIONS[motion]) {
+      let travel = Math.abs(engine.endY - engine.startY);
+      if (!travel) {
+        const m = metrics();
+        travel = Math.abs(m.endY - m.startY);
+      }
+      travel = Math.max(1, travel);
+      sec = travel / crawlSpeed(travel) + crawlExtraSec();
+    } else if (motion === "typewriter") sec = typewriterTotal() / 1000;
+    else if (PAGE_MOTIONS[motion] || motion === "matrix") sec = pagesHoldTotal() / 1000;
+    else if (motion === "ticker") {
+      const half = $("ticker").scrollWidth / 2;
+      sec = half > 0 ? tickerTravel(half) / tickerSpeed(half) : 0;
+    }
+    return {
+      seconds: Math.round(sec * 10) / 10,
+      motion,
+      names: (roster.chatters || []).length,
+      target: targetMs() / 1000,
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+  }
+
   // Test hook (the admin preview and tests read it; harmless in OBS).
-  window.__credits = { engine, state: () => ({ theme, roster, play }) };
+  window.__credits = { engine, estimate, state: () => ({ theme, roster, play }) };
 
   boot();
 })();

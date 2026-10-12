@@ -315,3 +315,11 @@
     linear-gradient(currentColor, currentColor) 8px 4px / 2px 8px no-repeat,
     linear-gradient(currentColor, currentColor) 14px 1px / 2px 10px no-repeat;
 }
+
+.cs-estimate {
+  color: var(--cs-accent);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.cs-estimate:empty { display: none; }
+.cs-field.is-overridden { opacity: 0.45; }

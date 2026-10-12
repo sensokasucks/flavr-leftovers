@@ -195,6 +195,18 @@ class OverlayFilesTests(unittest.TestCase):
         for el in ("sw-world", "sw-track", "matrix", "pages", "ticker", "cards", "stinger", "fade-top", "lb-top", "grain"):
             self.assertIn(f'id="{el}"', html)
 
+    def test_target_time_reaches_every_motion(self):
+        js = (ROOT / "overlay" / "credits.js").read_text(encoding="utf-8")
+        editor = (ROOT / "overlay" / "credits-editor.js").read_text(encoding="utf-8")
+        admin = (ROOT / "admin" / "admin.js").read_text(encoding="utf-8")
+        # Crawls, pages / Matrix screens, the typewriter and the ticker all read Target time.
+        for fn in ("function crawlSpeed", "function pageHoldMs", "function typeScaleFor", "function tickerSpeed"):
+            body = js.split(fn, 1)[1].split("\n  }\n", 1)[0]
+            self.assertIn("targetMs()" if fn != "function crawlSpeed" else "duration_sec", body, fn)
+        self.assertIn("window.__credits = { engine, estimate,", js)
+        self.assertIn('id="cs-estimate"', editor)
+        self.assertIn("__credits.estimate()", admin)
+
 
 if __name__ == "__main__":
     unittest.main()
