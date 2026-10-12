@@ -1298,3 +1298,19 @@ html.plugin-page body { min-height: 0; background: transparent; }
 html.plugin-page body > main { padding: 0 2px 16px; }
 .plugin-group-heading { grid-column: 1 / -1; margin: 18px 0 0; font-size: 1rem; color: var(--muted); }
 .plugin-group-heading:first-child { margin-top: 0; }
+
+/* Chat widgets */
+.widgets-paste { margin-top: 10px; }
+.widgets-paste > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.widgets-paste-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 12px; }
+.widget-row { grid-template-columns: minmax(220px, 1fr) auto; }
+.widget-row .src-url { display: block; margin-top: 4px; flex: none; max-width: 520px; }
+#widget-editor { margin-top: 12px; }
+.widget-editor .src-preview iframe { height: 420px; }
+.widget-editor .src-param-title { margin-top: 12px; }
+.widget-editor .src-param input[type="text"], .widget-editor .src-param input[type="number"],
+.widget-editor .src-param select, .widget-editor .src-param textarea { margin-top: 0; }
+.wf-color { display: flex; gap: 6px; align-items: center; }
+.wf-color input[type="color"] { width: 36px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; flex: none; }
+.wf-color input[type="text"] { flex: 1; }
+@media (max-width: 700px) { .widget-row { grid-template-columns: 1fr; } }

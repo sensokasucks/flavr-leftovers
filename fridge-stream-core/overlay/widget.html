@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chat widget</title>
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+    #frame { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; background: transparent; }
+  </style>
+</head>
+<body>
+  <!--
+    A StreamElements / Streamlabs code widget imported on the dashboard (Overlays -> Chat widgets).
+    ?name=<widget> picks it. The widget's code runs in the sandboxed frame below (its own blank
+    origin); this page fetches chat from Core and passes it in (widget.js, widget-bridge.js).
+  -->
+  <iframe id="frame" title="Chat widget" sandbox="allow-scripts" allowtransparency="true"></iframe>
+  <script src="overlay-hint.js"></script>
+  <script src="widget-bridge.js"></script>
+  <script src="widget.js"></script>
+</body>
+</html>

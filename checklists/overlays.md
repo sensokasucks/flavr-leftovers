@@ -15,6 +15,7 @@ Core (:3850):
 | `/overlay/market.html`, `market-board.html`, `market-chart.html`, `market-cycle.html` | Gamer Stonks plugin's overlay folder (same addresses as before) |
 | `/overlay/openttd.html` | OpenTTD companies (file in `plugins/openttd/overlay/`; plugin `overlay/` folders are served at `/overlay/` after Core's own) |
 | `/overlay/openttd-ticker.html` | OpenTTD ticker |
+| `/overlay/widget.html?name=` | Imported StreamElements / Streamlabs code widget fed with Core's chat; its code runs in the sandboxed `/widget-frame/<name>` (see [widgets.md](widgets.md)) |
 | `/overlay/replies.html` | Command replies (Core's API-free reply path; `?force=1` ignores `overlay.replies_enabled`) |
 | `/overlay/reactions.html` | Chat reactions fallback (see [reactions.md](reactions.md)) |
 | `/media/<name>` | Stored files (pictures, videos, sounds, fonts), `/media/<name>.<ext>` too; for overlays and custom CSS (see [stored-files.md](stored-files.md)) |

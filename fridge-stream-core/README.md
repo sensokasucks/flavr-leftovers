@@ -68,6 +68,7 @@ python main.py
 | **Twitch only** | `…/overlay/chat.html?platform=twitch` | Filtered |
 | **YouTube only** | `…/overlay/chat.html?platform=youtube` | Filtered |
 | **Multi filter** | `…/overlay/chat.html?platforms=kick,twitch` | Subset |
+| **Chat widget** | `…/overlay/widget.html?name=<widget>` | A StreamElements / Streamlabs code widget (HTML + CSS + JS + settings) imported in Admin → Chat widgets, with chat from every platform; [overlay/WIDGETS.md](overlay/WIDGETS.md) |
 | **Minecraft stats** | `http://127.0.0.1:3850/overlay/overlay.html` | HP, CPM, power, inventory |
 | **Stream alerts** | `http://127.0.0.1:3850/overlay/alerts.html` | Follow / sub / raid / Super Chat — Streamlabs/SE CSS compatible; pictures and sounds per kind uploaded in Admin → Alerts |
 | **Chat credits** | `http://127.0.0.1:3850/overlay/credits.html` | Unique-chatter end credits (enable in Admin → Credits). Style editor + keys: [overlay/CREDITS.md](overlay/CREDITS.md), motions: [overlay/MOTIONS.md](overlay/MOTIONS.md) |

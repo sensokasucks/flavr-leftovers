@@ -521,6 +521,41 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return FileResponse(path, media_type=CONTENT_TYPES.get(ext),
                             headers={"Cache-Control": "public, max-age=60"})
 
+    # Chat widgets (core/widget_store.py): StreamElements / Streamlabs code widgets. The page
+    # /overlay/widget.html?name= passes chat in; the widget's own code runs in this frame, which
+    # the CSP sandbox puts in a blank origin (no dashboard token, no admin API, no /ws).
+    def _widgets():
+        from core.widget_store import default_store
+
+        return getattr(core_state, "widgets", None) or default_store()
+
+    @app.get("/widget-frame/{name}", response_class=HTMLResponse)
+    async def widget_frame(name: str):
+        from core.widget_store import FRAME_CSP
+
+        page = _widgets().compose(name)
+        if page is None:
+            raise HTTPException(404, "No widget by that name")
+        return HTMLResponse(page, headers={"Content-Security-Policy": FRAME_CSP,
+                                           "Cache-Control": "no-store",
+                                           "X-Content-Type-Options": "nosniff"})
+
+    @app.get("/api/overlay/widget/{name}")
+    async def widget_info(name: str):
+        """Public: the widget page reads its platform, settings and version (polled for edits)."""
+        w = _widgets().get(name)
+        if w is None:
+            raise HTTPException(404, "No widget by that name")
+        cfg = core_state.config or {}
+        twitch = cfg.get("twitch") or {}
+        kick = cfg.get("kick") or {}
+        channel = str(twitch.get("channel") or kick.get("channel_slug") or "")
+        if channel.upper().startswith("YOUR_"):
+            channel = ""
+        currency = str(((cfg.get("overlay") or {}).get("widget_currency")) or "USD").upper()
+        return {"name": w["name"], "platform": w["platform"], "values": w["values"],
+                "version": w["version"], "channel": channel, "currency": currency}
+
     # ------------------------------------------------------------------
     # Chatter profile pictures (core/avatar_store.py)
     # ------------------------------------------------------------------
@@ -634,5 +669,6 @@ class CoreState:
         self.chat_games = None
         self.avatars = None
         self.paid = None         # core.paid.PaidLog (Admin → Paid)
+        self.widgets = None      # core.widget_store.WidgetStore (Overlays → Chat widgets)
         self.apply_avatar_settings = None
         self.import_avatar_hide = None

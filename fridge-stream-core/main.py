@@ -57,6 +57,7 @@ try:
     from core.credits import CreditsEngine
     from core.avatar_store import AvatarStore
     from core.media_library import default_library
+    from core.widget_store import default_store as default_widgets
     from core.red_flags import RedFlags, matching_recent
     from core.chat_flags import ChatFlags
     from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, PRICED_ALERT_KINDS, split_amount_prefix
@@ -199,6 +200,8 @@ class StreamCore:
         # Stored files: one copy of each upload, used by alerts / chat / reactions / custom CSS.
         # Files dropped into overlay/assets/alerts|chat/ and older reaction uploads are copied in.
         self.state.media = default_library()
+        # Chat widgets (StreamElements / Streamlabs code widgets) run by /overlay/widget.html
+        self.state.widgets = default_widgets()
         for style in (ALERT_STYLE, CHAT_STYLE, self.reactions.images):
             try:
                 style.import_legacy()
