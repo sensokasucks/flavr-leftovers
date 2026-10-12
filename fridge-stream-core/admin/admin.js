@@ -5062,7 +5062,21 @@
     });
   }
 
+  // The preview renders at 1920x1080 and is scaled down, so it (and the run time estimate) match the stream.
+  function fitCreditsPreview() {
+    const iframe = $("crd-preview");
+    const box = iframe && iframe.parentElement;
+    if (!box || box.dataset.fitted) return;
+    box.dataset.fitted = "1";
+    const fit = () => {
+      if (box.clientWidth) box.style.setProperty("--crd-scale", String(box.clientWidth / 1920));
+    };
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(box);
+    fit();
+  }
+
   function mountCreditsEditor() {
+    fitCreditsPreview();
     if (creditsEditorReady || !window.CreditsStyleEditor || !$("crd-style-editor")) return;
     CreditsStyleEditor.mount($("crd-style-editor"), {
       onChange: (theme) => {
@@ -5086,6 +5100,10 @@
         }
       },
       onRestart: () => crdPlay({ playing: true, restart: true }),
+      estimate: () => {
+        const win = $("crd-preview") && $("crd-preview").contentWindow;
+        return win && win.__credits && win.__credits.estimate ? win.__credits.estimate() : null;
+      },
     });
     creditsEditorReady = true;
   }

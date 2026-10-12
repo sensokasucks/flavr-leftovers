@@ -893,13 +893,21 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   overflow: hidden;
   position: sticky;
   top: 12px;
+  min-width: 0;
+  aspect-ratio: 16 / 9;
 }
+/* Rendered at stream size and scaled to fit (admin.js fitCreditsPreview). */
 .credits-preview iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: block;
-  width: 100%;
-  height: min(62vh, 560px);
+  width: 1920px;
+  height: 1080px;
   border: 0;
   background: #000;
+  transform: scale(var(--crd-scale, 0.25));
+  transform-origin: 0 0;
 }
 .credits-list {
   max-height: 220px;
@@ -935,8 +943,7 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
 /* ---- Paged stacks override the older per-page grid layouts ---- */
 .acc-stack.paged { padding: 0; max-width: none; }
 .acc-stack.paged:not(.has-aside) { display: flex; flex-direction: column; }
-.acc-stack.paged > .acc[data-aside] .credits-preview { position: static; }
-.acc-stack.paged > .acc[data-aside] .credits-preview iframe { height: min(46vh, 420px); }
+.acc-stack.paged > .acc[data-aside] .credits-preview { position: relative; top: 0; }
 .acc-stack.paged > .acc[data-aside] #alert-preview { height: min(46vh, 420px); }
 .status-grid { padding: 0 0 24px; }
 .page-head .tab-intro { max-width: 820px; }

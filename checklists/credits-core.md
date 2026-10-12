@@ -10,7 +10,8 @@ Standalone twin: the [fridge-chat-credits](https://github.com/sensokasucks/fridg
 - [ ] The on/off switch is only on the Credits page; Settings → Points, permissions + chat → Chat credits just says on/off with a link. `PUT /api/admin/config` keeps the live `credits.enabled` (a stale form copy can't switch credits off). `POST /credits/play` returns `credits_enabled` and a `warning` while off. Tests: `tests/test_dashboard_tidy.py`.
 - [ ] Unique chatters come from the **same** Kick / Twitch / YouTube adapters as live chat. No second listener.
 - [ ] Overlay URL: `http://127.0.0.1:3850/overlay/credits.html` (transparent Webpage source).
-- [ ] Every motion runs on one pixel `requestAnimationFrame` loop (`credits.speed_px_per_sec` / `duration_sec` for crawls). Do **not** go back to CSS `@keyframes` + `translateY(%)` (CEF dropped that animation).
+- [ ] Every motion runs on one pixel `requestAnimationFrame` loop (`credits.speed_px_per_sec` for crawls). Do **not** go back to CSS `@keyframes` + `translateY(%)` (CEF dropped that animation).
+- [ ] `duration_sec` (Target time) is one whole roll in **every** motion, title hold included, loop gap not. `window.__credits.estimate()` gives one roll's seconds; Admin → Credits → Style shows it above Speed (preview iframe is 1920×1080 scaled down). Tests: `tests/test_credits.py`.
 - [ ] Motion / motion-timing change and Restart **hard-reset** the engine (timers, observers, transforms). Look and roster changes **redraw in place** (crawl keeps its y, pages keep their page).
 - [ ] Hold / Pause still mount the chosen motion (Matrix, Teletype, pages) frozen — never fall back to a crawl.
 - [ ] Modes: `loop` / `once` / `hold` / `clear` (play once, then empty screen; `clear_when_done` does the same for `once`). Roll credits freezes the unique list and restarts the crawl from below the frame. Live appends do not jump to the top.
