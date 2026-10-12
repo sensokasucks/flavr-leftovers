@@ -45,6 +45,7 @@
       <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look sound picture gif webm upload" data-tab="alerts">Alerts</button>
       <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom" data-tab="chatlook">Chat overlay</button>
       <button class="tab" data-keywords="stored files library upload picture image sound video mp4 webm gif font reuse media replace css url" data-tab="files">Stored files</button>
+      <button class="tab" data-keywords="chat widget streamelements streamlabs custom code html css js javascript fields zip import etsy ko-fi skin theme" data-tab="widgets">Chat widgets</button>
     </div>
 
     <div class="nav-group">
@@ -897,6 +898,51 @@
       <button type="button" id="files-refresh">Refresh list</button>
     </div>
     <div id="files-list" class="asset-list"></div>
+  </section>
+
+  <!-- Chat widgets: StreamElements / Streamlabs code widgets run by Core (core/widget_store.py) -->
+  <section id="tab-widgets" class="panel">
+    <p class="tab-intro">
+      Run chat widgets made for <strong>StreamElements</strong> or <strong>Streamlabs</strong> (the kind with their own
+      HTML, CSS, JS and settings, often sold on Etsy or Ko-fi) with Core's chat from Kick, Twitch and YouTube.
+      Import the widget's zip, change its settings here, and add its address to OBS as a Browser source.
+      Plain CSS templates don't need this: paste those into <a href="#chatlook">Chat overlay</a> → Custom CSS.
+    </p>
+    <fieldset class="cfg-card">
+      <legend>Add a widget</legend>
+      <p class="hint">The zip StreamElements exports (widget.ini, html.txt, css.txt, js.txt, fields.txt, data.txt), or any zip with
+        the widget's .html, .css, .js and fields .json files. The widget's code runs walled off from the dashboard, so it can't
+        read your sign-in or change Core.</p>
+      <div class="asset-actions">
+        <input id="widgets-upload-input" type="file" accept=".zip,application/zip" />
+        <button type="button" id="widgets-upload">Import zip</button>
+      </div>
+      <details class="widgets-paste">
+        <summary>Or paste the code boxes</summary>
+        <div class="widgets-paste-grid">
+          <label>Name <input type="text" id="widgets-paste-name" placeholder="my-chat" /></label>
+          <label>Made for
+            <select id="widgets-paste-platform">
+              <option value="">Work it out from the code</option>
+              <option value="streamelements">StreamElements</option>
+              <option value="streamlabs">Streamlabs</option>
+            </select>
+          </label>
+        </div>
+        <label>HTML <textarea id="widgets-paste-html" rows="4" spellcheck="false"></textarea></label>
+        <label>CSS <textarea id="widgets-paste-css" rows="4" spellcheck="false"></textarea></label>
+        <label>JS <textarea id="widgets-paste-js" rows="4" spellcheck="false"></textarea></label>
+        <label>Fields (JSON) <textarea id="widgets-paste-fields" rows="3" spellcheck="false"></textarea></label>
+        <label>Data / saved values (JSON, optional) <textarea id="widgets-paste-data" rows="2" spellcheck="false"></textarea></label>
+        <button type="button" id="widgets-paste-add">Add widget</button>
+      </details>
+      <p id="widgets-status" class="muted" role="status"></p>
+    </fieldset>
+    <div class="toolbar">
+      <button type="button" id="widgets-refresh">Refresh list</button>
+    </div>
+    <div id="widgets-list" class="asset-list"></div>
+    <div id="widget-editor" hidden></div>
   </section>
 
   <!-- Users -->

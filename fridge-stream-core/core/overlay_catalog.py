@@ -134,6 +134,21 @@ OVERLAYS: list[dict[str, Any]] = [
         ],
     },
     {
+        "id": "widget",
+        "file": "widget.html",
+        "name": "Chat widget (StreamElements / Streamlabs)",
+        "notes": "A StreamElements or Streamlabs code widget you imported, fed with chat from every platform. Transparent.",
+        "params": [
+            _text("name", "Widget", "", "Its name on the Chat widgets page (Copy OBS address fills this in)", "vamp-red"),
+            _multi("platforms", "Only these platforms", PLATFORMS, "Empty = every platform"),
+            _bool("alerts", "Follows, subs, tips, cheers and raids", True, "Untick to pass chat only"),
+            _num("hide", "Hide messages after (seconds)", "", "Streamlabs chat boxes only; empty or 0 = keep them", 0, 600, 1),
+            _bool("history", "Start with the last few messages", False),
+            _bool("preview", "Preview with made-up chatters", False, "For testing the look while chat is quiet"),
+        ],
+        "settings": [{"label": "Import widgets, their settings and test buttons", "hash": "#widgets"}],
+    },
+    {
         "id": "replies",
         "file": "replies.html",
         "name": "Replies + boards overlay",

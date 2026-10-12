@@ -13,6 +13,7 @@ Tabs, in order:
 - [ ] **Plugin pages** — a running plugin's `pages` get menu entries (Gamer Stonks is one: tape, listings, per-game vault/dynamo knobs from each plugin's `market` block); old `#market` links open `#plg-stonks-main` (see [market.md](market.md))
 - [ ] **Settings → Plugins** — one card per installed plugin from its `plugin.json` `settings` (enabled tick, status, links, errors); empty state when `plugins/` is empty (see [plugins.md](plugins.md))
 - [ ] **Stored files** (Overlays, `#files`) — every uploaded picture / video / sound / font once; Upload (several at a time), Copy CSS, Rename, Replace…, Delete (asks, names the places it empties), "Used by" per file (see [stored-files.md](stored-files.md))
+- [ ] **Chat widgets** (Overlays, `#widgets`) — import a StreamElements / Streamlabs widget zip or pasted code, Copy OBS address, Settings & preview (one control per field, the widget's buttons), code editor, Rename, Delete (see [widgets.md](widgets.md))
 - [ ] **Credits** — enable, roll/loop/once/hold/once-then-clear, pause, restart, CSV download, live list over `/ws`, style editor, pins, preview (see [credits-core.md](credits-core.md))
 - [ ] **Alert test** — fire kinds + skin + custom CSS (see [alerts.md](alerts.md))
 - [ ] **Users & Points** — search, adjust, link another platform account **by name** (`POST /users/{id}/link` with `username` and no `platform_user_id`: the known account by that name, else a `name:` placeholder their first chat line claims), merge by name search (confirm names both people and their points), per-person Chat log / Download CSV / Red-flag
@@ -35,6 +36,7 @@ APIs that the tabs depend on must not disappear:
 - [ ] `GET /api/admin/credits` including `cast` + the Credits write routes
 - [ ] `/plugin-pages/<id>/...` serves only the plugin's `pages/` folder
 - [ ] `GET/PUT /api/admin/reactions` + `POST /api/admin/reactions/test` (see [reactions.md](reactions.md))
+- [ ] `GET/POST /api/admin/widgets`, `GET/PUT/DELETE /api/admin/widgets/{name}`, `POST /api/admin/widgets/{name}/button` (see [widgets.md](widgets.md))
 - [ ] `GET/POST /api/admin/media`, `PUT/DELETE /api/admin/media/{name}`; `POST /api/admin/overlays/{alerts|chat}/assets/{slot}` takes `{file, kind}` or `{data, filename}` (see [stored-files.md](stored-files.md))
 
 Auth:

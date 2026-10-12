@@ -1987,6 +1987,96 @@ def create_admin_router(core_state) -> APIRouter:
         return {"ok": True, "emptied": emptied, **_media_payload()}
 
     # ------------------------------------------------------------------
+    # Chat widgets: StreamElements / Streamlabs code widgets (core/widget_store.py)
+    # ------------------------------------------------------------------
+
+    def _widgets():
+        from core.widget_store import default_store
+
+        return getattr(core_state, "widgets", None) or default_store()
+
+    def _widgets_payload() -> Dict[str, Any]:
+        return {"widgets": _widgets().list()}
+
+    @router.get("/widgets")
+    async def list_widgets(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        return _widgets_payload()
+
+    @router.post("/widgets")
+    async def add_widget(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{zip (base64), filename?} or {html, css, js, fields, data}; plus name? and platform?
+        ("streamelements" / "streamlabs", guessed from the code when left out)."""
+        _auth(x_admin_token)
+        store = _widgets()
+        name = str(body.get("name") or "")
+        platform = str(body.get("platform") or "")
+        try:
+            if body.get("zip"):
+                w = store.add_zip_base64(str(body["zip"]), name=name, filename=str(body.get("filename") or ""),
+                                         platform=platform)
+            else:
+                w = store.add({p: body.get(p) for p in ("html", "css", "js", "fields", "data")},
+                              name=name, platform=platform)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "widget": w, **_widgets_payload()}
+
+    @router.get("/widgets/{name}")
+    async def get_widget(name: str, x_admin_token: Optional[str] = Header(None)):
+        """One widget with its code (html / css / js / fields / data) for the editor."""
+        _auth(x_admin_token)
+        w = _widgets().get(name, with_code=True)
+        if w is None:
+            raise HTTPException(404, "No widget by that name.")
+        return w
+
+    @router.put("/widgets/{name}")
+    async def change_widget(name: str, body: Dict[str, Any] = Body(default={}),
+                            x_admin_token: Optional[str] = Header(None)):
+        """{values}: the settings; {code: {html, css, js, fields, data}}: new code;
+        {platform}; {name}: rename (the overlay address changes with it)."""
+        _auth(x_admin_token)
+        store = _widgets()
+        try:
+            code = body.get("code") if isinstance(body.get("code"), dict) else None
+            values = body.get("values") if "values" in body else None
+            w = store.update(name, parts=code, values=values, platform=str(body.get("platform") or ""))
+            if body.get("name") is not None and str(body["name"]).strip():
+                w = store.rename(w["name"], str(body["name"]))
+        except KeyError as e:
+            raise HTTPException(404, "No widget by that name.") from e
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+        return {"ok": True, "widget": w, **_widgets_payload()}
+
+    @router.post("/widgets/{name}/button")
+    async def widget_button(name: str, body: Dict[str, Any] = Body(default={}),
+                            x_admin_token: Optional[str] = Header(None)):
+        """{field}: press one of the widget's "button" settings (often its own test messages);
+        open copies of the widget get StreamElements' widget-button event."""
+        _auth(x_admin_token)
+        w = _widgets().get(name)
+        if w is None:
+            raise HTTPException(404, "No widget by that name.")
+        field = str(body.get("field") or "")
+        spec = w["fields"].get(field)
+        if not isinstance(spec, dict) or spec.get("type") != "button":
+            raise HTTPException(400, "That widget has no button by that name.")
+        mgr = getattr(core_state, "ws_manager", None)
+        if mgr is not None:
+            await mgr.broadcast({"type": "widget_button",
+                                 "data": {"name": w["name"], "field": field, "value": spec.get("value", "")}})
+        return {"ok": True}
+
+    @router.delete("/widgets/{name}")
+    async def delete_widget(name: str, x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        if not _widgets().delete(name):
+            raise HTTPException(404, "No widget by that name.")
+        return {"ok": True, **_widgets_payload()}
+
+    # ------------------------------------------------------------------
     # Integrations test bench (per-game command / metrics / overlay)
     # ------------------------------------------------------------------
 

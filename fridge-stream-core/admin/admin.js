@@ -337,6 +337,7 @@
       loadOverlayAssets("chat");
     }
     if (tabId === "files") loadFiles();
+    if (tabId === "widgets") loadWidgets();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "chat") {
@@ -1931,6 +1932,261 @@
       input.value = "";
       st.textContent = [done.length ? "Stored " + done.join(", ") + "." : "", failed.join(" ")].filter(Boolean).join(" ");
       renderFiles();
+    };
+  }
+
+  // ── Chat widgets: StreamElements / Streamlabs code widgets (core/widget_store.py) ──
+  let widgetsCache = [];
+  let widgetOpen = "";          // the widget whose settings / code are open below the list
+
+  const PLATFORM_NAME = { streamelements: "StreamElements", streamlabs: "Streamlabs" };
+  const widgetUrl = (w) => `${location.origin}/overlay/widget.html?name=${encodeURIComponent(w.name)}`;
+
+  function widgetsSay(t) {
+    const st = $("widgets-status");
+    if (st) st.textContent = t;
+  }
+
+  function renderWidgets() {
+    const box = $("widgets-list");
+    if (!box) return;
+    if (!widgetsCache.length) {
+      box.innerHTML = '<p class="muted">No widgets yet. Import a widget\'s zip above.</p>';
+      return;
+    }
+    box.innerHTML = widgetsCache
+      .map((w) => `<div class="asset-row widget-row" data-name="${esc(w.name)}">
+        <div class="asset-label"><strong>${esc(w.name)}</strong>
+          <span class="muted">${esc(PLATFORM_NAME[w.platform] || w.platform)} widget${w.title ? " · " + esc(w.title) : ""}</span>
+          <code class="src-url">${esc(widgetUrl(w))}</code></div>
+        <div class="asset-actions">
+          <button type="button" class="w-copy" title="Paste into OBS: Browser source → URL">Copy OBS address</button>
+          <button type="button" class="w-open">${widgetOpen === w.name ? "Close" : "Settings &amp; preview"}</button>
+          <button type="button" class="w-rename">Rename</button>
+          <button type="button" class="w-delete">Delete</button>
+        </div>
+      </div>`)
+      .join("");
+    box.querySelectorAll(".widget-row").forEach((row) => {
+      const name = row.dataset.name;
+      const w = widgetsCache.find((x) => x.name === name);
+      row.querySelector(".w-copy").onclick = (ev) => copyWithFeedback(ev.currentTarget, widgetUrl(w));
+      row.querySelector(".w-open").onclick = () => {
+        widgetOpen = widgetOpen === name ? "" : name;
+        renderWidgets();
+        openWidgetEditor();
+      };
+      row.querySelector(".w-rename").onclick = async () => {
+        const next = prompt("New name (letters, numbers, - or _). The OBS address changes with it.", name);
+        if (next == null || !next.trim() || next.trim() === name) return;
+        try {
+          const res = await api(`/api/admin/widgets/${encodeURIComponent(name)}`, { method: "PUT", body: JSON.stringify({ name: next }) });
+          widgetsCache = res.widgets || [];
+          if (widgetOpen === name) widgetOpen = res.widget.name;
+          widgetsSay(`Renamed to ${res.widget.name}. Update the address in OBS: ${widgetUrl(res.widget)}`);
+          renderWidgets();
+          openWidgetEditor();
+        } catch (e) { widgetsSay(String(e.message || e)); }
+      };
+      row.querySelector(".w-delete").onclick = async () => {
+        if (!confirm(`Delete the widget ${name}? OBS sources using it will be empty.`)) return;
+        try {
+          const res = await api(`/api/admin/widgets/${encodeURIComponent(name)}`, { method: "DELETE" });
+          widgetsCache = res.widgets || [];
+          if (widgetOpen === name) widgetOpen = "";
+          widgetsSay(`Deleted ${name}.`);
+          renderWidgets();
+          openWidgetEditor();
+        } catch (e) { widgetsSay(String(e.message || e)); }
+      };
+    });
+  }
+
+  // One control per field. StreamElements and Streamlabs share most field types.
+  function widgetFieldHtml(key, f, value) {
+    const id = "wf-" + key.replace(/[^\w-]/g, "_");
+    const label = esc(f.label || key);
+    const v = value == null ? "" : value;
+    const t = String(f.type || "text").toLowerCase();
+    if (t === "hidden") return "";
+    if (t === "button") {
+      return `<div class="src-param"><button type="button" class="wf-button" data-key="${esc(key)}">${label}</button></div>`;
+    }
+    if (t === "checkbox") {
+      return `<label class="src-param check"><input type="checkbox" data-key="${esc(key)}" data-type="checkbox"${v === true || v === "true" ? " checked" : ""} /> ${label}</label>`;
+    }
+    if (t === "dropdown" || t === "select") {
+      const opts = f.options || {};
+      const pairs = Array.isArray(opts) ? opts.map((o) => (typeof o === "object" ? [o.value, o.label || o.value] : [o, o])) : Object.entries(opts);
+      return `<label class="src-param">${label}<select data-key="${esc(key)}" data-type="text">${pairs
+        .map(([ov, ol]) => `<option value="${esc(ov)}"${String(ov) === String(v) ? " selected" : ""}>${esc(ol)}</option>`).join("")}</select></label>`;
+    }
+    if (t === "number" || t === "slider") {
+      const rng = ["min", "max", "step"].filter((k) => f[k] != null).map((k) => ` ${k}="${esc(f[k])}"`).join("");
+      return `<label class="src-param">${label}<input type="number" data-key="${esc(key)}" data-type="number" value="${esc(v)}"${rng} /></label>`;
+    }
+    if (t === "colorpicker" || t === "color") {
+      const hex = /^#[0-9a-f]{6}$/i.test(String(v)) ? String(v) : "#000000";
+      return `<label class="src-param">${label}<span class="wf-color"><input type="color" value="${esc(hex)}" data-for="${id}" />
+        <input type="text" id="${id}" data-key="${esc(key)}" data-type="text" value="${esc(v)}" /></span></label>`;
+    }
+    if (t === "textarea") {
+      return `<label class="src-param">${label}<textarea data-key="${esc(key)}" data-type="text" rows="3">${esc(v)}</textarea></label>`;
+    }
+    if (/^(image|video|sound|audio)-input$/.test(t)) {
+      const kinds = t.startsWith("image") ? ["image"] : t.startsWith("video") ? ["video", "image"] : ["sound"];
+      const opts = filesCache.filter((m) => kinds.includes(m.kind))
+        .map((m) => `<option value="${esc(m.css_url)}">${esc(m.name)}</option>`).join("");
+      return `<label class="src-param">${label}<input type="text" id="${id}" data-key="${esc(key)}" data-type="text" value="${esc(v)}" placeholder="https://… or /media/name" />
+        ${opts ? `<select class="wf-media" data-for="${id}"><option value="">Pick from Stored files…</option>${opts}</select>` : ""}</label>`;
+    }
+    return `<label class="src-param">${label}<input type="text" data-key="${esc(key)}" data-type="text" value="${esc(v)}" /></label>`;
+  }
+
+  async function openWidgetEditor() {
+    const box = $("widget-editor");
+    if (!box) return;
+    if (!widgetOpen) { box.hidden = true; box.innerHTML = ""; return; }
+    let w;
+    try {
+      w = await api(`/api/admin/widgets/${encodeURIComponent(widgetOpen)}`);
+      if (!filesCache.length) {
+        try { filesCache = (await api("/api/admin/media")).files || []; } catch (_) {}
+      }
+    } catch (e) {
+      box.hidden = false;
+      box.innerHTML = `<p class="muted">${esc(e.message || e)}</p>`;
+      return;
+    }
+    const groups = {};
+    Object.entries(w.fields || {}).forEach(([key, f]) => {
+      if (!f || typeof f !== "object") return;
+      const g = f.group || "Settings";
+      (groups[g] = groups[g] || []).push(widgetFieldHtml(key, f, w.values[key]));
+    });
+    const settings = Object.keys(groups).length
+      ? Object.entries(groups).map(([g, items]) => `<div class="src-param-title"><strong>${esc(g)}</strong></div><div class="src-params">${items.join("")}</div>`).join("")
+      : '<p class="hint">This widget has no settings list (fields). Change its code below instead.</p>';
+    const code = w.code || {};
+    box.hidden = false;
+    box.innerHTML = `<fieldset class="cfg-card widget-editor">
+      <legend>${esc(w.name)} · ${esc(PLATFORM_NAME[w.platform] || w.platform)}</legend>
+      <div class="src-preview"><iframe id="widget-preview" title="Widget preview" src="/overlay/widget.html?name=${encodeURIComponent(w.name)}&preview=1&hint=0"></iframe>
+        <p class="hint">The widget with made-up chatters while chat is quiet, then real chat. Buttons below (the widget's own test messages) show up here and in OBS.
+          Kick and YouTube chat arrive dressed as Twitch messages; badges are Twitch's pictures, or yours from Chat overlay → Pictures.</p></div>
+      ${settings}
+      <div class="asset-actions"><button type="button" id="widget-save">Save settings</button>
+        <button type="button" id="widget-reset" title="Back to the widget's own defaults">Reset to the widget's defaults</button></div>
+      <details class="widgets-paste"><summary>Code (HTML, CSS, JS, fields)</summary>
+        <label>Made for
+          <select id="widget-code-platform">
+            <option value="streamelements"${w.platform === "streamelements" ? " selected" : ""}>StreamElements</option>
+            <option value="streamlabs"${w.platform === "streamlabs" ? " selected" : ""}>Streamlabs</option>
+          </select></label>
+        <label>HTML <textarea id="widget-code-html" rows="6" spellcheck="false">${esc(code.html)}</textarea></label>
+        <label>CSS <textarea id="widget-code-css" rows="8" spellcheck="false">${esc(code.css)}</textarea></label>
+        <label>JS <textarea id="widget-code-js" rows="8" spellcheck="false">${esc(code.js)}</textarea></label>
+        <label>Fields (JSON) <textarea id="widget-code-fields" rows="6" spellcheck="false">${esc(code.fields)}</textarea></label>
+        <button type="button" id="widget-code-save">Save code</button>
+      </details>
+    </fieldset>`;
+    const say = widgetsSay;
+    box.querySelectorAll(".wf-color input[type=color]").forEach((c) => {
+      c.oninput = () => { const t = $(c.dataset.for); if (t) t.value = c.value; };
+    });
+    box.querySelectorAll("select.wf-media").forEach((sel) => {
+      sel.onchange = () => { const t = $(sel.dataset.for); if (t && sel.value) t.value = location.origin + sel.value; };
+    });
+    box.querySelectorAll(".wf-button").forEach((b) => {
+      b.onclick = async () => {
+        try {
+          await api(`/api/admin/widgets/${encodeURIComponent(w.name)}/button`, { method: "POST", body: JSON.stringify({ field: b.dataset.key }) });
+        } catch (e) { say(String(e.message || e)); }
+      };
+    });
+    const saveValues = async (values, done) => {
+      try {
+        const res = await api(`/api/admin/widgets/${encodeURIComponent(w.name)}`, { method: "PUT", body: JSON.stringify({ values }) });
+        widgetsCache = res.widgets || widgetsCache;
+        say(done);
+        openWidgetEditor();
+      } catch (e) { say(String(e.message || e)); }
+    };
+    $("widget-save").onclick = () => {
+      const values = Object.assign({}, w.values);
+      box.querySelectorAll("[data-key][data-type]").forEach((el) => {
+        const key = el.dataset.key;
+        if (el.dataset.type === "checkbox") values[key] = el.checked;
+        else if (el.dataset.type === "number") values[key] = el.value === "" ? "" : Number(el.value);
+        else values[key] = el.value;
+      });
+      saveValues(values, `Saved ${w.name}. Open copies in OBS reload with the new settings within a few seconds.`);
+    };
+    $("widget-reset").onclick = () => {
+      if (!confirm("Put every setting back to the widget's own defaults?")) return;
+      const values = {};
+      Object.entries(w.fields || {}).forEach(([k, f]) => { if (f && typeof f === "object" && "value" in f) values[k] = f.value; });
+      saveValues(values, `${w.name} is back to its defaults.`);
+    };
+    $("widget-code-save").onclick = async () => {
+      try {
+        const res = await api(`/api/admin/widgets/${encodeURIComponent(w.name)}`, {
+          method: "PUT",
+          body: JSON.stringify({
+            platform: $("widget-code-platform").value,
+            code: { html: $("widget-code-html").value, css: $("widget-code-css").value, js: $("widget-code-js").value, fields: $("widget-code-fields").value },
+          }),
+        });
+        widgetsCache = res.widgets || widgetsCache;
+        say(`Saved the code of ${w.name}.`);
+        renderWidgets();
+        openWidgetEditor();
+      } catch (e) { say(String(e.message || e)); }
+    };
+  }
+
+  async function loadWidgets() {
+    try {
+      const res = await api("/api/admin/widgets");
+      widgetsCache = res.widgets || [];
+      if (widgetOpen && !widgetsCache.some((w) => w.name === widgetOpen)) widgetOpen = "";
+      renderWidgets();
+    } catch (e) {
+      if ($("widgets-list")) $("widgets-list").innerHTML = `<span class="muted">${esc(e.message || e)}</span>`;
+    }
+  }
+
+  if ($("widgets-refresh")) $("widgets-refresh").onclick = loadWidgets;
+  if ($("widgets-upload")) {
+    $("widgets-upload").onclick = async () => {
+      const input = $("widgets-upload-input");
+      const f = (input.files || [])[0];
+      if (!f) { widgetsSay("Pick the widget's zip first."); return; }
+      widgetsSay(`Importing ${f.name}…`);
+      try {
+        const res = await api("/api/admin/widgets", { method: "POST", body: JSON.stringify({ zip: await readAsDataUrl(f), filename: f.name }) });
+        widgetsCache = res.widgets || [];
+        widgetOpen = res.widget.name;
+        input.value = "";
+        widgetsSay(`Imported ${res.widget.name} (${PLATFORM_NAME[res.widget.platform] || res.widget.platform}). Its settings and a preview are below; Copy OBS address gives the Browser source URL.`);
+        renderWidgets();
+        openWidgetEditor();
+      } catch (e) { widgetsSay(String(e.message || e)); }
+    };
+  }
+  if ($("widgets-paste-add")) {
+    $("widgets-paste-add").onclick = async () => {
+      const body = { name: $("widgets-paste-name").value, platform: $("widgets-paste-platform").value };
+      ["html", "css", "js", "fields", "data"].forEach((p) => { body[p] = $("widgets-paste-" + p).value; });
+      try {
+        const res = await api("/api/admin/widgets", { method: "POST", body: JSON.stringify(body) });
+        widgetsCache = res.widgets || [];
+        widgetOpen = res.widget.name;
+        ["name", "html", "css", "js", "fields", "data"].forEach((p) => { $("widgets-paste-" + p).value = ""; });
+        widgetsSay(`Added ${res.widget.name} (${PLATFORM_NAME[res.widget.platform] || res.widget.platform}).`);
+        renderWidgets();
+        openWidgetEditor();
+      } catch (e) { widgetsSay(String(e.message || e)); }
     };
   }
 
