@@ -101,7 +101,9 @@ class BaseAdapter(abc.ABC):
         if not self.connected:
             self._set_connected()
         self.metrics.record_message()
-        await self.bus.publish_chat(event)
+        # submit_chat paces the line when chat smoothing is on (core/chat_pacer.py)
+        submit = getattr(self.bus, "submit_chat", None) or self.bus.publish_chat
+        await submit(event)
 
     async def _emit_removed(self, *, message_id: str = "", user_id: str = "", username: str = "",
                             everything: bool = False) -> None:

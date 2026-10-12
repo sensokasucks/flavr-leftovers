@@ -1227,6 +1227,20 @@
         <label>API key (official mode)
           <input id="cfg-yt-apikey" type="text" autocomplete="off" placeholder="AIza…" />
         </label>
+        <label title="YouTube is read by asking for new chat every few seconds. Empty or 0 = as often as YouTube suggests.">Check for new chat every (seconds) <span class="field-help">Empty = what YouTube suggests (usually a few seconds). Official mode never goes faster than YouTube asks, and every check spends API quota, so slower makes the daily quota last longer.</span>
+          <input id="cfg-yt-poll" type="number" min="0" max="30" step="0.5" placeholder="auto" />
+        </label>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Chat smoothing</legend>
+        <p class="hint">YouTube chat arrives in clumps, one each time Core checks. Smoothing holds a platform's chat for a moment and lets it out at an even pace, so overlays, Stream Rooms and the credits show a steady flow. Kick and Twitch send each line the moment it is typed, so they rarely need it. A line a mod deletes while it waits is never shown.</p>
+        <label class="check"><input id="cfg-smooth-youtube" type="checkbox" /> Smooth YouTube chat</label>
+        <label class="check"><input id="cfg-smooth-twitch" type="checkbox" /> Smooth Twitch chat</label>
+        <label class="check"><input id="cfg-smooth-kick" type="checkbox" /> Smooth Kick chat</label>
+        <label>Never hold a line longer than (seconds) <span class="field-help">A busy chat speeds up to stay within this, so it never falls behind</span>
+          <input id="cfg-smooth-max" type="number" min="1" max="30" step="0.5" />
+        </label>
       </fieldset>
 
       <fieldset class="cfg-card" id="av-card">

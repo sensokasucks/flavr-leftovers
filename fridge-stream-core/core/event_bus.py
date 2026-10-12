@@ -37,6 +37,8 @@ class EventBus:
         self._removed_handlers: List[RemovedHandler] = []
         self._flag_handlers: List[FlagHandler] = []
         self._lock = asyncio.Lock()
+        # Optional chat smoothing (core/chat_pacer.py): adapters go through submit_chat
+        self.pacer = None
 
     def on_chat(self, handler: ChatHandler) -> None:
         self._chat_handlers.append(handler)
@@ -75,6 +77,9 @@ class EventBus:
                 log.exception("flag handler error")
 
     async def publish_chat_removed(self, payload: dict[str, Any]) -> None:
+        if self.pacer is not None:
+            # a line still held back by smoothing is never shown
+            self.pacer.drop(payload)
         for h in list(self._removed_handlers):
             try:
                 await h(payload)
@@ -87,6 +92,13 @@ class EventBus:
                 await h(payload)
             except Exception:
                 log.exception("user_update handler error")
+
+    async def submit_chat(self, event: ChatEvent) -> None:
+        """A platform adapter read a chat line: smoothing (when on) paces it, then publish_chat."""
+        if self.pacer is None:
+            await self.publish_chat(event)
+        else:
+            await self.pacer.submit(event)
 
     async def publish_chat(self, event: ChatEvent) -> None:
         handlers = list(self._chat_handlers)

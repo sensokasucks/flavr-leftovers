@@ -3432,6 +3432,12 @@
     $("cfg-yt-video").value = yt.video_id ?? "";
     $("cfg-yt-apikey").value = yt.api_key ?? "";
     $("cfg-yt-livechat").value = yt.live_chat_id ?? "";
+    $("cfg-yt-poll").value = Number(yt.poll_interval_sec) > 0 ? yt.poll_interval_sec : "";
+    const sm = cfg.chat_smoothing || {};
+    $("cfg-smooth-youtube").checked = sm.youtube === true;
+    $("cfg-smooth-twitch").checked = sm.twitch === true;
+    $("cfg-smooth-kick").checked = sm.kick === true;
+    $("cfg-smooth-max").value = sm.max_delay_sec ?? 5;
 
     $("cfg-met-msgwin").value = met.messageWindowSec ?? 60;
     $("cfg-met-cmdwin").value = met.commandWindowSec ?? 120;
@@ -3595,6 +3601,14 @@
         channel_id: $("cfg-yt-channel").value.trim(),
         video_id: cleanYouTube($("cfg-yt-video").value) || $("cfg-yt-video").value.trim(),
         live_chat_id: $("cfg-yt-livechat").value.trim(),
+        poll_interval_sec: num($("cfg-yt-poll").value, 0),
+      },
+      chat_smoothing: {
+        ...((lastLoadedConfig || {}).chat_smoothing || {}),
+        youtube: $("cfg-smooth-youtube").checked,
+        twitch: $("cfg-smooth-twitch").checked,
+        kick: $("cfg-smooth-kick").checked,
+        max_delay_sec: num($("cfg-smooth-max").value, 5),
       },
       ...collectPluginSections(),
       permissions: {
