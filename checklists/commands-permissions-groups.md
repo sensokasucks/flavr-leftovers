@@ -16,7 +16,7 @@ Home: `core/command_router.py`, `core/command_groups.py`, `core/permissions.py`,
   - a game plugin's id (`minecraft` / `factorio` / `openttd` / `granvir` / any installed plugin) → config enabled **and** plugin running. The four old ids keep needing "running" even with no plugin installed
   - `points` → `points.enabled`
   - `credits` → `credits.enabled`
-  - `market` → `market.enabled`
+  - `market` → the Gamer Stonks plugin running (its `config_moved_from: ["market"]` and group alias; commands with `special: market_*` go to it through `specials`)
   - `reactions` → `reactions.enabled` (reaction commands live in `config.yaml` → `reactions.entries`, not `commands.json`; a `commands.json` name wins)
 - [ ] Game plugins' `commands.json` are merged in as defaults **under** `config/commands.json`: the file wins on a name, plugin commands fill in the rest; dashboard saves don't write untouched plugin defaults into the file. `commands.example.json` has no game commands.
 - [ ] Groups and `commands.json` hot-reload from Admin (Save groups / Hot-reload / Save + hot-reload).
@@ -35,6 +35,6 @@ Home: `core/command_router.py`, `core/command_groups.py`, `core/permissions.py`,
 
 ## After-change verify
 
-- [ ] `config.example.yaml` still has groups: `core`, `points`, `minecraft`, `factorio`, `openttd`, `credits`, `market`, `reactions`.
+- [ ] `config.example.yaml` still has groups: `core`, `points`, `minecraft`, `factorio`, `openttd`, `credits`, `reactions` (no `market`: Gamer Stonks adds `stonks` and the old `market` name).
 - [ ] Admin → Config still has the group table and command editor (group, handler, priority, enabled).
 - [ ] A dummy extra YAML key you add by hand survives a Config save (or is documented as stripped).

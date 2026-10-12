@@ -76,13 +76,8 @@ CREATE TABLE IF NOT EXISTS points_ledger (
 
 CREATE INDEX IF NOT EXISTS idx_ledger_user ON points_ledger(user_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS market_holdings (
-    user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    symbol       TEXT NOT NULL,
-    milli_shares INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY (user_id, symbol)
-);
-CREATE INDEX IF NOT EXISTS idx_holdings_symbol ON market_holdings(symbol);
+-- (market_holdings, from before the market became the Gamer Stonks plugin, may still be in
+-- older databases; Gamer Stonks copies it into its own database once and Core leaves it alone.)
 
 -- Chat games: a "stream" starts when chat comes back after a quiet gap; attendance per stream
 -- drives !streak, regular titles and the once-per-stream !claim.
@@ -1291,110 +1286,6 @@ class Store:
                               flagged_only: bool = False, flag: str = "") -> str:
         """The chat log as CSV, with the same filters as the Chat history search."""
         return await self._run(self._export_chat_csv_sync, user_id, platform, q, flagged_only, flag)
-
-    # ------------------------------------------------------------------
-    # Market holdings / dividends
-    # ------------------------------------------------------------------
-
-    def _holdings_for_symbol_sync(self, symbol: str) -> list[dict]:
-        sym = symbol.upper().strip()
-        with self._connect() as conn:
-            rows = conn.execute(
-                "SELECT user_id, milli_shares FROM market_holdings WHERE symbol=? AND milli_shares > 0",
-                (sym,),
-            ).fetchall()
-            return [dict(r) for r in rows]
-
-    def _pay_dividend_sync(self, symbol: str, total_points: int, reason: str) -> dict:
-        """Split total_points across holders of symbol. Dust is burned."""
-        total_points = int(max(0, total_points))
-        holders = self._holdings_for_symbol_sync(symbol)
-        pool = sum(int(h["milli_shares"]) for h in holders)
-        paid = []
-        burned = total_points
-        if total_points <= 0 or pool <= 0:
-            return {
-                "symbol": symbol.upper(),
-                "total": total_points,
-                "holders": 0,
-                "paid": [],
-                "burned": burned,
-                "reason": reason,
-            }
-        remaining = total_points
-        for h in holders:
-            share = int(h["milli_shares"])
-            cut = (total_points * share) // pool
-            if cut <= 0:
-                continue
-            bal = self._award_points_sync(
-                int(h["user_id"]),
-                cut,
-                reason or f"dividend {symbol}",
-                "dividend",
-            )
-            paid.append({"user_id": int(h["user_id"]), "points": cut, "balance": bal})
-            remaining -= cut
-        return {
-            "symbol": symbol.upper(),
-            "total": total_points,
-            "holders": len(paid),
-            "paid": paid,
-            "burned": max(0, remaining),
-            "reason": reason,
-        }
-
-    async def pay_dividend(self, symbol: str, total_points: int, reason: str = "vault") -> dict:
-        return await self._run(self._pay_dividend_sync, symbol, total_points, reason)
-
-    def _adjust_holding_sync(self, user_id: int, symbol: str, milli_delta: int) -> int:
-        sym = symbol.upper().strip()
-        with self._connect() as conn:
-            row = conn.execute(
-                "SELECT milli_shares FROM market_holdings WHERE user_id=? AND symbol=?",
-                (user_id, sym),
-            ).fetchone()
-            current = int(row["milli_shares"]) if row else 0
-            nxt = max(0, current + int(milli_delta))
-            conn.execute(
-                "INSERT INTO market_holdings (user_id, symbol, milli_shares) VALUES (?,?,?) "
-                "ON CONFLICT(user_id, symbol) DO UPDATE SET milli_shares=excluded.milli_shares",
-                (user_id, sym, nxt),
-            )
-            conn.commit()
-            return nxt
-
-    async def adjust_holding(self, user_id: int, symbol: str, milli_delta: int) -> int:
-        return await self._run(self._adjust_holding_sync, user_id, symbol, milli_delta)
-
-    def _list_holdings_sync(self, symbol: str | None = None) -> list[dict]:
-        with self._connect() as conn:
-            if symbol:
-                rows = conn.execute(
-                    "SELECT user_id, symbol, milli_shares FROM market_holdings "
-                    "WHERE symbol=? AND milli_shares > 0 ORDER BY milli_shares DESC",
-                    (symbol.upper(),),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT user_id, symbol, milli_shares FROM market_holdings "
-                    "WHERE milli_shares > 0 ORDER BY symbol, milli_shares DESC"
-                ).fetchall()
-            return [dict(r) for r in rows]
-
-    async def list_holdings(self, symbol: str | None = None) -> list[dict]:
-        return await self._run(self._list_holdings_sync, symbol)
-
-    async def holdings_for_user(self, user_id: int) -> list[dict]:
-        def _fn():
-            with self._connect() as conn:
-                rows = conn.execute(
-                    "SELECT user_id, symbol, milli_shares FROM market_holdings "
-                    "WHERE user_id=? AND milli_shares > 0 ORDER BY symbol",
-                    (user_id,),
-                ).fetchall()
-                return [dict(r) for r in rows]
-        return await self._run(_fn)
 
     def _stats_sync(self) -> dict:
         with self._connect() as conn:

@@ -9,7 +9,7 @@ Core owns every rule. The game only draws what Core sends and reports what happe
 | Triggers (emoji, emote names, commands) | `reactions.entries[].emoji / emotes / commands` |
 | Effect + settings | `effect`, `params` (settings come from the effect list the game reports) |
 | Who can use it | `permission` (public / mod / admin) + optional `require: [sub, vip]` (either one; mods and admins pass) |
-| Cooldowns | per user, for everyone, per target (`cooldown_*_sec`), using `core.market.CooldownGate` |
+| Cooldowns | per user, for everyone, per target (`cooldown_*_sec`), using `core.cooldown.CooldownGate` |
 | Cost | Core points ledger, `source="reaction"`. Needs `points.enabled`. Admins are free unless `admins_free: false` |
 | Who can be targeted | `targeting: opt_out` (everyone until `!nothrow`) or `opt_in` (only after `!throwok`). Stored in `data/reactions_optout.json` |
 | Chat replies | `reactions.messages.*` templates; emoji triggers never reply (no spam) |

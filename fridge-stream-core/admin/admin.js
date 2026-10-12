@@ -5,8 +5,6 @@
   const bootHash = location.hash;
   let bootLastTab = "";
   try { bootLastTab = (JSON.parse(localStorage.getItem("stream_core_admin_nav") || "{}") || {}).lastTab || ""; } catch (_) { /* none */ }
-  // Game plugins' Market sub-pages are drawn after the page loads: remember which one the link asked for
-  let marketPluginSub = (/^#market\/(plg-[\w-]+)/.exec(location.hash) || [])[1] || "";
 
   function token() {
     return localStorage.getItem(tokenKey) || $("token").value.trim();
@@ -341,7 +339,6 @@
     if (tabId === "files") loadFiles();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
-    if (tabId === "market") initMarketTab();
     if (tabId === "chat") {
       loadChat();
       refreshChatLogBanner();
@@ -361,10 +358,17 @@
     activateTab(tabId, sub);
   }
 
+  // Pages that moved into a plugin: old links and bookmarks land on the plugin's page
+  const MOVED_TABS = { market: "plg-stonks-main" };
+  function movedTab(tabId) {
+    return MOVED_TABS[tabId] || tabId;
+  }
+
   function routeFromHash() {
     const raw = decodeURIComponent((location.hash || "").replace(/^#/, ""));
     if (!raw) return false;
-    const [tabId, sub] = raw.split("/");
+    const [asked, sub] = raw.split("/");
+    const tabId = movedTab(asked);
     if (!$("tab-" + tabId)) return false;
     if (!pageCanLeave(tabId)) {
       // Back / Forward away from unsaved edits: stay, and put the address back
@@ -430,10 +434,6 @@
     });
   });
   window.addEventListener("popstate", routeFromHash);
-  window.addEventListener("hashchange", () => {
-    const m = /^#market\/(plg-[\w-]+)/.exec(location.hash);
-    if (m && !document.querySelector(`#tab-market .acc[data-sub="${m[1]}"]`)) marketPluginSub = m[1];
-  });
   window.addEventListener("hashchange", routeFromHash);
 
   // ------------------------------------------------------------------
@@ -3125,9 +3125,9 @@
   }
 
   // ------------------------------------------------------------------
-  // Game plugins (plugins/<id>/plugin.json): Settings cards + Market sub-pages, drawn from
-  // each manifest's "settings" and "market.fields". Card fields save with config.yaml;
-  // market fields save on the Market page (PUT /api/admin/plugins/<id>/settings).
+  // Plugins (plugins/<id>/plugin.json): Settings cards drawn from each manifest's "settings".
+  // Card fields save with config.yaml. A "market" block is shown and saved on the Gamer Stonks
+  // plugin's own page (PUT /api/admin/plugins/<id>/settings).
   // ------------------------------------------------------------------
   let pluginsInfo = [];
 
@@ -3160,7 +3160,7 @@
     return String(text).replace(/[^a-z0-9_]+/gi, "-");
   }
 
-  /** One manifest field as a form control. prefix: "cfg" (Settings card) or "mkt" (Market page). */
+  /** One manifest field as a form control (prefix "cfg": Settings card). */
   function pluginFieldHtml(prefix, pid, f, value) {
     const type = f.type || "text";
     const id = `${prefix}-plg-${slug(pid)}-${slug(f.key)}`;
@@ -3192,7 +3192,7 @@
     return `<label>${label}${help}<input type="${inputType}" ${attrs} value="${escapeHtml(String(shown))}"${ph}${extra} /></label>`;
   }
 
-  /** A form control back to a config value (Settings cards; the server coerces Market fields itself). */
+  /** A form control back to a config value (Settings cards). */
   function readPluginField(el, prev) {
     const type = el.dataset.type || "text";
     const upper = (t) => (el.dataset.upper ? t.toUpperCase() : t);
@@ -3251,7 +3251,7 @@
         ${p.description ? `<p class="hint">${escapeHtml(p.description)}</p>` : ""}
         ${err}
         ${fields.map((f) => pluginFieldHtml("cfg", p.id, f, pathGet(section, f.key))).join("")}
-        ${p.market ? `<p class="hint">Stock / vault rates live on the <strong>Market</strong> page.</p>` : ""}
+        ${p.market && p.id !== "stonks" ? `<p class="hint">Stock / vault rates live on the <strong>Gamer Stonks</strong> page (the Gamer Stonks plugin).</p>` : ""}
         ${(p.pages || []).length && p.running ? `<p class="hint">Its own page${p.pages.length > 1 ? "s" : ""} in the menu: ${p.pages.map((pg) => `<strong>${escapeHtml(pg.title)}</strong>`).join(", ")}.</p>` : ""}
         ${pluginLinks(p)}
       </fieldset>`;
@@ -3310,9 +3310,9 @@
     });
     if (!added) return;
     try { buildSearchIndex(); } catch (_) { /* search index is optional */ }
-    const want = decodeURIComponent((bootHash || "").replace(/^#/, "")).split("/")[0];
+    const want = movedTab(decodeURIComponent((bootHash || "").replace(/^#/, "")).split("/")[0]);
     if (want.startsWith("plg-") && $("tab-" + want)) activateTab(want);
-    else if (!bootHash && bootLastTab.startsWith("plg-") && $("tab-" + bootLastTab)) activateTab(bootLastTab);
+    else if (!bootHash && movedTab(bootLastTab).startsWith("plg-") && $("tab-" + movedTab(bootLastTab))) activateTab(movedTab(bootLastTab));
   }
 
   window.addEventListener("message", (ev) => {
@@ -5343,318 +5343,6 @@
     };
   }
 
-  function fillMarketForm(data) {
-    const mkt = data.market || {};
-    if ($("mkt-enabled")) $("mkt-enabled").checked = !!mkt.enabled;
-    if ($("mkt-hour-cap")) $("mkt-hour-cap").value = mkt.hourly_cap_points ?? 500;
-    if ($("mkt-steam-sec")) $("mkt-steam-sec").value = mkt.steam_poll_sec ?? 1800;
-    if ($("mkt-trade-impact")) $("mkt-trade-impact").checked = mkt.trade_impact !== false;
-    if ($("mkt-trade-bps")) $("mkt-trade-bps").value = mkt.trade_impact_bps_per_100 ?? 40;
-    const bookSel = $("mkt-new-book");
-    if (bookSel && Array.isArray(data.books)) {
-      const keep = bookSel.value;
-      bookSel.innerHTML = data.books.map((b) => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join("");
-      if (data.books.includes(keep)) bookSel.value = keep;
-    }
-    renderMarketPlugins(data.plugins || []);
-    const holds = data.holdings || [];
-    if ($("mkt-holdings")) {
-      $("mkt-holdings").hidden = false;
-      $("mkt-holdings").textContent = holds.length
-        ? holds.map((h) => `user ${h.user_id}  ${h.symbol}  ${(h.milli_shares / 1000).toFixed(3)} sh`).join("\n")
-        : "(no holdings — grant shares or dividends burn)";
-    }
-    if ($("mkt-status")) {
-      const last = data.last_dividend;
-      $("mkt-status").textContent = last
-        ? `Last dividend ${last.symbol} ${last.points} pts (${last.reason || ""})`
-        : "";
-    }
-    const body = document.querySelector("#mkt-book tbody");
-    if (body) {
-      const rows = ((data.tape || {}).instruments || []);
-      body.innerHTML = rows.map((it) => {
-        const ccu = it.steam_ccu != null ? it.steam_ccu : "—";
-        const stale = it.steam_stale ? " stale" : "";
-        const hidden = it.status === "hidden" || it.status === "delisted";
-        return `<tr data-sym="${it.symbol}">
-          <td><code>${it.symbol}</code></td>
-          <td><input class="mkt-name" data-sym="${it.symbol}" type="text" value="${(it.name || "").replace(/"/g, "&quot;")}" /></td>
-          <td>${it.book || ""}</td>
-          <td><input class="mkt-appid" data-sym="${it.symbol}" type="number" min="0" value="${it.steam_appid || ""}" style="width:7.5em" /></td>
-          <td class="${stale}">${ccu}</td>
-          <td><input class="mkt-px" data-sym="${it.symbol}" type="number" step="0.1" value="${Number(it.price || 0).toFixed(2)}" style="width:5.5em" /></td>
-          <td><input class="mkt-show" data-sym="${it.symbol}" type="checkbox" ${hidden ? "" : "checked"} /></td>
-          <td>
-            <button type="button" class="mkt-save-row" data-sym="${it.symbol}">Save</button>
-            <button type="button" class="mkt-del-row" data-sym="${it.symbol}">Delist</button>
-          </td>
-        </tr>`;
-      }).join("") || `<tr><td colspan="7" class="muted">No listings</td></tr>`;
-    }
-  }
-
-  /** One Market sub-page per game plugin with "market" fields in its plugin.json. */
-  function renderMarketPlugins(plugins) {
-    const panel = $("tab-market");
-    const stack = panel && panel.querySelector('.acc-stack[data-acc="market"]');
-    const bar = panel && panel.querySelector('.subtabs[data-subtabs="market"]');
-    if (!stack || !bar) return;
-    let added = false;
-    plugins.forEach((p) => {
-      const sub = "plg-" + p.id;
-      const m = p.market || {};
-      let acc = stack.querySelector(`:scope > .acc[data-sub="${sub}"]`);
-      if (!acc) {
-        const btn = document.createElement("button");
-        btn.type = "button";
-        btn.className = "subtab";
-        btn.dataset.sub = sub;
-        btn.textContent = p.name;
-        bar.insertBefore(btn, bar.querySelector('.subtab[data-sub="investors"]'));
-        acc = document.createElement("details");
-        acc.className = "acc";
-        acc.dataset.sub = sub;
-        acc.open = true;
-        stack.insertBefore(acc, stack.querySelector(':scope > .acc[data-sub="investors"]'));
-        added = true;
-      }
-      const groups = [];
-      (m.fields || []).forEach((f) => {
-        const g = f.group || m.title || p.name;
-        let row = groups.find((x) => x.name === g);
-        if (!row) groups.push((row = { name: g, fields: [] }));
-        row.fields.push(f);
-      });
-      const saveId = "plg-mkt-save-" + slug(p.id);
-      const statusId = "plg-mkt-status-" + slug(p.id);
-      if (PAGE_SAVER && PAGE_SAVER.isDirty && PAGE_SAVER.isDirty("mkt-" + sub) && $(saveId)) {
-        // unsaved edits here: only refresh the live numbers, keep what was typed
-        const pre = acc.querySelector(".integ-result");
-        if (pre) pre.textContent = (p.market_status || []).join("\n") || pre.textContent;
-        return;
-      }
-      acc.innerHTML =
-        `<summary>${escapeHtml(m.title || p.name)}</summary>` +
-        `<div class="acc-body market-mc-grid">` +
-        (m.hint ? `<p class="hint">${escapeHtml(m.hint)}</p>` : "") +
-        groups.map((g, i) =>
-          `<fieldset class="cfg-card"><legend>${escapeHtml(g.name)}</legend>` +
-          g.fields.map((f) => pluginFieldHtml("mkt", p.id, f, pathGet(p.values || {}, f.key))).join("") +
-          (i === 0
-            ? `<pre class="integ-result">${escapeHtml((p.market_status || []).join("\n") ||
-                (p.running ? "(no live numbers yet)" : p.name + " is not running: live numbers show while it runs"))}</pre>` +
-              `<div class="form-row" style="gap:8px;flex-wrap:wrap">` +
-              `<button type="button" class="primary" id="${saveId}">Save ${escapeHtml(p.name)} market</button>` +
-              `<span class="muted" id="${statusId}"></span></div>`
-            : "") +
-          `</fieldset>`).join("") +
-        `</div>`;
-      const sum = acc.querySelector(":scope > summary");
-      if (sum) sum.addEventListener("click", (ev) => ev.preventDefault());
-      $(saveId).onclick = async () => {
-        const values = {};
-        acc.querySelectorAll(".plg-field").forEach((el) => {
-          values[el.dataset.key] = el.dataset.type === "checkbox" ? el.checked : el.value;
-        });
-        try {
-          const res = await api("/api/admin/plugins/" + encodeURIComponent(p.id) + "/settings", {
-            method: "PUT",
-            body: JSON.stringify({ values }),
-          });
-          if (lastLoadedConfig) lastLoadedConfig[p.id] = res.values;   // a later config.yaml save keeps these
-          await initMarketTab(true);
-          if ($(statusId)) $(statusId).textContent = "Saved";
-          if ($("mkt-status")) $("mkt-status").textContent = p.name + " market saved";
-        } catch (e) {
-          if ($(statusId)) $(statusId).textContent = String(e.message || e);
-        }
-      };
-      if (PAGE_SAVER && PAGE_SAVER.add) {
-        PAGE_SAVER.add({ key: "mkt-" + sub, page: "market", sub, name: p.name + " market",
-          scope: `#tab-market .acc[data-sub="${sub}"]`, button: saveId });
-      }
-    });
-    if (added && panel.classList.contains("active")) {
-      const want = marketPluginSub || (location.hash.split("/")[1] || "").trim();
-      marketPluginSub = "";
-      if (want.startsWith("plg-") && stack.querySelector(`:scope > .acc[data-sub="${want}"]`)) {
-        showSub("market", want);
-        markNav("market", want);
-        if (location.hash !== "#market/" + want) history.replaceState(null, "", "#market/" + want);
-      } else showSub("market", panel.dataset.sub || "");
-    }
-  }
-
-  async function initMarketTab(force) {
-    if (!$("tab-market")) return;
-    if ($("tab-market").dataset.ready && !force) return;
-    try {
-      const data = await api("/api/admin/market");
-      $("tab-market").dataset.ready = "1";
-      fillMarketForm(data);
-    } catch (e) {
-      if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-    }
-  }
-
-  if ($("mkt-refresh")) $("mkt-refresh").onclick = () => initMarketTab(true);
-  if ($("mkt-save")) {
-    $("mkt-save").onclick = async () => {
-      try {
-        await api("/api/admin/market/settings", {
-          method: "PUT",
-          body: JSON.stringify({
-            enabled: $("mkt-enabled") ? $("mkt-enabled").checked : false,
-            hourly_cap_points: Number($("mkt-hour-cap").value),
-            steam_poll_sec: Number($("mkt-steam-sec") ? $("mkt-steam-sec").value : 1800),
-            trade_impact: $("mkt-trade-impact") ? $("mkt-trade-impact").checked : true,
-            trade_impact_bps_per_100: Number($("mkt-trade-bps") ? $("mkt-trade-bps").value : 40),
-          }),
-        });
-        if ($("mkt-status")) $("mkt-status").textContent = "Saved";
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
-  if ($("mkt-hold-grant")) {
-    $("mkt-hold-grant").onclick = async () => {
-      try {
-        const r = await api("/api/admin/market/holding", {
-          method: "POST",
-          body: JSON.stringify({
-            user_id: Number($("mkt-hold-uid").value),
-            symbol: $("mkt-hold-sym").value,
-            shares: Number($("mkt-hold-shares").value),
-          }),
-        });
-        if ($("mkt-status")) $("mkt-status").textContent = `Holding now ${r.milli_shares / 1000} sh`;
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
-  if ($("mkt-add")) {
-    $("mkt-add").onclick = async () => {
-      try {
-        const appid = $("mkt-new-appid").value;
-        const feed = $("mkt-new-feed").value || (appid ? "steam" : "walk");
-        await api("/api/admin/market/tickers", {
-          method: "POST",
-          body: JSON.stringify({
-            symbol: $("mkt-new-sym").value,
-            name: $("mkt-new-name").value,
-            book: $("mkt-new-book").value,
-            price: Number($("mkt-new-px").value || 10),
-            base_price: Number($("mkt-new-px").value || 10),
-            feed: feed,
-            steam_appid: appid ? Number(appid) : null,
-          }),
-        });
-        if ($("mkt-status")) $("mkt-status").textContent = "Ticker added";
-        $("mkt-new-sym").value = "";
-        $("mkt-new-name").value = "";
-        $("mkt-new-appid").value = "";
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
-  if ($("mkt-chat-add")) {
-    $("mkt-chat-add").onclick = async () => {
-      try {
-        const uid = Number($("mkt-chat-uid").value);
-        const sym = ($("mkt-chat-sym").value || "CHAT").toUpperCase();
-        await api("/api/admin/market/tickers", {
-          method: "POST",
-          body: JSON.stringify({
-            symbol: sym,
-            name: "Chatter " + uid,
-            book: "core",
-            feed: "chatter",
-            role: "chatter",
-            chatter_user_id: uid,
-            chatter_link_points: $("mkt-chat-link") ? $("mkt-chat-link").checked : true,
-            chatter_streak_bonus: Number($("mkt-chat-bonus").value || 0.05),
-            chatter_points_scale: Number($("mkt-chat-scale").value || 10),
-          }),
-        });
-        if ($("mkt-status")) $("mkt-status").textContent = "Listed chatter " + uid + " as " + sym;
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
-  if ($("mkt-steam-poll")) {
-    $("mkt-steam-poll").onclick = async () => {
-      try {
-        const r = await api("/api/admin/market/steam/poll", { method: "POST", body: "{}" });
-        if ($("mkt-status")) $("mkt-status").textContent = `Steam poll ${r.polled || 0} app(s)`;
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
-  const bookTable = $("mkt-book");
-  if (bookTable) {
-    bookTable.addEventListener("click", async (ev) => {
-      const save = ev.target.closest(".mkt-save-row");
-      const del = ev.target.closest(".mkt-del-row");
-      try {
-        if (save) {
-          const sym = save.dataset.sym;
-          const input = bookTable.querySelector(`.mkt-appid[data-sym="${sym}"]`);
-          const nameEl = bookTable.querySelector(`.mkt-name[data-sym="${sym}"]`);
-          const pxEl = bookTable.querySelector(`.mkt-px[data-sym="${sym}"]`);
-          const showEl = bookTable.querySelector(`.mkt-show[data-sym="${sym}"]`);
-          const appid = input && input.value ? Number(input.value) : null;
-          await api("/api/admin/market/tickers/" + encodeURIComponent(sym), {
-            method: "PATCH",
-            body: JSON.stringify({
-              name: nameEl ? nameEl.value : undefined,
-              price: pxEl ? Number(pxEl.value) : undefined,
-              steam_appid: appid,
-              feed: appid ? "steam" : "walk",
-              status: showEl && !showEl.checked ? "hidden" : "listed",
-            }),
-          });
-          if ($("mkt-status")) $("mkt-status").textContent = sym + " saved";
-          initMarketTab(true);
-        }
-        if (del) {
-          const sym = del.dataset.sym;
-          await api("/api/admin/market/tickers/" + encodeURIComponent(sym), { method: "DELETE" });
-          if ($("mkt-status")) $("mkt-status").textContent = sym + " delisted";
-          initMarketTab(true);
-        }
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    });
-  }
-  if ($("mkt-div-test")) {
-    $("mkt-div-test").onclick = async () => {
-      try {
-        const r = await api("/api/admin/market/dividend", {
-          method: "POST",
-          body: JSON.stringify({
-            symbol: ($("mkt-hold-sym") && $("mkt-hold-sym").value.trim().toUpperCase()) || "FRG",
-            points: 10,
-          }),
-        });
-        if ($("mkt-status")) $("mkt-status").textContent = JSON.stringify(r.payout);
-        initMarketTab(true);
-      } catch (e) {
-        if ($("mkt-status")) $("mkt-status").textContent = String(e.message || e);
-      }
-    };
-  }
 
 
   // ------------------------------------------------------------------
@@ -6127,11 +5815,6 @@
         fields: ["rf-enabled", "rf-skip-mods", "rf-phrases"], button: "rf-save", save: saveRedFlags },
       { key: "cf", page: "redflags", sub: "", name: "Custom flags", scope: "#cf-list",
         clicks: "#cf-add, .cf-del", button: "cf-save", save: saveCustomFlags },
-      { key: "mkt-set", page: "market", sub: "listings", name: "Market settings", group: "mkt-set",
-        scope: "#mkt-switches", button: "mkt-save" },
-      { key: "mkt-inv", page: "market", sub: "investors", name: "Hourly cap + Steam refresh", group: "mkt-set",
-        fields: ["mkt-hour-cap", "mkt-steam-sec"], button: "mkt-save", also: ["mkt-inv-save"] },
-      // game plugins' market sub-pages add themselves with PAGE_SAVER.add (renderMarketPlugins)
       { key: "rx", page: "config", sub: "reactions", name: "Reactions",
         scope: "#rx-wrap", ignore: '[id^="rx-test"], #rx-img-name, #rx-img-file',
         clicks: "#rx-add, #rx-del-btn", button: "rx-save", reload: "rx-reload" },
@@ -6273,7 +5956,7 @@
     }
     sections.forEach(wire);
 
-    // Sections drawn later (game plugins' Market sub-pages): added, or re-wired after a redraw.
+    // Sections drawn later: added, or re-wired after a redraw.
     PAGE_SAVER.add = (sec) => {
       if (!$("tab-" + sec.page)) return;
       const i = sections.findIndex((s) => s.key === sec.key);

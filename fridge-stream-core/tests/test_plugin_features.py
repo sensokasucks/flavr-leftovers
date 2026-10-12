@@ -39,7 +39,7 @@ class Bank(BasePlugin):
         self.ctx.get_config()["_order"].append("bank-stop")
 
     async def execute(self, req):
-        return {"success": True}
+        return {"success": True, "reply": "bank says " + str(req.special)}
 
     def service(self, name):
         return self.ledger if name == "ledger" else None
@@ -82,7 +82,8 @@ class Shop(BasePlugin):
 '''
 
 BANK = {"id": "bank", "name": "Bank", "core_api": 2, "category": "feature", "entry": "plugin:Bank",
-        "provides": ["ledger"], "config_moved_from": ["oldbank"],
+        "provides": ["ledger"], "config_moved_from": ["oldbank"], "specials": ["bank_balance"],
+        "command_group": {"description": "Bank", "aliases": ["oldbank"]},
         "pages": [{"id": "main", "title": "Bank", "file": "pages/index.html", "nav": "On stream"}]}
 # "aaa" sorts first, so only "after" puts it behind the bank
 SHOP = {"id": "aaa", "core_api": 2, "entry": "plugin:Shop", "after": ["ledger"]}
@@ -113,6 +114,8 @@ class FeatureTests(TempPluginsDir):
             "escape": ({"pages": [{"id": "x", "file": "pages/../plugin.json"}]}, "pages[0] file"),
             "badnav": ({"pages": [{"id": "x", "file": "pages/a.html", "nav": "Elsewhere"}]}, "nav"),
             "selfmove": ({"config_moved_from": ["selfmove"]}, "own id"),
+            "badspecial": ({"specials": ["Bad Name"]}, "specials"),
+            "badalias": ({"command_group": {"aliases": "x"}}, "aliases"),
         }
         for pid, (extra, words) in cases.items():
             _write_plugin(self.base, pid, {"id": pid, "kind": "http", "http": {}, **extra}, {"pages/a.html": "x"})
@@ -169,6 +172,27 @@ class FeatureTests(TempPluginsDir):
         self.assertIn("oldbank", out)                                  # old block kept
         mine = apply_moved_sections({"oldbank": {"rate": 5}, "bank": {"rate": 9}})
         self.assertEqual(mine["bank"], {"rate": 9})                    # own section wins
+        filled = apply_moved_sections({"oldbank": {"enabled": False, "rate": 5, "fee": 2}, "bank": {"enabled": True}})
+        self.assertEqual(filled["bank"], {"enabled": True, "rate": 5, "fee": 2})   # the rest comes from the old block
+
+    def test_specials_aliases_and_moved_bind(self):
+        from core.command_groups import bind_satisfied
+        from core.models import ChatUser, ExecuteRequest, Platform
+
+        self.assertEqual(plugin_manifest.special_owners(), {"bank_balance": "bank"})
+        groups = plugin_manifest.group_defaults()
+        self.assertEqual(groups["oldbank"]["bind"], "bank")             # old group name follows the plugin
+        mgr = self.manager(self.cfg)
+        self.assertEqual(mgr.special_owner("bank_balance"), "bank")
+        self.assertIsNone(mgr.special_owner("points_balance"))
+        # an old "bind: oldbank" in config.yaml now means "the bank plugin is running"
+        self.assertEqual(bind_satisfied("oldbank", self.cfg, set())[0], False)
+        self.assertEqual(bind_satisfied("oldbank", self.cfg, {"bank"})[0], True)
+        asyncio.run(mgr.start_enabled())
+        req = ExecuteRequest(command_name="balance", template="", args=[], special="bank_balance",
+                             user=ChatUser(platform=Platform.KICK, id="1", username="viewer"))
+        self.assertEqual(asyncio.run(mgr.games["bank"].execute(req))["reply"], "bank says bank_balance")
+        asyncio.run(mgr.stop_all())
 
     def test_info_rows(self):
         mgr = self.manager(self.cfg)

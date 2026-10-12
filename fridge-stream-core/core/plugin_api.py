@@ -35,7 +35,7 @@ class PluginContext:
     root: Path                                   # fridge-stream-core/
     data_dir: Path                               # data/plugins/<id>/ (created on first use)
     get_config: Callable[[], dict] = field(default=lambda: {})
-    market: Any = None                           # core.market.MarketTape: quote, upsert, apply_return, try_signal
+    market: Any = None                           # always None now; the market is a plugin: ctx.service("market")
     store: Any = None                            # core.store.Store: points, get_or_create_user, pay_dividend
     bus: Any = None                              # core.event_bus.EventBus
     broadcast: Optional[Callable[[dict], Awaitable[None]]] = None   # WebSocket fan-out to overlays
@@ -155,15 +155,16 @@ class BasePlugin(abc.ABC):
     # overlay_catalog() -> list[{name, url, notes}]       Sources + Integrations lists
     # status() -> dict                                    extra Status-row fields (detail, error ...)
     # async state_fragment() -> dict                      merged into the overlay "update" payload
-    # market_status() -> list[str]                        lines under the plugin's Market sub-page
+    # market_status() -> list[str]                        lines on the plugin's Gamer Stonks tab
     # service(name) -> Any                                what ctx.plugins.service(name) hands other
     #                                                     plugins, for each name in "provides"
     # apply_config(config) -> None                        after a dashboard save (hot settings)
-    # attach_market(tape) / attach_store(store)           older style; ctx.market / ctx.store also work
+    # attach_store(store)                                 older style; ctx.store also works
     #
     # Class-level (work while the game is off):
     # @classmethod routes(cls, router, get_running)       add FastAPI routes; get_running() -> instance | None
-    # @staticmethod dividend_defaults(body, market_cfg)   {"symbol": ..., "rates": {...}} for /api/market/dividend
+    # @staticmethod dividend_defaults(body, market_cfg)   {"symbol": ..., "rates": {...}}; Gamer Stonks asks
+    #                                                     it for /api/market/dividend from a bridge that sends none
 
 
 # Older name; outside code may still import it from games.base.

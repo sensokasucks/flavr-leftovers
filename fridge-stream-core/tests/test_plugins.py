@@ -90,7 +90,6 @@ class ManifestTests(TempPluginsDir):
         self.assertEqual(plugin_manifest.config_defaults(), {})
         self.assertEqual(plugin_manifest.group_defaults(), {})
         self.assertEqual(plugin_manifest.default_commands(), {})
-        self.assertEqual(plugin_manifest.market_books(), [])
         mgr = self.manager({})
         self.assertEqual(mgr.info({}, "http://127.0.0.1:3850"), [])
         asyncio.run(mgr.start_enabled())
@@ -129,7 +128,6 @@ class ManifestTests(TempPluginsDir):
         self.assertEqual(plugin_manifest.config_defaults(), {"demo": {"enabled": False, "level": 3}})
         self.assertEqual(plugin_manifest.group_defaults()["demo"]["bind"], "demo")
         self.assertEqual(plugin_manifest.default_commands()["jump"]["group"], "demo")
-        self.assertEqual(plugin_manifest.market_books(), [{"book": "game:demo", "symbol": "DEMO", "name": "Demo Inc"}])
         self.assertIn("demo", plugin_manifest.game_ids())
         self.assertIn("minecraft", plugin_manifest.game_ids())     # legacy id stays a game bind
 
@@ -301,12 +299,6 @@ class AdminPluginRouteTests(unittest.TestCase):
         self.assertEqual(bad.status_code, 400)
         self.assertEqual(self.client.put("/api/admin/plugins/nope/settings", headers=self.headers,
                                          json={"values": {}}).status_code, 404)
-
-    def test_market_settings(self):
-        res = self.client.put("/api/admin/market/settings", headers=self.headers,
-                              json={"enabled": True, "hourly_cap_points": 500})
-        self.assertEqual(res.status_code, 200, res.text)
-        self.assertTrue(self.state.config["market"]["enabled"])
 
     def test_commands_list_marks_plugin_defaults(self):
         from core.command_router import CommandRouter

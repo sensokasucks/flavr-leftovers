@@ -1,10 +1,10 @@
 # Plugins
 
 Every game Stream Core talks to is a plugin: a folder in `fridge-stream-core/plugins/`.
-A plugin can also add a feature to Core itself (`"category": "feature"`), such as a market.
+A plugin can also add a feature to Core itself (`"category": "feature"`), such as the
+**Gamer Stonks** market (`plugins/stonks` in flavr-game-plugins; it used to be built into Core).
 Core runs fine with none. Each folder that is there adds a card under
-**Settings → Plugins**, its chat command group, its overlays, its Market listings,
-(if it has market settings) a sub-page on the **Market** page, and (if it has `pages`) its
+**Settings → Plugins**, its chat command group, its overlays, and (if it has `pages`) its
 own pages in the dashboard menu.
 
 Minecraft, Factorio, Granvir and OpenTTD don't ship with Core. They live in their own repository,
@@ -33,7 +33,7 @@ error on its card and in the log; the rest of Core keeps running.
 | Kind | You write | Good for |
 |------|-----------|----------|
 | `http` | only `plugin.json` | A game that already has its own bridge program (a mod, a BepInEx plugin, a Node server) answering HTTP. Core's built-in client sends it chat commands and live metrics. Granvir works this way. |
-| `python` | `plugin.json` + a class | Anything Core itself has to do: speak a game's own protocol (OpenTTD's Admin Port), market vaults (Minecraft, Factorio), own API routes. |
+| `python` | `plugin.json` + a class | Anything Core itself has to do: speak a game's own protocol (OpenTTD's Admin Port), own API routes, own database, a whole feature (Gamer Stonks). |
 
 ## Folder
 
@@ -88,10 +88,11 @@ name, and not one of Core's own config sections (`core`, `market`, `points` ...)
 | `config_moved_from` *(2)* | Old config sections this plugin's settings used to live in: `["market"]`. See *Moving settings*. |
 | `entry` | python kind: `"module:ClassName"`, e.g. `"plugin:MinecraftIntegration"` for `plugin.py`. |
 | `config_defaults` | The plugin's block in `config.yaml`, filled in under whatever the user has. `enabled` is always forced to `false` by default (games are opt-in). |
-| `command_group` | Its group in Settings → Command groups. Bound to the game running: the group's commands only work while the plugin is running. |
+| `command_group` | Its group in Settings → Command groups. Bound to the game running: the group's commands only work while the plugin is running. `"aliases": ["market"]` *(2)* also binds an older group name to this plugin (commands.json files that still say `"group": "market"`). |
+| `specials` *(2)* | Command specials this plugin answers: `["market_buy", "market_sell"]`. A `commands.json` command with `"handler": "core"` and one of these `special`s is passed to the plugin's `execute(req)` (`req.special` is set) and its `{"reply": ...}` is said in chat. This is how a plugin takes over commands Core used to answer without the user editing their commands file. |
 | `settings` | Fields on its card (see field types). |
-| `market` | `{"title", "hint", "fields": [...]}`: a sub-page on the Market page. Saved through `PUT /api/admin/plugins/<id>/settings` and applied live (no restart). Fields may carry `"group"` to split them into boxes. |
-| `market_books` | Listings to seed on the Market, e.g. `{"symbol": "MINECRAF", "name": "Minecraft", "price": 10}`. Book is `game:<id>`. |
+| `market` | `{"title", "hint", "fields": [...]}`: a tab on the Gamer Stonks page (Gamer Stonks reads it with `ctx.plugins.manifest(id)`; Core itself no longer does). Saved through `PUT /api/admin/plugins/<id>/settings` and applied live (no restart). Fields may carry `"group"` to split them into boxes. |
+| `market_books` | Listings Gamer Stonks seeds, e.g. `{"symbol": "MINECRAF", "name": "Minecraft", "price": 10}`. Book is `game:<id>`. Read by Gamer Stonks, not Core. |
 | `overlays` | Pages in the plugin's `overlay/` folder: `{"name", "file", "notes"}`. Listed under Sources & overlays and Integrations. |
 | `bridge_overlays` | Pages the bridge program serves itself: `{"name", "path", "notes"}`, joined to the bridge URL. |
 | `http` | http kind only (below). |
@@ -145,13 +146,13 @@ class MyGame(BasePlugin):
 | `ctx.section` | this plugin's config block |
 | `ctx.data_dir` | `data/plugins/<id>/` for files the plugin keeps (create it on first use) |
 | `ctx.folder` | the plugin's own folder |
-| `ctx.market` | the Fridge Market tape (`quote`, `upsert`, `apply_return`, `try_signal`) |
+| `ctx.market` | always `None` since the market became the Gamer Stonks plugin. Use `ctx.service("market")` with `"after": ["market"]` (below). |
 | `ctx.store` | points / users (`get_or_create_user`, `adjust_points`, `pay_dividend` ...) |
 | `ctx.db` *(2)* | the plugin's own SQLite file, `data/plugins/<id>/<id>.db` (below) |
 | `ctx.plugins` *(2)* | the other plugins: `running(id)`, `installed(id)`, `ids()`, `service(name)`, `class_hook(id, name)`, `manifest(id)` |
 | `ctx.service(name)` *(2)* | same as `ctx.plugins.service(name)` |
 | `ctx.require_admin(token)` *(2)* | in a plugin route: 401 unless it is Core's admin token (the dashboard sends it as `X-Admin-Token`) |
-| `ctx.require_game(request)` *(2)* | in a plugin route only games / bridges may call (it spends or mints points): 403 for web pages, and from another device without the admin token. Same check as Core's `/api/market/signal`. |
+| `ctx.require_game(request)` *(2)* | in a plugin route only games / bridges may call (it spends or mints points): 403 for web pages, and from another device without the admin token. Same check as the game WebSocket `hello`. |
 | `ctx.core_url()` | `http://127.0.0.1:3850` (or the configured address) for overlay links |
 | `await ctx.reply(platform, text, to_user)` | say something in chat as Core |
 | `await ctx.alert(payload)` | send an alert to the alerts overlay |
@@ -166,12 +167,12 @@ Optional methods Core uses when they exist:
 | `overlay_catalog()` | overlay links built at run time |
 | `status()` | extra fields on the Status page (`detail`, `error`) |
 | `async state_fragment()` | keys merged into the overlay `update` payload (Minecraft: `stats`, `inventory`) |
-| `market_status()` | lines of live numbers on its Market sub-page |
+| `market_status()` | lines of live numbers on its Gamer Stonks tab |
 | `service(name)` *(2)* | what another plugin gets from `ctx.plugins.service(name)` for each name in `provides` (without it, the plugin itself) |
 | `apply_config(config)` | after a dashboard save |
 | `async on_flag(payload)` | a chatter set off one of the streamer's custom flags (Red flags page) that has **Tell game plugins and overlays** on: `{flag: {id, name}, first, phrase, platform, message, message_id, user: {id, username, display_name, is_mod, is_subscriber}, hidden, timestamp}`. `first` = they just got the flag; `hidden` = they are red-flagged (show nothing of theirs). `ctx.bus.on_flag(handler)` gets the same. |
 | `@classmethod routes(cls, router, get_running)` | own API routes; they exist even while the game is off, `get_running()` returns the running instance or `None` |
-| `@staticmethod dividend_defaults(body, market_cfg)` | symbol / rates for `POST /api/market/dividend` from a bridge that sends none |
+| `@staticmethod dividend_defaults(body, market_cfg)` | symbol / rates for Gamer Stonks' `POST /api/market/dividend` from a bridge that sends none |
 
 ## Plugins using each other *(2)*
 
@@ -193,7 +194,7 @@ async def start(self):
 
 `ctx.plugins.class_hook(id, name)` reaches a class-level hook (a `@staticmethod`) of an installed
 plugin, running or not; `ctx.plugins.manifest(id)` reads another plugin's `plugin.json`, so a
-feature can use keys it defines itself (the way the Market page reads every game's `market` block).
+feature can use keys it defines itself (the way Gamer Stonks reads every game's `market` block).
 
 ## Own database *(2)*
 
@@ -238,8 +239,9 @@ The page talks to the plugin's own routes; protect them with `ctx.require_admin`
 
 A plugin that takes over something Core used to do can keep the user's settings:
 `"config_moved_from": ["market"]` copies the `market:` block of `config.yaml` into the plugin's
-own block (under its id) when the plugin has none yet. The old block stays in the file, so an
-older Core still finds it. The plugin's `config_defaults` fill in anything missing.
+own block (under its id): anything the plugin's block doesn't set yet comes from the old one, so
+turning the plugin on keeps the user's settings. The old block stays in the file, so an older
+Core still finds it. The plugin's `config_defaults` fill in anything missing.
 
 Import the plugin's own modules relatively (`from .admin import Client`): the folder is loaded
 as the package `plugins.<id>`.
@@ -251,7 +253,7 @@ as the package `plugins.<id>`.
 - The user's `config/commands.json` wins over a plugin's `commands.json` for the same name;
   plugin commands only fill in what the file doesn't have. Commands left at their plugin
   default aren't written back into the file when the dashboard saves.
-- Turning a plugin on or off, or changing its address, needs a Core restart. Market fields don't.
+- Turning a plugin on or off, or changing its address, needs a Core restart. Fields on a plugin's Gamer Stonks tab don't.
 
 ## Tests
 

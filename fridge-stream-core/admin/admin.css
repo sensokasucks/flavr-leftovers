@@ -322,12 +322,6 @@ button.danger { color: var(--danger); }
   .acc-stack.paged.has-aside > .acc[data-aside] { position: static; }
 }
 
-.market-mc-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-
 /* Search hit highlight */
 .flash { animation: flash 1.6s ease-out; border-radius: 6px; }
 @keyframes flash {
@@ -1118,7 +1112,7 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 @media (max-width: 900px) {
   fieldset { min-width: 0; }
   .panel table { display: block; overflow-x: auto; max-width: 100%; }
-  .row2, .live-grid, .fun-grid, .credits-layout, .alert-split, .integ-layout, .market-mc-grid { grid-template-columns: 1fr !important; }
+  .row2, .live-grid, .fun-grid, .credits-layout, .alert-split, .integ-layout { grid-template-columns: 1fr !important; }
   .panel input, .panel select, .panel textarea { max-width: 100%; }
 }
 

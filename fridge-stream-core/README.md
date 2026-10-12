@@ -1,6 +1,6 @@
 # Fridge Stream Core
 
-Modular backbone for chat-driven stream integrations. See [CHANGELOG.md](CHANGELOG.md) for version history. Fridge Market (points book) is specified in [docs/MARKET.md](docs/MARKET.md) — not shipped yet.
+Modular backbone for chat-driven stream integrations. See [CHANGELOG.md](CHANGELOG.md) for version history. The points market is now the **Gamer Stonks** plugin (`plugins/stonks` in [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)).
 
 **Platforms** (adapters) feed normalized chat events into Core.  
 **Games** (integrations) receive approved commands and live metrics.  
@@ -73,10 +73,7 @@ python main.py
 | **Chat credits** | `http://127.0.0.1:3850/overlay/credits.html` | Unique-chatter end credits (enable in Admin → Credits). Style editor + keys: [overlay/CREDITS.md](overlay/CREDITS.md), motions: [overlay/MOTIONS.md](overlay/MOTIONS.md) |
 | **OpenTTD companies** | `http://127.0.0.1:3850/overlay/openttd.html` | Companies + Chat Fund (OpenTTD plugin, `openttd.enabled`) |
 | **OpenTTD ticker** | `http://127.0.0.1:3850/overlay/openttd-ticker.html` | Thin company tape |
-| **Market ticker** | `http://127.0.0.1:3850/overlay/market.html` | Scrolling Fridge Market tape |
-| **Market board** | `http://127.0.0.1:3850/overlay/market-board.html` | Quote cards + sparklines |
-| **Market chart** | `http://127.0.0.1:3850/overlay/market-chart.html?symbol=FACT` | TV-style line graph |
-| **Market cycle** | `http://127.0.0.1:3850/overlay/market-cycle.html?symbols=FRG,FACT,STEVE` | Playlist of line charts (`dwell=8`) |
+| **Gamer Stonks** (ticker, board, chart, cycle) | `http://127.0.0.1:3850/overlay/market.html` and the others, same addresses as before | Only with the Gamer Stonks plugin installed and on |
 | **Chat reactions** | `http://127.0.0.1:3850/overlay/reactions.html` | Fallback for 🍅 / !tomato reactions when Stream Rooms isn't connected. Full canvas, transparent. Setup: Admin → Config → Reactions, spec [docs/REACTIONS.md](docs/REACTIONS.md) |
 | Root | `http://127.0.0.1:3850/` | Same as Minecraft stats |
 
@@ -137,7 +134,6 @@ fridge-stream-core/
 ├── install.bat             # one-time Windows install
 ├── start.bat / run.bat     # start Core
 ├── SCRIPTS.md              # line-by-line batch / wizard notes
-├── docs/MARKET.md          # Fridge Market design (not shipped)
 ├── requirements.txt
 ├── config/
 │   ├── config.example.yaml
@@ -173,7 +169,7 @@ Minecraft, Factorio, Granvir and OpenTTD are plugins: folders in `plugins/`. The
 own repository, **[flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins)**, and don't ship with Core. Copy the folder
 of each game you want into `plugins/` (for example `plugins/minecraft/plugin.json`) and restart
 Core. Each one adds a card under **Settings → Plugins** (switch it on there, then restart
-Core), its command group, its overlays and its Market listings. Core runs fine with the folder empty.
+Core), its command group and its overlays. Gamer Stonks (the points market) is a plugin too, in the same repository. Core runs fine with the folder empty.
 
 Adding a game: a new `plugins/<id>/` folder. If the game already has a bridge program that
 speaks HTTP, a `plugin.json` is all it takes; otherwise a small Python class. See

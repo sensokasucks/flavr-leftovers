@@ -1,8 +1,9 @@
 """Only games may act as a game: no web pages, and other devices need the admin token.
 
-The game WebSocket `hello` (then say / refund / room_state) and the market
-signal / dividend POSTs can spend and mint points, so any web page open in the
-streamer's browser (which passes the loopback-origin rule) is refused.
+The game WebSocket `hello` (then say / refund / room_state) can spend and refund
+points, so any web page open in the streamer's browser (which passes the
+loopback-origin rule) is refused. Plugin routes get the same check through
+ctx.require_game (tests/test_plugin_features.py; Gamer Stonks' market POSTs use it).
 
     python -m pytest tests/test_game_link_guard.py -q
 """
@@ -43,14 +44,12 @@ class FakeReactions:
 
 def make_state(lan: bool = False):
     from api.server import CoreState
-    from core.market import MarketTape
 
     state = CoreState()
     state.config = {"points": {"admin_token": TOKEN}}
     if lan:
         state.config["core"] = {"host": "0.0.0.0"}
     state.reactions = FakeReactions()
-    state.market = MarketTape({})
     state.hidden = []
 
     async def importer(names):
@@ -151,39 +150,6 @@ class WebSocketTests(unittest.TestCase):
             self.assertEqual(hello_answer(c, url="/ws?token=wrong"), "hello_refused")
             self.assertEqual(hello_answer(c, url="/ws?token=" + TOKEN), "hello_ok")
             self.assertEqual(hello_answer(c, data={"client": "game", "token": TOKEN}), "hello_ok")
-
-
-class MarketPostTests(unittest.TestCase):
-    BODY = {"game": "factorio", "symbol": "PWR", "work": 100, "unit": "mj"}
-
-    def test_bridge_on_same_pc_allowed(self):
-        state = make_state()
-        with client_for(state) as c:
-            r = c.post("/api/market/dividend", json=self.BODY,
-                       headers={"sec-fetch-mode": "cors", "user-agent": "node"})
-            self.assertEqual(r.status_code, 200, r.text)
-            r = c.post("/api/market/signal", json={"name": "player_death", "symbol": "FRG"})
-            self.assertEqual(r.status_code, 200, r.text)
-
-    def test_web_page_refused(self):
-        state = make_state()
-        with client_for(state) as c:
-            for path, body in (("/api/market/dividend", self.BODY),
-                               ("/api/market/signal", {"name": "boom", "symbol": "FRG", "pct": 50})):
-                r = c.post(path, json=body, headers=PAGE)
-                self.assertEqual(r.status_code, 403, path)
-                r = c.post(path, json=body, headers={"sec-fetch-site": "same-origin", "x-admin-token": TOKEN})
-                self.assertEqual(r.status_code, 403, path)
-        self.assertIsNone(getattr(state.market, "last_dividend", None))
-
-    def test_other_device_needs_token(self):
-        state = make_state(lan=True)
-        with client_for(state, client=LAN_PC) as c:
-            self.assertEqual(c.post("/api/market/dividend", json=self.BODY).status_code, 403)
-            r = c.post("/api/market/dividend", json=self.BODY, headers={"X-Admin-Token": TOKEN})
-            self.assertEqual(r.status_code, 200, r.text)
-            r = c.post("/api/market/signal?token=" + TOKEN, json={"name": "x", "symbol": "FRG"})
-            self.assertEqual(r.status_code, 200, r.text)
 
 
 if __name__ == "__main__":

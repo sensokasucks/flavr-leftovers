@@ -12,9 +12,7 @@ Core (:3850):
 | `/overlay/overlay.html` | Stats widgets |
 | `/overlay/alerts.html` | Follow / sub / raid / bits / Super Chat / donation and the newer kinds; URL filters and `?css=` (ALERTS.md) |
 | `/overlay/credits.html` | End credits (crawl, Star Wars, pages, ticker, typewriter, matrix) |
-| `/overlay/market.html` | Ticker tape |
-| `/overlay/market-board.html` | Board |
-| `/overlay/market-chart.html` | Chart |
+| `/overlay/market.html`, `market-board.html`, `market-chart.html`, `market-cycle.html` | Gamer Stonks plugin's overlay folder (same addresses as before) |
 | `/overlay/openttd.html` | OpenTTD companies (file in `plugins/openttd/overlay/`; plugin `overlay/` folders are served at `/overlay/` after Core's own) |
 | `/overlay/openttd-ticker.html` | OpenTTD ticker |
 | `/overlay/replies.html` | Command replies (Core's API-free reply path; `?force=1` ignores `overlay.replies_enabled`) |
