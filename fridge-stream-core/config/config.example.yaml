@@ -55,6 +55,18 @@ youtube:
   channel_id: ""                 # optional helper
   video_id: ""                   # current live video id (required for innertube; recommended for official)
   # live_chat_id: ""             # optional override for official mode
+  poll_interval_sec: 0           # seconds between chat checks; 0 = what YouTube suggests.
+                                 # official mode never goes faster than YouTube asks, and every
+                                 # check spends API quota (slower = the daily quota lasts longer)
+
+# Chat smoothing: hold a platform's chat for a moment and let it out at an even pace, so a
+# YouTube clump (one check's worth of chat) doesn't land all at once. Kick and Twitch push each
+# line as it is typed and rarely need it. No line waits longer than max_delay_sec.
+chat_smoothing:
+  kick: false
+  twitch: false
+  youtube: false
+  max_delay_sec: 5
 
 # Chatter profile pictures, saved by Core and served to every overlay + Stream Rooms
 # (data/avatars/, http://127.0.0.1:3850/avatars/...). Also in Admin -> Settings -> Core + chat platforms.

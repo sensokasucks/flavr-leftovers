@@ -46,6 +46,11 @@ RETRY_FIRST = 15.0
 RETRY_MAX = 60.0
 # this many failed polls in a row: start over (find the chat again)
 MAX_POLL_FAILURES = 5
+# youtube.poll_interval_sec: the fastest and slowest a user can set (0 = YouTube's suggestion)
+MIN_POLL_SEC = 1.0
+MAX_POLL_SEC = 30.0
+# what Core waits when it follows YouTube's suggestion
+AUTO_MIN_SEC = 2.0
 
 BROWSER_HEADERS = {
     "User-Agent": (
@@ -55,6 +60,36 @@ BROWSER_HEADERS = {
     ),
     "Accept-Language": "en-US,en;q=0.9",
 }
+
+
+def poll_interval_setting(value: Any) -> float:
+    """youtube.poll_interval_sec → seconds (0 = follow YouTube's suggestion)."""
+    try:
+        sec = float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+    if sec != sec or sec <= 0:
+        return 0.0
+    return max(MIN_POLL_SEC, min(MAX_POLL_SEC, sec))
+
+
+def next_poll_delay(suggested: float, setting: float, official: bool = False) -> float:
+    """Seconds until the next chat check.
+
+    ``suggested`` is YouTube's hint (timeoutMs / pollingIntervalMillis). With no setting Core
+    follows it. A setting replaces it in innertube mode; the official API asks clients never to
+    poll faster than its hint (and each check spends quota), so there a setting can only slow down.
+    """
+    try:
+        suggested = float(suggested)
+    except (TypeError, ValueError):
+        suggested = 0.0
+    auto = max(AUTO_MIN_SEC, suggested) if suggested == suggested else AUTO_MIN_SEC
+    if not setting:
+        return auto
+    if official:
+        return max(auto, setting)
+    return setting
 
 
 _NUM_RE = re.compile(r"\d[\d,.]*")
@@ -186,6 +221,8 @@ class YouTubeAdapter(BaseAdapter):
         self.video_id = youtube_video_id(raw_video) or raw_video
         self.live_chat_id = (cfg.get("live_chat_id") or "").strip()
         self.channel_id = (cfg.get("channel_id") or "").strip()
+        # seconds between chat checks; 0 = YouTube's own suggestion
+        self.poll_interval = poll_interval_setting(cfg.get("poll_interval_sec"))
         mode = (cfg.get("mode") or "").strip().lower()
         if mode in ("official", "api", "data"):
             self.mode = "official"
@@ -328,7 +365,7 @@ class YouTubeAdapter(BaseAdapter):
                         return
                 try:
                     await asyncio.wait_for(
-                        self._stop.wait(), timeout=max(2.0, interval)
+                        self._stop.wait(), timeout=max(MIN_POLL_SEC, interval)
                     )
                     break
                 except asyncio.TimeoutError:
@@ -369,7 +406,7 @@ class YouTubeAdapter(BaseAdapter):
         interval_ms = int(data.get("pollingIntervalMillis") or 5000)
         for item in data.get("items") or []:
             await self._on_official_item(item)
-        return max(2.0, interval_ms / 1000.0)
+        return next_poll_delay(interval_ms / 1000.0, self.poll_interval, official=True)
 
     async def _on_official_item(self, item: dict) -> None:
         mid = str(item.get("id") or "")
@@ -499,7 +536,7 @@ class YouTubeAdapter(BaseAdapter):
                         return
                 try:
                     await asyncio.wait_for(
-                        self._stop.wait(), timeout=max(2.0, interval)
+                        self._stop.wait(), timeout=max(MIN_POLL_SEC, interval)
                     )
                     break
                 except asyncio.TimeoutError:
@@ -639,11 +676,11 @@ class YouTubeAdapter(BaseAdapter):
                 timeout_ms = block.get("timeoutMs")
                 if timeout_ms is not None:
                     try:
-                        interval = max(2.0, int(timeout_ms) / 1000.0)
+                        interval = int(timeout_ms) / 1000.0
                     except (TypeError, ValueError):
                         pass
 
-        return next_cont, interval
+        return next_cont, next_poll_delay(interval, self.poll_interval)
 
     async def _on_innertube_action(self, action: dict) -> None:
         self.scout.check_action(action)

@@ -44,6 +44,7 @@ try:
         resolve_config_path,
     )
     from core.command_groups import resolve_active_groups
+    from core.chat_pacer import ChatPacer
     from core.event_bus import EventBus
     from core.metrics import MetricsAggregator
     from core.permissions import PermissionManager
@@ -109,6 +110,11 @@ class StreamCore:
     def __init__(self, config: dict):
         self.config = config
         self.bus = EventBus()
+        # Chat smoothing (off unless chat_smoothing.<platform> is on); reads the live config
+        self.bus.pacer = ChatPacer(
+            self.bus.publish_chat,
+            lambda: getattr(self, "state", None) and self.state.config or self.config,
+        )
         self.metrics = MetricsAggregator(config)
         self.perms = PermissionManager(config, get_config=lambda: getattr(self, "state", None) and self.state.config or self.config)
 
