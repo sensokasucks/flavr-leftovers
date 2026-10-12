@@ -75,6 +75,17 @@ DEFAULTS: Dict[str, Any] = {
         "channel_id": "",
         "video_id": "",
         "live_chat_id": "",
+        # How often to ask YouTube for new chat, in seconds. 0 = what YouTube suggests
+        # (usually a few seconds). Official mode never goes faster than YouTube asks.
+        "poll_interval_sec": 0,
+    },
+    # Chat smoothing (core/chat_pacer.py): let a platform's chat out at an even pace instead
+    # of in clumps. Off by default; max_delay_sec caps how long any line is held.
+    "chat_smoothing": {
+        "kick": False,
+        "twitch": False,
+        "youtube": False,
+        "max_delay_sec": 5,
     },
     "permissions": {
         "admin": ["YOUR_USERNAME"],
