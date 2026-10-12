@@ -90,6 +90,7 @@
         id: String(e.id || ""),
         provider: e.provider || (String(e.url).includes("jtvnw") ? "twitch" : "other"),
         url: e.url, start: e.start, end: e.end, sticker: !!e.sticker, gift: !!e.gift,
+        animated: !!e.animated,
       }));
       return { text: raw, emotes };
     }
@@ -108,6 +109,29 @@
     }
     text += raw.slice(last);
     return { text, emotes };
+  }
+
+  /* Most StreamElements chat widgets find emotes by splitting the text on spaces and matching
+   * whole words, as Twitch chat always has spaces around them. YouTube and Kick don't
+   * (":_heart::_heart:", "hi[emote:1:wave]!"), so give every emote a space on each side. */
+  function spaceEmotes(text, emotes) {
+    const chars = Array.from(text);
+    const out = [];
+    const moved = [];
+    let pos = 0;
+    const blank = (c) => c === undefined || /\s/.test(c);
+    [...emotes].sort((a, b) => a.start - b.start).forEach((e) => {
+      if (e.start < pos || e.end >= chars.length || e.end < e.start) return;
+      out.push(...chars.slice(pos, e.start));
+      if (!blank(out[out.length - 1])) out.push(" ");
+      const start = out.length;
+      out.push(...chars.slice(e.start, e.end + 1));
+      moved.push(Object.assign({}, e, { start, end: out.length - 1 }));
+      pos = e.end + 1;
+      if (!blank(chars[pos])) out.push(" ");
+    });
+    out.push(...chars.slice(pos));
+    return { text: out.join(""), emotes: moved };
   }
 
   // text with emotes as <img> (escaped), what SE calls renderedText
@@ -156,7 +180,8 @@
 
   function seMessage(data, media) {
     const user = data.user || {};
-    const { text, emotes } = plainText(data);
+    const plain = plainText(data);
+    const { text, emotes } = spaceEmotes(plain.text, plain.emotes);
     const badges = badgeList(user, media);
     const keys = badges.map((b) => b.type);
     const isAction = /^\u0001ACTION /.test(text);
@@ -199,7 +224,7 @@
           isAction,
           emotes: emotes.map((e) => ({
             type: e.provider === "twitch" ? "twitch" : e.provider,
-            name: e.name, id: e.id, gif: /\.gif|animated/i.test(e.url), animated: false,
+            name: e.name, id: e.id, gif: e.animated || /\.gif|animated/i.test(e.url), animated: e.animated,
             urls: emoteUrls(e.url), start: e.start, end: e.end,
           })),
           msgId,
@@ -322,7 +347,7 @@
   }
 
   return {
-    esc, badgeKeys, badgeList, emoteUrls, plainText, renderedText, currencyInfo,
+    esc, badgeKeys, badgeList, emoteUrls, plainText, spaceEmotes, renderedText, currencyInfo,
     seLoadDetail, seRemember, seMessage, seAlert, slMessage, slAlert, BADGES,
   };
 });

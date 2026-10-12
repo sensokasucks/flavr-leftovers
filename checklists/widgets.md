@@ -22,7 +22,7 @@ Home: `fridge-stream-core/core/widget_store.py`; pages `overlay/widget.html` (+ 
 - [ ] Widget code can't close its own `<script>` / `<style>` (`</script` → `<\/script`).
 - [ ] StreamElements events keep SE's shapes (`listener` + `event`, `event.data` for messages,
       `widget-button` with `event.field`); Streamlabs chat items are HTML-escaped before the template.
-- [ ] Kick / YouTube chat is translated (emote tokens, badges), never dropped; red-flag hides and mod
+- [ ] Kick / YouTube chat is translated (emote tokens, badges; touching emotes get spaces so word-matching widgets find them), never dropped; red-flag hides and mod
       deletions reach the widget as delete events.
 
 ## After-change verify

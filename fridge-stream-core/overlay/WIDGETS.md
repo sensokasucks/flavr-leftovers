@@ -72,6 +72,11 @@ broadcaster badge. Badge pictures are Twitch's own, or yours from **Chat overlay
 (badge-broadcaster, badge-mod, badge-vip, badge-sub, badge-founder). Sub tiers are always tier 1;
 a gifted sub reads "<gifter> gifted N subs" (Core doesn't know who got single gifts).
 
+Most widgets find emotes by splitting the text on spaces, as Twitch always puts spaces around them.
+YouTube and Kick emotes can touch (`:_heart::_heart:`), so StreamElements widgets get a space on each
+side of every emote (`text`, `emotes` start/end and `renderedText` all match). `emotes[].animated`
+and `gif` are true when Core knows the emote moves.
+
 ## Safety
 
 The widget's code is someone else's (often scrambled so it can't be read). It runs in
