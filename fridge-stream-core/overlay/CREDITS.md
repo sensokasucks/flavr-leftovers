@@ -53,6 +53,7 @@ Same keys the editor writes. Query-string overrides still work, e.g.
 | `name_enter` / `name_stagger_ms` | `none` · `fade` · `rise` · `slide` · `blur` as names enter the frame (crawls) |
 | `loop_transition` | `cut` · `fade` · `wipe` (crawl up / down) |
 | `tilt_deg` / `perspective_px` | Star Wars floor angle and depth (Star Wars preset: 32° / 320 px) |
+| `duration_sec` | Target time for one whole roll, every motion (0 = use `speed_px_per_sec` / `page_duration_sec`). Title hold, opening cards and end hold count inside it; the loop gap doesn't. Typewriter types faster if a page wouldn't fit; ticker: first full pass |
 | `page_duration_sec` / `page_transition_ms` | Page motions and Matrix: time per page, crossfade time |
 | `title_own_page` | Page motions: title on its own page (default) or on top of the first page |
 | `typewriter_unit` | `line` (type a line, short pause) · `card` · `page` · `name` (whole names every `type_ms`) |

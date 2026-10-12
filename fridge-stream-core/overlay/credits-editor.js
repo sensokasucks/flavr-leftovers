@@ -333,6 +333,7 @@
   let opts = {};
   let currentTab = "motion";
   let styles = [];
+  let estimateTimer = 0;
 
   function $(id) {
     return root ? root.querySelector("#" + id) : null;
@@ -416,6 +417,7 @@
             ["fade", "Fade"],
             ["wipe", "Wipe up"],
           ]))}
+          <div class="cs-field span2 cs-estimate" id="cs-estimate" aria-live="polite"></div>
           ${field("cs-speed", "Speed (px/s)", numInput("cs-speed", 8, 240))}
           ${field("cs-duration", "Target time (sec, 0 = speed)", numInput("cs-duration", 0, 900))}
           ${field("cs-gap", "Gap after loop (sec)", numInput("cs-gap", 0, 30, 0.1))}
@@ -652,6 +654,40 @@
     show("cs-type-cps", motion === "typewriter" && unit !== "name");
     show("cs-type-ms", motion === "typewriter" && unit === "name");
     show("cs-page-ms", motion !== "typewriter");
+    // Target time sets the pace itself, so these two stop mattering while it is on.
+    const timed = Number(val("cs-duration")) > 0;
+    ["cs-speed", "cs-page-dur", "cs-matrix-hold"].forEach((id) => {
+      const f = $(id) && $(id).closest(".cs-field");
+      if (!f) return;
+      f.classList.toggle("is-overridden", timed);
+      f.title = timed ? "Not used while Target time is set" : "";
+    });
+  }
+
+  function clock(sec) {
+    const s = Math.max(0, Math.round(sec));
+    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+  }
+
+  // Asks the host (Admin's preview) how long one roll takes; refreshed every second.
+  function refreshEstimate() {
+    const el = $("cs-estimate");
+    if (!el || typeof opts.estimate !== "function") return;
+    let est = null;
+    try {
+      est = opts.estimate();
+    } catch (e) {
+      est = null;
+    }
+    if (!est || !(est.seconds > 0)) {
+      el.textContent = "Estimated run time: waiting for the preview…";
+      return;
+    }
+    const names = est.names === 1 ? "1 name" : est.names + " names";
+    let line = `Estimated run time: ${clock(est.seconds)} for one roll (${names})`;
+    if (est.target > 0 && est.seconds > est.target + 1) line += `. Too many names to fit ${clock(est.target)}`;
+    else if (!(est.target > 0)) line += ". Grows as people chat";
+    el.textContent = line + ".";
   }
 
   function currentMotion() {
@@ -963,6 +999,11 @@
       });
     }
     syncMotionChrome();
+    if (typeof opts.estimate === "function") {
+      clearInterval(estimateTimer);
+      refreshEstimate();
+      estimateTimer = setInterval(refreshEstimate, 1000);
+    }
   }
 
   window.CreditsStyleEditor = {
