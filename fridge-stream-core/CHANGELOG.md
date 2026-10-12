@@ -9,6 +9,8 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.10.12] — 2026-10-12
+
 ### Changed
 - **The market is now a plugin, "Gamer Stonks".** Core no longer has a market of its own: the Market page, `!buy` / `!sell` / `!tickers` / `!portfolio`, the market overlays, `/api/market/*` and the market admin routes moved into the **Gamer Stonks** plugin (`plugins/stonks` in flavr-game-plugins). Copy it into `plugins/`, turn it on under Settings → Plugins and restart Core; it keeps the same overlay and API addresses, copies your `market:` settings, tickers (`data/market_tickers.json`) and viewers' shares the first time it starts, and old `#market` dashboard links open its page. Your `commands.json` needs no edit: Core passes the market commands to the plugin (new manifest key `specials`), and the *market* command group follows the plugin (`command_group.aliases`). Without the plugin those commands are silent. Core's old `market_holdings` table is left in `data/stream_core.db` untouched. Game plugins that used `ctx.market` (Minecraft, Factorio) lose their market links until they are updated to ask Gamer Stonks (`ctx.service("market")`). `docs/MARKET.md` moved to the plugin's README.
 
