@@ -234,6 +234,16 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(d["badges"][0]["url"], "/media/crown")
         self.assertEqual(ev["event"]["service"], "kick")
 
+    def test_back_to_back_emotes_get_spaces(self):
+        # widgets match emotes as whole space-separated words; YouTube / Kick send them touching
+        r = self.run_js("""const yt = B.seMessage({platform: 'youtube', message: 'hi:_k::_k:!',
+            emotes: [{start: 2, end: 5, url: 'https://yt3.ggpht.com/a', name: ':_k:'}, {start: 6, end: 9, url: 'https://yt3.ggpht.com/a', name: ':_k:'}],
+            user: {}}, {}).event.data;
+            const kick = B.seMessage({platform: 'kick', message: '[emote:1:a][emote:2:b]', user: {}}, {}).event.data;
+            const tw = B.seMessage({platform: 'twitch', message: 'x Kappa', emotes: [{start: 2, end: 6, url: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0', animated: true}], user: {}}, {}).event.data;
+            return [yt.text, yt.emotes.map((e) => [e.start, e.end]), kick.text, kick.emotes.map((e) => [e.start, e.end]), tw.text, tw.emotes[0].animated, tw.emotes[0].gif];""")
+        self.assertEqual(r, ["hi :_k: :_k: !", [[3, 6], [8, 11]], "a b", [[0, 0], [2, 2]], "x Kappa", True, True])
+
     def test_alerts(self):
         r = self.run_js("""return [B.seAlert({kind: 'gift', display_name: 'Gifter', qty: 5}),
             B.seAlert({kind: 'resub', display_name: 'R', months: 7}), B.seAlert({kind: 'superchat', display_name: 'S', amount: 5, currency: 'USD'}),
