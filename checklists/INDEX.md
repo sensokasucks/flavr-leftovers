@@ -11,6 +11,7 @@
 | Paid list | [paid.md](paid.md) | `core/paid.py`, Admin → Paid, `/api/admin/paid*`, paid kinds on chat events |
 | Alerts | [alerts.md](alerts.md) | Alert overlay, skins, custom CSS, test tab |
 | Stored files | [stored-files.md](stored-files.md) | `core/media_library.py`, `data/media/`, `/media/`, Stored files page, picture / sound slots |
+| Chat widgets | [widgets.md](widgets.md) | `core/widget_store.py`, `/overlay/widget.html`, `/widget-frame/`, Chat widgets page, StreamElements / Streamlabs event shapes |
 | Credits (Core) | [credits-core.md](credits-core.md) | Built-in credits overlay, cast styles, Admin Credits |
 | Gamer Stonks (the market) | [market.md](market.md) | Now a plugin in flavr-game-plugins; what Core still owes it |
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |
