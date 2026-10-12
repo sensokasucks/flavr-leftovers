@@ -9,6 +9,9 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Fixed
+- **Live controls is filled in on first load.** Opening the dashboard showed "Save your admin token above to see what's running." on Live controls until you visited another page and came back.
+
 ## [2026.10.12] — 2026-10-12
 
 ### Changed
