@@ -51,10 +51,57 @@ from core.platform_links import kick_slug
 
 log = logging.getLogger("adapters.kick")
 
-PUSHER_URL = (
-    "wss://ws-us2.pusher.com/app/32cbd69e4b950bf97679"
-    "?protocol=7&client=js&version=8.4.0-rc2&flash=false"
-)
+# Kick's public Pusher app. Kick changes the key now and then (32cbd69e… stopped working in
+# October 2026 with close code 4001 "App key … not in this cluster"), so Core asks Kick for the
+# current one at every connect (`fetch_pusher_credentials`) and only falls back to these.
+PUSHER_KEY = "34bf7a0ff419a2a775b9"
+PUSHER_CLUSTER = "us2"
+# The kick.com web client gets its realtime key from here (no sign-in needed)
+REALTIME_URL = "https://web.kick.com/api/v1/realtime/connection"
+
+
+def pusher_url(key: str = PUSHER_KEY, cluster: str = PUSHER_CLUSTER) -> str:
+    return (
+        f"wss://ws-{cluster}.pusher.com/app/{key}"
+        "?protocol=7&client=js&version=8.4.0&flash=false"
+    )
+
+
+PUSHER_URL = pusher_url()
+
+
+def pusher_credentials_from(data: Any) -> Optional[tuple[str, str]]:
+    """(app_key, cluster) from Kick's realtime answer, or None.
+
+    Shape: ``{"data": {"connections": [{"provider": "pusher",
+    "credentials": {"app_key": "...", "cluster": "us2"}}]}}``."""
+    if not isinstance(data, dict):
+        return None
+    inner = data.get("data") if isinstance(data.get("data"), dict) else data
+    conns = inner.get("connections") if isinstance(inner, dict) else None
+    if not isinstance(conns, list):
+        return None
+    for conn in conns:
+        if not isinstance(conn, dict):
+            continue
+        provider = str(conn.get("provider") or conn.get("type") or "pusher").lower()
+        creds = conn.get("credentials")
+        if provider != "pusher" or not isinstance(creds, dict):
+            continue
+        key = str(creds.get("app_key") or creds.get("key") or "").strip()
+        cluster = str(creds.get("cluster") or PUSHER_CLUSTER).strip()
+        if key and key.isalnum() and cluster.replace("-", "").isalnum():
+            return key, cluster
+    return None
+
+
+def is_bad_key_close(exc: BaseException) -> bool:
+    """Pusher closes with 4001 when the app key is wrong for the cluster (Kick changed it)."""
+    for attr in ("rcvd", "sent"):
+        frame = getattr(exc, attr, None)
+        if frame is not None and getattr(frame, "code", None) == 4001:
+            return True
+    return getattr(exc, "code", None) == 4001
 
 # Cloudflare blocks custom bot UAs on kick.com/api — look like a normal browser.
 BROWSER_HEADERS = {
@@ -201,6 +248,11 @@ class KickAdapter(BaseAdapter):
         self._lookup_error = ""
         self._ws = None
         self._channel_subscribed = False
+        # Pusher app key + cluster: kick.pusher_key / kick.pusher_cluster pin them by hand,
+        # otherwise asked from Kick before each connect (see fetch_pusher_credentials)
+        self._pusher_key_pinned = bool(str(kick_cfg.get("pusher_key") or "").strip())
+        self.pusher_key: str = str(kick_cfg.get("pusher_key") or PUSHER_KEY).strip()
+        self.pusher_cluster: str = str(kick_cfg.get("pusher_cluster") or PUSHER_CLUSTER).strip()
         self._logged_events: set[str] = set()
         self.poll_interval: float = float(kick_cfg.get("poll_viewer_interval_sec", 15))
         self._ws_task: Optional[asyncio.Task] = None
@@ -477,12 +529,41 @@ class KickAdapter(BaseAdapter):
     # Pusher WebSocket
     # ------------------------------------------------------------------
 
+    async def fetch_pusher_credentials(self) -> Optional[tuple[str, str]]:
+        """Ask Kick for its current Pusher app key and cluster (what kick.com itself does)."""
+        import uuid
+
+        body = {
+            "client": {"id": str(uuid.uuid4()), "type": "web"},
+            "capabilities": {"accepted_providers": [{"provider": "pusher"}]},
+        }
+        headers = {**BROWSER_HEADERS, "Content-Type": "application/json"}
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                r = await client.post(REALTIME_URL, json=body, headers=headers)
+            if r.status_code != 200:
+                log.debug("Kick realtime lookup → HTTP %s", r.status_code)
+                return None
+            return pusher_credentials_from(r.json())
+        except Exception as e:
+            log.debug("Kick realtime lookup failed: %s", e)
+            return None
+
+    async def _refresh_pusher_key(self) -> None:
+        if self._pusher_key_pinned:
+            return
+        found = await self.fetch_pusher_credentials()
+        if found and found != (self.pusher_key, self.pusher_cluster):
+            self.pusher_key, self.pusher_cluster = found
+            log.info("Kick chat key from Kick: %s (cluster %s)", self.pusher_key, self.pusher_cluster)
+
     async def _ws_loop(self) -> None:
         backoff = 3.0
         while self._running:
+            await self._refresh_pusher_key()
             try:
                 async with websockets.connect(
-                    PUSHER_URL,
+                    pusher_url(self.pusher_key, self.pusher_cluster),
                     ping_interval=20,
                     ping_timeout=20,
                     max_size=2**22,
@@ -498,8 +579,15 @@ class KickAdapter(BaseAdapter):
                             break
                         await self._handle_raw(raw)
             except ConnectionClosed as e:
-                log.warning("Kick WS closed: %s – reconnecting in %.1fs", e, backoff)
-                self._set_retrying(f"Kick chat disconnected; reconnecting in {backoff:.0f} s.")
+                if is_bad_key_close(e):
+                    hint = (" kick.pusher_key in config.yaml is out of date; clear it"
+                            if self._pusher_key_pinned else " asking Kick for the new one")
+                    log.warning("Kick refused chat key %s (cluster %s):%s – reconnecting in %.1fs",
+                                self.pusher_key, self.pusher_cluster, hint, backoff)
+                    self._set_retrying("Kick refused Core's chat key; asking Kick for the new one.")
+                else:
+                    log.warning("Kick WS closed: %s – reconnecting in %.1fs", e, backoff)
+                    self._set_retrying(f"Kick chat disconnected; reconnecting in {backoff:.0f} s.")
             except asyncio.CancelledError:
                 raise
             except Exception as e:

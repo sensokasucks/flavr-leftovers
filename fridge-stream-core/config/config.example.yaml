@@ -31,6 +31,10 @@ kick:
   # chatroom_id: 12345678
   # channel_id: 1234567          # optional; the top-level "id" from the same page. Hosts and Kicks
   #                                # use it. Core learns it from the viewer-count lookup if unset.
+  # Kick's chat key is asked from Kick at every connect. Only pin one by hand if that stops
+  # working (then clear it again when Kick changes keys, or chat stays off):
+  # pusher_key: "34bf7a0ff419a2a775b9"
+  # pusher_cluster: "us2"
   poll_viewer_interval_sec: 15
   avatars: true                    # chatter profile pictures (one lookup per chatter, cached)
 
