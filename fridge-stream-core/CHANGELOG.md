@@ -9,8 +9,13 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Clear chat history.** Chat history has a **Clear history…** button: delete every saved line or only the lines the page's filters show (a platform, a search, one person, a flag), optionally only lines older than so many days. Red-flagged chatters' lines are kept unless you untick that, it tells you how many lines will go before you press Delete, and **Download CSV first** saves exactly those lines. Big clears also shrink the database file. Points, people, streaks, end credits, the Paid list and your flag lists are not touched; Check past chat can only look through lines that are still saved.
+- **Keep chat for … days** under Settings → Points, permissions + chat → Chat history log (`chat_log.keep_days`, default 0 = forever): Core deletes older lines by itself every few hours, keeping red-flagged chatters' lines. Tests `tests/test_chat_clear.py`.
+
 ### Fixed
 - **Kick chat connects again.** Kick retired the chat key Core had built in, so Kick's chat server dropped Core straight after connecting ("App key … not in this cluster") and no Kick chat arrived. Core now asks Kick for its current chat key each time it connects (the way kick.com itself does) and keeps the new key as a backup, so the next key change fixes itself. If Kick refuses a key, Status says so and Core asks again. `kick.pusher_key` / `kick.pusher_cluster` can pin a key by hand. Tests `tests/test_kick_pusher_key.py`.
+- **Chat history no longer shows an empty box** next to the platform list when no person is picked.
 - **Live controls is filled in on first load.** Opening the dashboard showed "Save your admin token above to see what's running." on Live controls until you visited another page and came back.
 
 ## [2026.10.12] — 2026-10-12

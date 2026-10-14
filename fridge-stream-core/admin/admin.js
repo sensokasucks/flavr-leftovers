@@ -2819,6 +2819,7 @@
             ? `Showing the newest ${CHAT_ROWS} lines. Search or filter to find older ones, or Download CSV for all of them.`
             : `${rows.length} line${rows.length === 1 ? "" : "s"}.`;
       }
+      countChatClear();
       for (const r of rows) {
         const tr = document.createElement("tr");
         if (r.flagged) {
@@ -3343,6 +3344,111 @@
   }
   $("chat-export").onclick = () => downloadCsv(chatFilters(), $("chat-export-msg"));
 
+  // Clear history…: delete saved lines (all, or what the filters show; older than N days)
+  function chatClearParams() {
+    const filtered = document.querySelector('input[name="chat-clear-scope"]:checked')?.value === "filtered";
+    const days = Math.max(0, num($("chat-clear-days").value, 0));
+    const keep = $("chat-clear-keep-flagged").checked;
+    const f = filtered ? chatFilters() : new URLSearchParams();
+    return { filtered, days, keep, f };
+  }
+
+  function chatClearBody(dryRun) {
+    const { filtered, days, keep, f } = chatClearParams();
+    return {
+      filtered,
+      older_than_days: days,
+      keep_flagged: keep,
+      user_id: f.get("user_id") ? Number(f.get("user_id")) : null,
+      platform: f.get("platform") || "",
+      q: f.get("q") || "",
+      flagged: f.get("flagged") === "1",
+      flag: f.get("flag") || "",
+      dry_run: dryRun,
+    };
+  }
+
+  /** The filters above in words, for "Only lines matching the filters above". */
+  function chatFiltersInWords() {
+    const f = chatFilters();
+    const bits = [];
+    const person = $("chat-person");
+    if (f.get("user_id")) bits.push((person?.querySelector("span")?.textContent || "").replace(/^Only /, "") || "one person");
+    if (f.get("platform")) bits.push(f.get("platform"));
+    if (f.get("q")) bits.push(`text "${f.get("q")}"`);
+    if (f.get("flagged")) bits.push("🚩 only");
+    if (f.get("flag")) bits.push("flag: " + ($("chat-flag").selectedOptions[0]?.textContent || f.get("flag")));
+    return bits.length ? "(" + bits.join(", ") + ")" : "(no filters set, so every line)";
+  }
+
+  let chatClearSeq = 0;
+  async function countChatClear() {
+    const panel = $("chat-clear");
+    if (!panel || panel.hidden) return;
+    $("chat-clear-filters").textContent = chatFiltersInWords();
+    const out = $("chat-clear-count");
+    const go = $("chat-clear-go");
+    const seq = ++chatClearSeq;
+    out.textContent = "Counting…";
+    try {
+      const res = await api("/api/admin/chat/clear", { method: "POST", body: JSON.stringify(chatClearBody(true)) });
+      if (seq !== chatClearSeq) return;
+      const n = res.count || 0;
+      const { filtered, keep, f } = chatClearParams();
+      out.textContent = n
+        ? `${n.toLocaleString()} saved line${n === 1 ? "" : "s"} would be deleted.`
+        : (filtered && keep && f.get("flagged")
+          ? "Nothing to delete: 🚩 only shows red-flagged chatters' lines, and they are kept. Untick Keep red-flagged chatters' lines to clear them."
+          : "Nothing to delete with these choices.");
+      go.disabled = !n;
+      go.dataset.count = String(n);
+      go.textContent = n ? `Delete ${n.toLocaleString()} line${n === 1 ? "" : "s"}` : "Delete";
+    } catch (e) {
+      if (seq !== chatClearSeq) return;
+      out.textContent = readableActionError(e);
+      go.disabled = true;
+    }
+  }
+
+  if ($("chat-clear-open")) {
+    const panel = $("chat-clear");
+    const openBtn = $("chat-clear-open");
+    const show = (on) => {
+      panel.hidden = !on;
+      openBtn.setAttribute("aria-expanded", on ? "true" : "false");
+      $("chat-clear-msg").textContent = "";
+      if (on) countChatClear();
+    };
+    openBtn.onclick = () => show(panel.hidden);
+    $("chat-clear-cancel").onclick = () => show(false);
+    for (const el of panel.querySelectorAll('input[name="chat-clear-scope"], #chat-clear-keep-flagged')) {
+      el.onchange = countChatClear;
+    }
+    $("chat-clear-days").oninput = countChatClear;
+    $("chat-clear-csv").onclick = () => {
+      const { days, keep, f } = chatClearParams();
+      if (days) f.set("older_than_days", String(days));
+      if (keep) f.set("keep_flagged", "1");
+      downloadCsv(f, $("chat-clear-msg"));
+    };
+    $("chat-clear-go").onclick = async () => {
+      const n = Number($("chat-clear-go").dataset.count || 0);
+      if (!n) return;
+      if (!confirm(`Delete ${n.toLocaleString()} saved chat line${n === 1 ? "" : "s"}? This can't be undone. Download CSV first if you want a copy.`)) return;
+      const msg = $("chat-clear-msg");
+      msg.classList.remove("bad");
+      msg.textContent = "Deleting…";
+      try {
+        const res = await api("/api/admin/chat/clear", { method: "POST", body: JSON.stringify(chatClearBody(false)) });
+        msg.textContent = `Deleted ${(res.deleted || 0).toLocaleString()} line${res.deleted === 1 ? "" : "s"}.`;
+        await loadChat();
+      } catch (e) {
+        msg.textContent = "Delete failed: " + readableActionError(e);
+        msg.classList.add("bad");
+      }
+    };
+  }
+
   /** The chat log as CSV: the Chat history filters, or user_id alone from a person's page. */
   async function downloadCsv(params, msg) {
     const userId = params.get("user_id");
@@ -3678,6 +3784,9 @@
     if ($("cfg-chatlog-only-flagged")) {
       $("cfg-chatlog-only-flagged").checked = !!clog.only_flagged;
     }
+    if ($("cfg-chatlog-keep-days")) {
+      $("cfg-chatlog-keep-days").value = clog.keep_days ?? 0;
+    }
     const crd = cfg.credits || {};
     if ($("cfg-credits-onoff")) $("cfg-credits-onoff").textContent = crd.enabled ? "on" : "off";
     if ($("cfg-credits-ignore")) $("cfg-credits-ignore").value = listToLines(crd.ignore_usernames || []);
@@ -3911,6 +4020,7 @@
       chat_log: {
         enabled: $("cfg-chatlog-enabled") ? $("cfg-chatlog-enabled").checked : false,
         only_flagged: $("cfg-chatlog-only-flagged") ? $("cfg-chatlog-only-flagged").checked : false,
+        keep_days: $("cfg-chatlog-keep-days") ? Math.max(0, num($("cfg-chatlog-keep-days").value, 0)) : 0,
       },
       credits: creditsConfigBlock(),
     };

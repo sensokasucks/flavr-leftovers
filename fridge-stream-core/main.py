@@ -81,6 +81,9 @@ except ImportError as exc:
 
 log = logging.getLogger("main")
 
+# chat_log.keep_days: how often Core trims old Chat history lines (seconds)
+CHAT_TRIM_EVERY = 6 * 3600
+
 # Chat platforms Core can start, stop and reconnect while running
 PLATFORM_ADAPTERS = {
     "kick": KickAdapter,
@@ -287,6 +290,7 @@ class StreamCore:
         # Periodic metrics publish
         self._metrics_task = asyncio.create_task(self._metrics_loop(), name="metrics-loop")
         self._credits_task = asyncio.create_task(self._credits_persist_loop(), name="credits-persist")
+        self._chat_trim_task = asyncio.create_task(self._chat_trim_loop(), name="chat-trim")
         self._games_task = asyncio.create_task(self._games_loop(), name="chat-games")
         if (self.config.get("core") or {}).get("watch_config", True):
             self._config_watch_task = asyncio.create_task(
@@ -545,8 +549,31 @@ class StreamCore:
                 except Exception:
                     log.exception("credits persist failed")
 
+    async def _chat_trim_loop(self) -> None:
+        """``chat_log.keep_days``: trim old Chat history lines a minute after start, then every 6 hours."""
+        wait = 60.0
+        while not self._stop.is_set():
+            try:
+                await asyncio.wait_for(self._stop.wait(), timeout=wait)
+                break
+            except asyncio.TimeoutError:
+                pass
+            wait = CHAT_TRIM_EVERY
+            try:
+                live = getattr(self.state, "config", None) or self.config
+                self.store.configure_chat_log(live.get("chat_log"))
+                await self.store.trim_chat_log()
+            except Exception:
+                log.exception("chat history trim failed")
+
     async def stop(self) -> None:
         self._stop.set()
+        if getattr(self, "_chat_trim_task", None):
+            self._chat_trim_task.cancel()
+            try:
+                await self._chat_trim_task
+            except asyncio.CancelledError:
+                pass
         if self._metrics_task:
             self._metrics_task.cancel()
             try:
