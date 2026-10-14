@@ -92,6 +92,21 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(again.local_url("twitch", "123"), local)
         self.assertEqual(again.find("@LUNABYTE")["id"], "123")
 
+    def test_same_link_is_not_downloaded_again(self):
+        fetch = FakeFetch()
+
+        async def go():
+            st = AvatarStore(root=self.root, fetcher=fetch)
+            st.note("kick", "9", "https://files.kick.com/a.png")
+            await st.wait_idle()
+            # weeks later the same link: the picture hasn't changed, no download
+            st._index["kick:9"]["ts"] -= 14 * 24 * 3600
+            st.note("kick", "9", "https://files.kick.com/a.png")
+            await st.wait_idle()
+
+        run(go())
+        self.assertEqual(len(fetch.calls), 1)
+
     def test_new_link_downloads_again(self):
         fetch = FakeFetch()
 

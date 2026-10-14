@@ -26,7 +26,7 @@ log = logging.getLogger("adapters.kick_avatars")
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "kick_avatars.json"
 RETRY_SEC = 10 * 60
-REFRESH_SEC = 7 * 24 * 3600      # pictures change rarely; re-check weekly
+REFRESH_SEC = 3 * 24 * 3600      # one lookup per chatter and Kick sometimes refuses, so re-check less often
 MAX_PARALLEL = 2
 
 # (slug) -> (status, url): status 200 = found (url may be "" for no picture), other = failed
@@ -59,14 +59,16 @@ class KickAvatars:
         self._load()
 
     def get(self, slug: str) -> Optional[str]:
-        """Known picture URL ("" = no picture), or None if we haven't looked yet."""
+        """Known picture URL ("" = no picture), or None if we haven't looked yet. An old link is
+        still returned; ``request()`` re-checks it in the background."""
         entry = self._cache.get(slug.lower())
-        if entry is None or time.time() - float(entry.get("ts", 0)) > REFRESH_SEC:
-            return None if entry is None else str(entry.get("url", ""))
+        if entry is None:
+            return None
         return str(entry.get("url", ""))
 
     def request(self, slug: str, on_found: Found) -> None:
-        """Look the picture up in the background (once) and call on_found(url) if there is one."""
+        """Look the picture up in the background (new chatter, or a saved link older than
+        REFRESH_SEC) and call on_found(url) when there is a picture Core didn't know yet."""
         slug = slug.lower().strip()
         if not self.enabled or not slug or slug in self._pending:
             return
@@ -118,10 +120,12 @@ class KickAvatars:
             if status != 200:
                 self._failed[slug] = time.time()
                 return
+            before = (self._cache.get(slug) or {}).get("url")
             self._cache[slug] = {"url": url, "ts": time.time()}
             self._dirty = True
             self.save_soon()
-            if url:
+            # a re-check that finds the same link changes nothing on screen
+            if url and url != before:
                 await on_found(url)
         except asyncio.CancelledError:
             raise
