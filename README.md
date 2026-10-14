@@ -61,3 +61,11 @@ and the standalone Chat Credits app (port 3854, only for people who don't run Co
 ## Rebrand note (2026-08-21)
 
 Renamed from `xsplit-*`. Rebuild Minecraft and Factorio mods after pulling this tree. Overlay URLs and ports did not change.
+
+## License
+
+Copyright (C) 2026 Sensoka (sensokasucks).
+
+This project is free software under the [GNU General Public License v3.0](LICENSE) (GPL-3.0). You can use it for free, including on monetized streams and other commercial use, change it, and share it. If you pass it on to anyone, changed or not, free or paid, you must give them the full source code under the same GPL-3.0 terms.
+
+Bundled third-party parts keep their own licenses: `fridge-stream-core/overlay/vendor/jquery-3.7.1.min.js` is MIT (see `jquery-LICENSE.txt` next to it). Python packages installed by `install.bat` are not included in this repository and keep their own licenses.
