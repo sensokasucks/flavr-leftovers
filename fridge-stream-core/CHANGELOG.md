@@ -11,6 +11,7 @@ Dates are when the work landed in this tree.
 
 ### Fixed
 - **Kick chat connects again.** Kick retired the chat key Core had built in, so Kick's chat server dropped Core straight after connecting ("App key … not in this cluster") and no Kick chat arrived. Core now asks Kick for its current chat key each time it connects (the way kick.com itself does) and keeps the new key as a backup, so the next key change fixes itself. If Kick refuses a key, Status says so and Core asks again. `kick.pusher_key` / `kick.pusher_cluster` can pin a key by hand. Tests `tests/test_kick_pusher_key.py`.
+- **Live controls is filled in on first load.** Opening the dashboard showed "Save your admin token above to see what's running." on Live controls until you visited another page and came back.
 
 ## [2026.10.12] — 2026-10-12
 

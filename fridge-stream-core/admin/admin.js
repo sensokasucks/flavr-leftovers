@@ -302,7 +302,9 @@
   function activateTab(tabId, sub) {
     const panel = $("tab-" + tabId);
     if (!panel) return;
-    const wasActive = panel.classList.contains("active");
+    // index.html marks Live controls active before anything has loaded, so the first visit still loads.
+    const wasActive = panel.classList.contains("active") && panel.dataset.opened === "1";
+    panel.dataset.opened = "1";
     document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p === panel));
     const pick = showSub(tabId, sub);
     markNav(tabId, pick);
