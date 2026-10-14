@@ -6,7 +6,7 @@ Home: `fridge-stream-core/adapters/` (`kick.py`, `twitch.py`, `youtube.py`). Ove
 
 - [ ] Platforms are adapters only. They emit normalized chat / alert events onto the EventBus. They do not own commands, points, or games.
 - [ ] Kick, Twitch, and YouTube all default **off** in `config.yaml`, `config.example.yaml`, and `core/config.py` DEFAULTS.
-- [ ] Kick: Pusher chat, emotes, badges, chatroom id autodetection persisted to `config.yaml`.
+- [ ] Kick: Pusher chat, emotes, badges, chatroom id autodetection persisted to `config.yaml`. The Pusher app key + cluster are asked from Kick (`POST web.kick.com/api/v1/realtime/connection`) before each connect, falling back to the built-in `PUSHER_KEY`; `kick.pusher_key` / `pusher_cluster` pin them. Close code 4001 = key refused. Tests: `tests/test_kick_pusher_key.py`.
 - [ ] Twitch: anonymous IRC listen. No OAuth required to read chat.
 - [ ] YouTube: dual-mode `innertube` / `official` / `auto`. Official needs `api_key`; innertube needs `video_id`.
 - [ ] Chat overlay at `/overlay/chat.html` (Core :3850). Supports `?platform=` and `?platforms=` filters.
