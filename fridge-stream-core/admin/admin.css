@@ -79,6 +79,7 @@ button.primary {
 button.danger { color: var(--danger); }
 .muted { color: var(--muted); font-size: 0.85rem; }
 .tab-intro { color: var(--muted); font-size: 0.9rem; margin: 0 16px 12px; max-width: 720px; }
+.tab-intro a { color: var(--accent); }
 .field-help { color: var(--muted); font-weight: 400; font-size: 0.8rem; margin-left: 6px; }
 .status-grid {
   display: grid;
@@ -1288,6 +1289,15 @@ button.copied { border-color: var(--accent); color: var(--accent); }
 #paid-table .paid-amount { font-weight: 700; color: #ffd34d; white-space: nowrap; }
 #paid-table .paid-pic { height: 40px; width: auto; vertical-align: middle; margin-right: 6px; }
 #paid-table .paid-item { color: var(--muted); }
+#cl-table td { vertical-align: middle; }
+#cl-table td:first-child { width: 2.4em; text-align: center; }
+#cl-table td:first-child input { width: 20px; height: 20px; }
+#cl-table tr.paid-done td { opacity: 0.55; }
+#cl-table .paid-who { display: inline-flex; align-items: center; gap: 8px; }
+#cl-table .paid-who img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+#cl-table .cl-num { text-align: right; }
+#cl-table .cl-job { font-weight: 700; color: #ffd34d; margin-right: 6px; }
+#cl-table .cl-role { display: inline-block; margin: 1px 4px 1px 0; padding: 1px 7px; border-radius: 10px; font-size: 0.8rem; background: rgba(255, 255, 255, 0.08); }
 .plat-chip { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 12px; font-weight: 700; color: #111; }
 .plat-chip.youtube { background: #ff4e45; color: #fff; }
 .plat-chip.twitch { background: #a970ff; color: #fff; }

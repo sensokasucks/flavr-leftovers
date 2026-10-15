@@ -143,6 +143,65 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(rows[1][5], "1")
 
 
+class CreditsListTests(unittest.TestCase):
+    """On stream → Credits list: tick boxes on the roll, filters, CSV, saved with the session."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def _eng(self):
+        eng = CreditsEngine({"credits": {"enabled": True}}, self.root)
+        eng.ingest(_event("alice", "hello", is_mod=True))
+        eng.ingest(_event("bob", "hello"))
+        eng.ingest(_event("carol", "hello", is_subscriber=True))
+        return eng
+
+    def test_tick_filters_and_roles(self):
+        eng = self._eng()
+        eng.note_alert("raid", "twitch", "bob")
+        eng.cast.pin("twitch", "carol", "Best Boy", set_by="test")
+        self.assertEqual(eng.unticked(), 3)
+        self.assertEqual(eng.tick(["twitch:alice", "twitch:nobody"], True), 1)
+        self.assertEqual(eng.tick(["twitch:alice"], True), 0)
+        self.assertEqual(eng.unticked(), 2)
+        self.assertEqual([r["username"] for r in eng.checklist({"status": "open"})], ["bob", "carol"])
+        self.assertEqual([r["username"] for r in eng.checklist({"status": "done"})], ["alice"])
+        self.assertEqual([r["username"] for r in eng.checklist({"role": "raider"})], ["bob"])
+        self.assertEqual([r["username"] for r in eng.checklist({"role": "mod"})], ["alice"])
+        self.assertEqual([r["username"] for r in eng.checklist({"q": "best"})], ["carol"])
+        self.assertEqual(eng.checklist({"platforms": "kick"}), [])
+        carol = eng.checklist({"q": "carol"})[0]
+        self.assertEqual(carol["job"], "Best Boy")
+        self.assertIn("sub", carol["roles"])
+        self.assertEqual(carol["key"], "twitch:carol")
+
+    def test_ticks_survive_restart_and_reset_clears(self):
+        eng = self._eng()
+        eng.tick(["twitch:bob"], True)
+        eng.save_if_dirty()
+        again = CreditsEngine({"credits": {"enabled": True}}, self.root)
+        self.assertTrue(again.chatters["twitch:bob"].ticked)
+        self.assertFalse(again.chatters["twitch:alice"].ticked)
+        # chatting again keeps the tick
+        again.ingest(_event("bob", "back again"))
+        self.assertTrue(again.chatters["twitch:bob"].ticked)
+        again.reset()
+        self.assertEqual(again.unticked(), 0)
+        self.assertEqual(again.checklist(), [])
+
+    def test_csv(self):
+        eng = self._eng()
+        eng.tick(["twitch:alice"], True)
+        rows = list(csv.reader(io.StringIO(eng.checklist_csv({"status": "all"}))))
+        self.assertEqual(rows[0][:4], ["ticked", "platform", "username", "display_name"])
+        self.assertEqual(rows[1][:3], ["1", "twitch", "alice"])
+        self.assertEqual(len(rows), 4)
+
+
 class MovieExtrasTests(unittest.TestCase):
     def test_style_extras_reach_the_overlay(self):
         with tempfile.TemporaryDirectory() as tmp:

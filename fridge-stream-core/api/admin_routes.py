@@ -2375,6 +2375,80 @@ def create_admin_router(core_state) -> APIRouter:
             headers={"Content-Disposition": f'attachment; filename="chatters-{stamp}.csv"'},
         )
 
+    # Credits list: everyone in the roll with a tick box (On stream → Credits list)
+    def _credits_list_filters(status, platforms, role, q, sort) -> Dict[str, Any]:
+        return {"status": status, "platforms": platforms, "role": role, "q": q, "sort": sort}
+
+    def _avatar_lookup():
+        """(platform, lower login or name) → local picture link, built once per request."""
+        store = getattr(core_state, "avatars", None)
+        if not store or not hasattr(store, "known_users"):
+            return {}
+        out: Dict[tuple, str] = {}
+        try:
+            for u in store.known_users():
+                url = store.local_url(u["platform"], u["id"])
+                if not url:
+                    continue
+                for n in (u.get("login"), u.get("name")):
+                    n = str(n or "").lstrip("@").lower()
+                    if n and not store.is_hidden(u["platform"], n):
+                        out.setdefault((u["platform"], n), url)
+        except Exception:
+            log.exception("credits list avatar lookup failed")
+        return out
+
+    @router.get("/credits/checklist")
+    async def credits_checklist(
+        status: str = "open", platforms: str = "", role: str = "", q: str = "", sort: str = "first_seen",
+        limit: int = Query(500, ge=1, le=2000),
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        rows = eng.checklist(_credits_list_filters(status, platforms, role, q, sort))
+        pics = _avatar_lookup() if rows else {}
+        shown = rows[:limit]
+        for r in shown:
+            r["avatar_url"] = (pics.get((r["platform"], r["username"].lower()))
+                               or pics.get((r["platform"], (r["display_name"] or "").lower())) or "")
+        return {
+            "ok": True,
+            "enabled": eng.enabled,
+            "rows": shown,
+            "total": len(rows),
+            "count": len(eng.chatters),
+            "unticked": eng.unticked(),
+        }
+
+    @router.post("/credits/checklist/tick")
+    async def credits_checklist_tick(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """``{"keys": ["twitch:bob"], "done": true}``, or ``{"filters": {...}, "done": true}`` for
+        every chatter the filters match ("Tick all shown")."""
+        _auth(x_admin_token)
+        eng = _credits()
+        done = bool(body.get("done", True))
+        if isinstance(body.get("filters"), dict):
+            keys = [r["key"] for r in eng.checklist(dict(body["filters"]))]
+        else:
+            keys = [str(k) for k in body.get("keys") or [] if k] if isinstance(body.get("keys"), list) else []
+        n = eng.tick(keys, done)
+        return {"ok": True, "changed": n, "unticked": eng.unticked()}
+
+    @router.get("/credits/checklist.csv")
+    async def credits_checklist_csv(
+        status: str = "all", platforms: str = "", role: str = "", q: str = "", sort: str = "first_seen",
+        x_admin_token: Optional[str] = Header(None),
+    ):
+        _auth(x_admin_token)
+        eng = _credits()
+        stamp = time.strftime("%Y%m%d-%H%M", time.localtime())
+        return Response(
+            content=eng.checklist_csv(_credits_list_filters(status, platforms, role, q, sort)),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="credits-list-{stamp}.csv"'},
+        )
+
     @router.put("/credits/enabled")
     async def credits_enable(
         body: CreditsEnableBody,

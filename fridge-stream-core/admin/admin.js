@@ -347,6 +347,7 @@
       refreshChatLogBanner();
     }
     if (tabId === "paid") initPaidTab();
+    if (tabId === "creditslist") initCreditsListTab();
     if (tabId === "redflags") {
       if (!(PAGE_SAVER && (PAGE_SAVER.isDirty("rf") || PAGE_SAVER.isDirty("cf")))) loadRedFlags();
       refreshChatLogBanner();
@@ -5431,6 +5432,159 @@
   setTimeout(refreshPaidBadge, 1500);
 
   // ------------------------------------------------------------------
+  // Credits list tab (core/credits.py): everyone in the end credits with a tick box
+  // ------------------------------------------------------------------
+
+  const CL_FILTERS_KEY = "fridge_credits_list_filters";
+  const CL_ROLES = {
+    mod: "Mod", vip: "VIP", sub: "Sub", paid: "Paid", raider: "Raider",
+    follower: "Follower", gifted: "Subbed / gifted", donor: "Tipped",
+  };
+  let clReady = false;
+  let clBusyUntil = 0;     // a tick was just clicked: skip the refresh that would redraw under the mouse
+
+  function clFilters() {
+    const f = {
+      status: $("cl-status").value,
+      role: $("cl-role").value,
+      platforms: [...document.querySelectorAll(".cl-plat:checked")].map((b) => b.value).join(","),
+      q: $("cl-q").value.trim(),
+      sort: $("cl-sort").value,
+    };
+    if (document.querySelectorAll(".cl-plat").length === document.querySelectorAll(".cl-plat:checked").length) {
+      f.platforms = "";
+    }
+    return f;
+  }
+
+  function saveClFilters() {
+    saveJson(CL_FILTERS_KEY, {
+      status: $("cl-status").value, role: $("cl-role").value, sort: $("cl-sort").value,
+      plats: [...document.querySelectorAll(".cl-plat")].filter((b) => !b.checked).map((b) => b.value),
+    });
+  }
+
+  function restoreClFilters() {
+    const f = loadJson(CL_FILTERS_KEY, {});
+    const set = (id, v) => { if (v != null && $(id)) $(id).value = v; };
+    set("cl-status", f.status);
+    set("cl-role", f.role);
+    set("cl-sort", f.sort);
+    const off = new Set(f.plats || []);
+    document.querySelectorAll(".cl-plat").forEach((b) => { b.checked = !off.has(b.value); });
+  }
+
+  async function loadCreditsList() {
+    if (!$("cl-table")) return;
+    const f = clFilters();
+    let data;
+    try {
+      data = await api("/api/admin/credits/checklist?" + paidQuery(f).toString());
+    } catch (e) {
+      $("cl-msg").textContent = String(e.message || e);
+      return;
+    }
+    renderCreditsOnOff(!!data.enabled);
+    const ticked = data.count - data.unticked;
+    $("cl-totals").innerHTML = data.count
+      ? `<b>${data.count}</b> in the credits · <b>${ticked}</b> ticked · <b>${data.unticked}</b> to go` +
+        (data.total !== data.count ? ` · ${data.total} match these filters` : "")
+      : "";
+    const tb = $("cl-table").querySelector("tbody");
+    tb.innerHTML = "";
+    for (const r of data.rows) {
+      const tr = document.createElement("tr");
+      tr.dataset.key = r.key;
+      if (r.ticked) tr.classList.add("paid-done");
+      const avatar = r.avatar_url ? `<img src="${escapeHtml(r.avatar_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" />` : "";
+      const roles = (r.roles || []).map((x) => `<span class="cl-role">${escapeHtml(CL_ROLES[x] || x)}</span>`).join("");
+      const job = r.job ? `<span class="cl-job">${escapeHtml(r.job)}</span>` : "";
+      const name = r.display_name || r.username;
+      const login = r.username && r.username.toLowerCase() !== name.toLowerCase()
+        ? ` <span class="muted">@${escapeHtml(r.username)}</span>` : "";
+      tr.innerHTML =
+        `<td><input type="checkbox" class="cl-tick" ${r.ticked ? "checked" : ""} aria-label="Ticked" /></td>` +
+        `<td><span class="paid-who">${avatar}<span${/^#[0-9a-f]{3,8}$/i.test(r.color || "") ? ` style="color:${r.color}"` : ""}>${escapeHtml(name)}</span>${login}</span></td>` +
+        `<td><span class="plat-chip ${escapeHtml(r.platform)}">${escapeHtml(PLAT_NAMES[r.platform] || r.platform)}</span></td>` +
+        `<td>${job}${roles}</td>` +
+        `<td class="cl-num">${r.messages || 1}</td>` +
+        `<td>${fmtTime(r.first_seen)}</td>` +
+        `<td>${fmtTime(r.last_seen)}</td>`;
+      tb.appendChild(tr);
+    }
+    tb.querySelectorAll(".cl-tick").forEach((box) => {
+      box.onchange = async () => {
+        clBusyUntil = Date.now() + 2500;
+        const tr = box.closest("tr");
+        tr.classList.toggle("paid-done", box.checked);
+        try {
+          await api("/api/admin/credits/checklist/tick", { method: "POST", body: JSON.stringify({ keys: [tr.dataset.key], done: box.checked }) });
+        } catch (e) {
+          box.checked = !box.checked;
+          tr.classList.toggle("paid-done", box.checked);
+          $("cl-msg").textContent = String(e.message || e);
+        }
+      };
+    });
+    const empty = $("cl-empty");
+    empty.hidden = data.rows.length > 0;
+    if (!data.rows.length) {
+      empty.textContent = !data.count
+        ? "Nobody in the credits yet. Names show up here as people chat while credits are on."
+        : !document.querySelectorAll(".cl-plat:checked").length
+          ? "No platform is ticked."
+          : $("cl-status").value === "open" && !f.q && !f.role && !f.platforms
+            ? "Everyone is ticked. Nice."
+            : "Nobody matches these filters.";
+    }
+    if (data.total > data.rows.length) {
+      empty.hidden = false;
+      empty.textContent = `Showing ${data.rows.length} of ${data.total}. Narrow the filters, or Download CSV for all of them.`;
+    }
+  }
+
+  function initCreditsListTab() {
+    if (!clReady) {
+      clReady = true;
+      restoreClFilters();
+      const again = () => { saveClFilters(); loadCreditsList(); };
+      ["cl-status", "cl-role", "cl-sort"].forEach((id) => { $(id).onchange = again; });
+      document.querySelectorAll(".cl-plat").forEach((b) => { b.onchange = again; });
+      let typing = 0;
+      $("cl-q").oninput = () => { clearTimeout(typing); typing = setTimeout(again, 350); };
+      const tickAll = async (done) => {
+        const f = clFilters();
+        try {
+          const res = await api("/api/admin/credits/checklist/tick", { method: "POST", body: JSON.stringify({ filters: f, done }) });
+          $("cl-msg").textContent = `${done ? "Ticked" : "Unticked"} ${res.changed}.`;
+          loadCreditsList();
+        } catch (e) {
+          $("cl-msg").textContent = String(e.message || e);
+        }
+      };
+      $("cl-tick-all").onclick = () => tickAll(true);
+      $("cl-untick-all").onclick = () => tickAll(false);
+      $("cl-export").onclick = async () => {
+        $("cl-msg").textContent = "Preparing the file…";
+        try {
+          await downloadFile("/api/admin/credits/checklist.csv?" + paidQuery(clFilters()).toString(), "credits-list.csv");
+          $("cl-msg").textContent = "Downloaded.";
+        } catch (e) {
+          $("cl-msg").textContent = "Download failed: " + readableActionError(e);
+        }
+      };
+    }
+    loadCreditsList();
+  }
+
+  // New chatters show up while the tab is open
+  setInterval(() => {
+    if ($("tab-creditslist") && $("tab-creditslist").classList.contains("active") && document.visibilityState === "visible") {
+      if (Date.now() > clBusyUntil && !document.activeElement?.closest?.("#cl-table")) loadCreditsList();
+    }
+  }, 5000);
+
+  // ------------------------------------------------------------------
   // Credits tab
   // ------------------------------------------------------------------
 
@@ -5531,7 +5685,7 @@
   let creditsEnabled = null;
   function renderCreditsOnOff(enabled) {
     if (typeof enabled === "boolean") creditsEnabled = enabled;
-    for (const id of ["crd-off", "live-crd-off"]) {
+    for (const id of ["crd-off", "live-crd-off", "cl-off"]) {
       if ($(id)) $(id).hidden = creditsEnabled !== false;
     }
     renderCreditsPlay();
