@@ -9,6 +9,11 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.10.15] — 2026-10-15
+
+### Changed
+- **Licensed under GPL-3.0.** The repository now has a `LICENSE` file (GNU General Public License v3.0); bundled outside code (jQuery, MIT) keeps its own license.
+
 ### Added
 - **Clear chat history.** Chat history has a **Clear history…** button: delete every saved line or only the lines the page's filters show (a platform, a search, one person, a flag), optionally only lines older than so many days. Red-flagged chatters' lines are kept unless you untick that, it tells you how many lines will go before you press Delete, and **Download CSV first** saves exactly those lines. Big clears also shrink the database file. Points, people, streaks, end credits, the Paid list and your flag lists are not touched; Check past chat can only look through lines that are still saved.
 - **Keep chat for … days** under Settings → Points, permissions + chat → Chat history log (`chat_log.keep_days`, default 0 = forever): Core deletes older lines by itself every few hours, keeping red-flagged chatters' lines. Tests `tests/test_chat_clear.py`.
