@@ -1235,6 +1235,7 @@ html.hc .admin-nav .tab.active { outline: 2px solid var(--accent); outline-offse
 }
 .crd-off button { margin-left: 6px; }
 button.copied { border-color: var(--accent); color: var(--accent); }
+.chat-person[hidden] { display: none; }
 .chat-person {
   display: inline-flex;
   align-items: center;
@@ -1314,3 +1315,9 @@ html.plugin-page body > main { padding: 0 2px 16px; }
 .wf-color input[type="color"] { width: 36px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; flex: none; }
 .wf-color input[type="text"] { flex: 1; }
 @media (max-width: 700px) { .widget-row { grid-template-columns: 1fr; } }
+
+/* Chat history → Clear history… */
+.chat-clear { margin: 8px 0 12px; }
+.chat-clear input[type="radio"] { width: auto; margin: 0; }
+.cfg-card.chat-clear input.num-sm { display: inline-block; width: 6em; margin: 0 4px; }
+.chat-clear .toolbar { margin-top: 8px; }

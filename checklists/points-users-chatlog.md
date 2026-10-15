@@ -11,6 +11,7 @@ Home: `core/store.py`. DB: `data/stream_core.db`.
 - [ ] Admin token (`points.admin_token` / `X-Admin-Token`) still gates `/admin`.
 - [ ] Admin → Users & Points: search, adjust points, link cross-platform identities, export CSV.
 - [ ] Chat History tab is separate from the live overlay. `chat_log.enabled` default **false**.
+- [ ] Clearing chat history only touches `chat_messages`: Chat history → **Clear history…** (`POST /api/admin/chat/clear`, `dry_run` counts first) deletes every line or only the page's filters, optionally only lines older than N days, and by default keeps red-flagged chatters' lines. `chat_log.keep_days` (default **0** = forever) trims older lines a minute after start and every 6 hours (`StreamCore._chat_trim_loop`), always keeping red-flagged chatters' lines. Points, ledger, people, streaks, credits, Paid and the flag lists are never cleared with it. Clearing 2,000+ lines shrinks the file (VACUUM) under the chat writer's lock. "Download CSV first" uses the same choices (`/chat/export?older_than_days=&keep_flagged=`). Tests: `tests/test_chat_clear.py`.
 - [ ] CSV export still works for users and for chat history. Every CSV export writes through `core/csv_safe.py` `SafeWriter` (cells starting with `= + - @` get a leading `'`). Tests: `tests/test_csv_safe.py`.
 - [ ] Gamer Stonks trades and dividends (plugin, through `ctx.store`) use this same points ledger (`source=market` / `source=dividend`). Do not add a second cash book.
 - [ ] OpenTTD `!invest` debits this ledger. Do not invent a parallel points file.
@@ -28,6 +29,6 @@ Home: `core/store.py`. DB: `data/stream_core.db`.
 
 ## After-change verify
 
-- [ ] Example config still has `points.enabled: false`, `chat_log.enabled: false` and `chat_log.only_flagged: false`.
+- [ ] Example config still has `points.enabled: false`, `chat_log.enabled: false`, `chat_log.only_flagged: false` and `chat_log.keep_days: 0`.
 - [ ] Admin tabs **Users & Points** and **Chat History** still render.
 - [ ] Status hub still shows points on/off.

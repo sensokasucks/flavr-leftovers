@@ -144,6 +144,41 @@ FLAGS_SQL = f"(SELECT group_concat(DISTINCT g.flag) FROM chat_flagged g WHERE {_
 FLAG_FILTER_SQL = f"EXISTS (SELECT 1 FROM chat_flagged g WHERE g.flag=? AND {_CUSTOM_MATCH})"
 
 
+def _chat_where(
+    user_id: Optional[int] = None,
+    platform: str = "",
+    q: str = "",
+    flagged_only: bool = False,
+    flag: str = "",
+    before: Optional[float] = None,
+    keep_flagged: bool = False,
+) -> tuple[str, list]:
+    """WHERE clause + args for chat_messages, shared by Chat history search, CSV and Clear.
+    ``before``: only lines older than this time; ``keep_flagged``: leave red-flagged chatters' lines out."""
+    clauses = []
+    args: list[Any] = []
+    if user_id:
+        clauses.append("user_id=?")
+        args.append(user_id)
+    if platform:
+        clauses.append("platform=?")
+        args.append(platform)
+    if q:
+        clauses.append("lower(message) LIKE ?")
+        args.append(f"%{q.lower()}%")
+    if flagged_only:
+        clauses.append(FLAGGED_SQL)
+    if flag:
+        clauses.append(FLAG_FILTER_SQL)
+        args.append(flag)
+    if before is not None:
+        clauses.append("timestamp<?")
+        args.append(before)
+    if keep_flagged:
+        clauses.append(f"NOT {FLAGGED_SQL}")
+    return ("WHERE " + " AND ".join(clauses)) if clauses else "", args
+
+
 # platform_user_id for identities created from an alert that only had a name
 NAME_ID_PREFIX = "name:"
 
@@ -153,6 +188,9 @@ NAME_ID_PREFIX = "name:"
 CHAT_BATCH_WAIT = 0.25
 CHAT_BATCH_MAX = 500
 CHAT_QUEUE_MAX = 50_000
+
+# Clearing at least this many chat lines also shrinks the database file (VACUUM)
+CLEAR_SHRINK_MIN = 2000
 
 
 def _chat_row(event: ChatEvent) -> tuple:
@@ -184,6 +222,7 @@ class Store:
         self.cooldown_sec = float(cfg.get("cooldown_sec", 30))
         self.log_chat = False
         self.log_only_flagged = False   # chat_log.only_flagged: keep just red-flagged chatters' lines
+        self.log_keep_days = 0.0        # chat_log.keep_days: trim older lines (0 = keep forever)
         self.configure_chat_log(chat_log_cfg)
         self._last_award: dict[int, float] = {}  # user_id -> last award time
         self._lock = asyncio.Lock()
@@ -211,6 +250,10 @@ class Store:
         cfg = cfg if isinstance(cfg, dict) else {}
         self.log_chat = bool(cfg.get("enabled", False))
         self.log_only_flagged = bool(cfg.get("only_flagged", False))
+        try:
+            self.log_keep_days = max(0.0, float(cfg.get("keep_days") or 0))
+        except (TypeError, ValueError):
+            self.log_keep_days = 0.0
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
@@ -1061,26 +1104,13 @@ class Store:
         offset: int = 0,
         flagged_only: bool = False,
         flag: str = "",
+        before: Optional[float] = None,
+        keep_flagged: bool = False,
     ) -> list[dict]:
         """``flagged_only``: red-flagged chatters' lines; ``flag``: lines from chatters on that
-        custom flag. Each row says ``flagged`` and ``flags`` (custom flag ids, comma-separated)."""
-        clauses = []
-        args: list[Any] = []
-        if user_id:
-            clauses.append("user_id=?")
-            args.append(user_id)
-        if platform:
-            clauses.append("platform=?")
-            args.append(platform)
-        if q:
-            clauses.append("lower(message) LIKE ?")
-            args.append(f"%{q.lower()}%")
-        if flagged_only:
-            clauses.append(FLAGGED_SQL)
-        if flag:
-            clauses.append(FLAG_FILTER_SQL)
-            args.append(flag)
-        where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+        custom flag. Each row says ``flagged`` and ``flags`` (custom flag ids, comma-separated).
+        ``before`` / ``keep_flagged``: as in ``clear_chat`` (its "Download CSV first")."""
+        where, args = _chat_where(user_id, platform, q, flagged_only, flag, before, keep_flagged)
         args.extend([limit, offset])
         with self._connect() as conn:
             rows = conn.execute(
@@ -1118,6 +1148,73 @@ class Store:
         flag: str = "",
     ) -> list[dict]:
         return await self._run(self._search_chat_sync, user_id, platform, q, limit, offset, flagged_only, flag)
+
+    # ------------------------------------------------------------------
+    # Clearing chat history (Chat history → Clear history…, chat_log.keep_days)
+    # ------------------------------------------------------------------
+
+    def _clear_where(self, older_than_days: float, keep_flagged: bool, filters: dict) -> tuple[str, list]:
+        before = time.time() - older_than_days * 86400 if older_than_days and older_than_days > 0 else None
+        return _chat_where(
+            filters.get("user_id"), filters.get("platform", ""), filters.get("q", ""),
+            bool(filters.get("flagged_only")), filters.get("flag", ""), before, keep_flagged,
+        )
+
+    def _count_clear_sync(self, older_than_days: float, keep_flagged: bool, filters: dict) -> int:
+        where, args = self._clear_where(older_than_days, keep_flagged, filters)
+        with self._connect() as conn:
+            return conn.execute(f"SELECT COUNT(*) AS c FROM chat_messages {where}", args).fetchone()["c"]
+
+    def _clear_chat_sync(self, older_than_days: float, keep_flagged: bool, filters: dict) -> int:
+        where, args = self._clear_where(older_than_days, keep_flagged, filters)
+        with self._connect() as conn:
+            deleted = conn.execute(f"DELETE FROM chat_messages {where}", args).rowcount
+            conn.commit()
+        if deleted >= CLEAR_SHRINK_MIN:
+            self._shrink_sync()
+        return deleted
+
+    def _shrink_sync(self) -> None:
+        """Give the space of deleted lines back to the disk (SQLite keeps the file size otherwise)."""
+        if self._writer_conn is not None:
+            # the chat writer's kept connection is idle here (we hold the write lock); VACUUM
+            # needs every other connection out of a transaction
+            try:
+                self._writer_conn.close()
+            except Exception:
+                pass
+            self._writer_conn = None
+        try:
+            with self._connect() as conn:
+                conn.execute("VACUUM")
+                try:
+                    conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                except sqlite3.Error:
+                    pass
+        except sqlite3.Error as exc:
+            log.warning("Could not shrink the database after clearing chat: %s", exc)
+
+    async def count_chat_to_clear(self, older_than_days: float = 0, keep_flagged: bool = True,
+                                  **filters) -> int:
+        """How many lines ``clear_chat`` with the same arguments would delete."""
+        return await self._run(self._count_clear_sync, older_than_days, keep_flagged, filters)
+
+    async def clear_chat(self, older_than_days: float = 0, keep_flagged: bool = True, **filters) -> int:
+        """Delete saved chat lines: older than ``older_than_days`` (0 = any age), matching the
+        Chat history filters (``user_id``, ``platform``, ``q``, ``flagged_only``, ``flag``), and
+        with ``keep_flagged`` never red-flagged chatters' lines. Only chat_messages: points,
+        streaks, credits, the Paid list and the flag lists are separate. Returns how many went."""
+        async with self._write_lock:
+            deleted = await self._run(self._clear_chat_sync, older_than_days, keep_flagged, filters)
+        if deleted:
+            log.info("Cleared %d saved chat line(s)", deleted)
+        return deleted
+
+    async def trim_chat_log(self) -> int:
+        """``chat_log.keep_days``: delete lines older than that, red-flagged chatters' lines kept."""
+        if self.log_keep_days <= 0:
+            return 0
+        return await self.clear_chat(self.log_keep_days, keep_flagged=True)
 
     # ------------------------------------------------------------------
     # Red flags (core/red_flags.py keeps the lookup; this is the table)
@@ -1246,9 +1343,12 @@ class Store:
         return await self._run(self._clear_chat_flag_sync, flag)
 
     def _export_chat_csv_sync(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
-                              flagged_only: bool = False, flag: str = "") -> str:
+                              flagged_only: bool = False, flag: str = "", older_than_days: float = 0,
+                              keep_flagged: bool = False) -> str:
+        before = time.time() - older_than_days * 86400 if older_than_days and older_than_days > 0 else None
         rows = self._search_chat_sync(user_id=user_id, platform=platform, q=q, limit=1_000_000, offset=0,
-                                      flagged_only=flagged_only, flag=flag)
+                                      flagged_only=flagged_only, flag=flag, before=before,
+                                      keep_flagged=keep_flagged)
         buf = io.StringIO()
         w = SafeWriter(buf)
         w.writerow(
@@ -1283,9 +1383,12 @@ class Store:
         return buf.getvalue()
 
     async def export_chat_csv(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
-                              flagged_only: bool = False, flag: str = "") -> str:
-        """The chat log as CSV, with the same filters as the Chat history search."""
-        return await self._run(self._export_chat_csv_sync, user_id, platform, q, flagged_only, flag)
+                              flagged_only: bool = False, flag: str = "", older_than_days: float = 0,
+                              keep_flagged: bool = False) -> str:
+        """The chat log as CSV, with the same filters as the Chat history search (plus Clear
+        history's ``older_than_days`` / ``keep_flagged``, for its "Download CSV first")."""
+        return await self._run(self._export_chat_csv_sync, user_id, platform, q, flagged_only, flag,
+                               older_than_days, keep_flagged)
 
     def _stats_sync(self) -> dict:
         with self._connect() as conn:

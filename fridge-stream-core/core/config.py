@@ -139,6 +139,7 @@ DEFAULTS: Dict[str, Any] = {
     "chat_log": {
         "enabled": False,  # persist messages to SQLite (Chat History tab)
         "only_flagged": False,  # save only red-flagged chatters' lines (red_flags)
+        "keep_days": 0,  # trim lines older than this (0 = forever; red-flagged chatters' lines kept)
     },
     # Red flags (core/red_flags.py, People → Red flags page): a chat line with one of these
     # phrases puts its sender on a list kept off every overlay and out of Stream Rooms

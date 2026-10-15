@@ -61,6 +61,19 @@ class MergeBody(BaseModel):
     absorb_user_id: int = Field(..., description="User id to merge INTO the path user")
 
 
+class ClearChatBody(BaseModel):
+    """Chat history → Clear history…: ``filtered`` = only lines the page's filters match."""
+    older_than_days: float = Field(0, ge=0, le=36500)   # 0 = any age
+    keep_flagged: bool = True                            # never delete red-flagged chatters' lines
+    filtered: bool = False
+    user_id: Optional[int] = None
+    platform: str = ""
+    q: str = ""
+    flagged: bool = False
+    flag: str = ""
+    dry_run: bool = False                                # only count
+
+
 class NotesBody(BaseModel):
     notes: str = ""
 
@@ -432,6 +445,7 @@ def create_admin_router(core_state) -> APIRouter:
             "points_enabled": bool((cfg.get("points") or {}).get("enabled", False)),
             "chat_log_enabled": bool((cfg.get("chat_log") or {}).get("enabled", False)),
             "chat_log_only_flagged": bool((cfg.get("chat_log") or {}).get("only_flagged", False)),
+            "chat_log_keep_days": (cfg.get("chat_log") or {}).get("keep_days", 0) or 0,
             "credits": {
                 "configured_enabled": bool((cfg.get("credits") or {}).get("enabled")),
                 "running": bool(getattr(getattr(core_state, "credits", None), "enabled", False)),
@@ -559,17 +573,39 @@ def create_admin_router(core_state) -> APIRouter:
         q: str = "",
         flagged: bool = False,
         flag: str = "",
+        older_than_days: float = Query(0, ge=0, le=36500),
+        keep_flagged: bool = False,
         x_admin_token: Optional[str] = Header(None),
     ):
         _auth(x_admin_token)
         csv_text = await _store().export_chat_csv(user_id=user_id, platform=platform.strip().lower(),
-                                                  q=q.strip(), flagged_only=flagged, flag=flag.strip()[:40])
+                                                  q=q.strip(), flagged_only=flagged, flag=flag.strip()[:40],
+                                                  older_than_days=older_than_days, keep_flagged=keep_flagged)
         filename = f"chat_user_{user_id}.csv" if user_id else "chat_all.csv"
         return Response(
             content=csv_text,
             media_type="text/csv",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
+
+    @router.post("/chat/clear")
+    async def clear_chat(body: ClearChatBody, x_admin_token: Optional[str] = Header(None)):
+        """Delete saved chat lines (``dry_run`` only counts them). Returns ``count`` or ``deleted``."""
+        _auth(x_admin_token)
+        filters: Dict[str, Any] = {}
+        if body.filtered:
+            filters = {
+                "user_id": body.user_id or None,
+                "platform": body.platform.strip().lower(),
+                "q": body.q.strip(),
+                "flagged_only": body.flagged,
+                "flag": body.flag.strip()[:40],
+            }
+        if body.dry_run:
+            n = await _store().count_chat_to_clear(body.older_than_days, body.keep_flagged, **filters)
+            return {"ok": True, "count": n}
+        n = await _store().clear_chat(body.older_than_days, body.keep_flagged, **filters)
+        return {"ok": True, "deleted": n}
 
     # ------------------------------------------------------------------
     # Paid list (core/paid.py): paid messages, tips and subs with a tick box

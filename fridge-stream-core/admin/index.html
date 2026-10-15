@@ -993,7 +993,24 @@
       <button id="chat-search">Search</button>
       <button id="chat-export" title="Every saved line that matches the filters above (not only the 200 shown)">Download CSV</button>
       <span id="chat-export-msg" class="action-msg" role="status" aria-live="polite"></span>
+      <span class="spacer"></span>
+      <button type="button" id="chat-clear-open" aria-expanded="false" aria-controls="chat-clear" title="Delete saved chat lines: old ones, everything, or what the filters show">Clear history…</button>
     </div>
+    <fieldset id="chat-clear" class="cfg-card chat-clear" hidden>
+      <legend>Clear chat history</legend>
+      <p class="hint">Deletes saved lines from this page for good. Points, streaks, end credits, the Paid list and your flag lists are kept separately and stay as they are. <strong>Check past chat</strong> (Red flags page) can only look through lines that are still here.</p>
+      <label class="check"><input type="radio" name="chat-clear-scope" value="all" checked /> Every saved line</label>
+      <label class="check"><input type="radio" name="chat-clear-scope" value="filtered" /> Only lines matching the filters above <span id="chat-clear-filters" class="muted"></span></label>
+      <label>Only lines older than <input id="chat-clear-days" type="number" min="0" step="1" placeholder="any age" class="num-sm" /> days <span class="field-help">Empty = any age</span></label>
+      <label class="check" title="Lines from chatters on the red flag list stay, so you keep the evidence"><input id="chat-clear-keep-flagged" type="checkbox" checked /> Keep red-flagged chatters' lines</label>
+      <p id="chat-clear-count" class="hint" role="status" aria-live="polite"></p>
+      <div class="toolbar">
+        <button type="button" id="chat-clear-csv" title="Save the lines this would delete as a spreadsheet first">Download CSV first</button>
+        <button type="button" id="chat-clear-go" class="danger">Delete</button>
+        <button type="button" id="chat-clear-cancel">Cancel</button>
+        <span id="chat-clear-msg" class="action-msg" role="status" aria-live="polite"></span>
+      </div>
+    </fieldset>
     <p id="chat-count" class="muted" role="status" aria-live="polite"></p>
     <table id="chat-table">
       <thead>
@@ -1379,6 +1396,9 @@
         <p class="hint">Writes every message to SQLite for this dashboard's Chat History tab and CSV export. The live overlay does not need this. Off by default.</p>
         <label class="check"><input id="cfg-chatlog-enabled" type="checkbox" /> Save chat history</label>
         <label class="check" title="Everyone else's chat is not saved. Red-flagged chatters are set on the Red flags page (People → Red flags)."><input id="cfg-chatlog-only-flagged" type="checkbox" /> Only for red-flagged chatters</label>
+        <label>Keep chat for this many days <span class="field-help">0 = forever. Older lines are deleted by themselves every few hours; red-flagged chatters' lines are kept. To clear by hand: Chat history → Clear history…</span>
+          <input id="cfg-chatlog-keep-days" type="number" min="0" step="1" />
+        </label>
       </fieldset>
     </div>
       </div>
