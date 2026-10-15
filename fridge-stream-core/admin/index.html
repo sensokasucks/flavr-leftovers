@@ -36,6 +36,7 @@
       <button class="tab" data-keywords="poll predict prediction trivia rate rating request queue moments clip heist slots duel hype combo emote launch cheer boo streak claim seat games" data-tab="fun">Chat games</button>
       <button class="tab" data-keywords="running adapters platforms health metrics viewers" data-tab="status">Status</button>
       <button class="tab" data-keywords="paid super chat super sticker jewels gift bits power-up cheer kicks tip donation sub member checklist thank missed money" data-tab="paid" data-title="Paid">Paid <span class="nav-badge" id="paid-badge" hidden title="Paid messages and tips not ticked yet"></span></button>
+      <button class="tab" data-keywords="credits list end credits checklist chatters names thank shout out tick roll everyone" data-tab="creditslist" data-title="Credits list">Credits list</button>
     </div>
 
     <div class="nav-group">
@@ -467,6 +468,7 @@
             <span id="crd-enable-status" class="muted"></span>
           </div>
           <p class="hint" id="crd-count-line">Unique chatters: —</p>
+          <p class="hint">Go through everyone in the credits and tick them off as you thank them: <a href="#creditslist">Credits list</a>.</p>
           <p class="hint">Overlay URL
             <code id="crd-url">/overlay/credits.html</code>
             <button type="button" id="crd-copy">Copy</button>
@@ -1086,6 +1088,56 @@
       <tbody></tbody>
     </table>
     <p id="paid-empty" class="muted" hidden></p>
+  </section>
+
+  <!-- Credits list: everyone the end credits will show, with a tick box (core/credits.py) -->
+  <section id="tab-creditslist" class="panel">
+    <p class="tab-intro">Everyone the <a href="#credits">end credits</a> will show this session, from every platform. Tick a name once you've thanked them or given them a shout-out. Ticks are saved with the credits list, so a Core restart keeps them; <strong>Reset session</strong> on the Credits page starts a fresh list.</p>
+    <p id="cl-off" class="crd-off" role="status" hidden>Credits are off: nobody new is being collected. <button type="button" class="crd-turn-on">Turn on</button></p>
+    <div class="toolbar paid-filters">
+      <select id="cl-status" title="Which names to show">
+        <option value="open">Not ticked</option>
+        <option value="done">Ticked</option>
+        <option value="all">All</option>
+      </select>
+      <select id="cl-role" title="Only people who are…">
+        <option value="">Everyone</option>
+        <option value="mod">Mods</option>
+        <option value="vip">VIPs</option>
+        <option value="sub">Subs and members</option>
+        <option value="paid">Paid in chat</option>
+        <option value="raider">Raiders</option>
+        <option value="follower">New followers</option>
+        <option value="gifted">Subbed or gifted</option>
+        <option value="donor">Tipped or cheered</option>
+      </select>
+      <span class="paid-plats" role="group" aria-label="Platforms">
+        <label class="check"><input type="checkbox" class="cl-plat" value="youtube" checked /> YouTube</label>
+        <label class="check"><input type="checkbox" class="cl-plat" value="twitch" checked /> Twitch</label>
+        <label class="check"><input type="checkbox" class="cl-plat" value="kick" checked /> Kick</label>
+      </span>
+      <input id="cl-q" type="search" placeholder="Name or job…" />
+      <select id="cl-sort" title="Order">
+        <option value="first_seen">First to chat first</option>
+        <option value="last_seen">Last seen</option>
+        <option value="messages">Most messages first</option>
+        <option value="name">A to Z</option>
+      </select>
+    </div>
+    <p id="cl-totals" class="paid-totals" role="status" aria-live="polite"></p>
+    <div class="toolbar">
+      <button type="button" id="cl-tick-all" title="Tick every name these filters show">Tick all shown</button>
+      <button type="button" id="cl-untick-all" title="Untick every name these filters show">Untick all shown</button>
+      <button type="button" id="cl-export" title="Every name these filters match, as a spreadsheet">Download CSV</button>
+      <span id="cl-msg" class="action-msg" role="status" aria-live="polite"></span>
+    </div>
+    <table id="cl-table">
+      <thead>
+        <tr><th title="Ticked = thanked or shouted out">✓</th><th>Name</th><th>Platform</th><th>In the credits as</th><th>Messages</th><th>First chatted</th><th>Last seen</th></tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p id="cl-empty" class="muted" hidden></p>
   </section>
 
   <!-- Red flags: phrases that hide a chatter from every overlay and Stream Rooms -->

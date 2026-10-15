@@ -59,6 +59,7 @@ class Chatter:
     is_vip: bool = False
     is_subscriber: bool = False
     is_paid: bool = False
+    ticked: bool = False     # Credits list: thanked / shouted out already
 
     @property
     def key(self) -> str:
@@ -78,6 +79,7 @@ class Chatter:
             "is_vip": self.is_vip,
             "is_subscriber": self.is_subscriber,
             "is_paid": self.is_paid,
+            "ticked": self.ticked,
         }
 
     @classmethod
@@ -94,6 +96,7 @@ class Chatter:
             is_vip=bool(data.get("is_vip")),
             is_subscriber=bool(data.get("is_subscriber")),
             is_paid=bool(data.get("is_paid")),
+            ticked=bool(data.get("ticked")),
         )
 
 
@@ -370,6 +373,81 @@ class CreditsEngine:
         self.cast.pin(plat or default_platform, user, job, set_by=set_by)
         where = plat or default_platform
         return f"Pinned {where}:{user} as {job}"
+
+    # ── Credits list: everyone in the roll, with a tick box (admin On stream → Credits list) ──
+
+    def roles(self, c: Chatter) -> list[str]:
+        """What a chatter is in the credits: mod / vip / sub / paid, then raider / follower /
+        gifted / donor from this session's alerts."""
+        out = [r for r, on in (("mod", c.is_mod), ("vip", c.is_vip), ("sub", c.is_subscriber),
+                               ("paid", c.is_paid)) if on]
+        key = c.key.lower()
+        for bucket, role in (("raiders", "raider"), ("followers", "follower"),
+                             ("gifted", "gifted"), ("donors", "donor")):
+            if key in self.cast.tags.get(bucket, set()) and role not in out:
+                out.append(role)
+        return out
+
+    def checklist(self, filters: Optional[dict[str, Any]] = None) -> list[dict]:
+        """Chatters matching the Credits list filters, as dicts with ``roles`` and ``job``.
+
+        filters: status open / done / all, platforms "a,b", role (one of :meth:`roles`),
+        q (name or job), sort first_seen / last_seen / name / messages."""
+        f = filters or {}
+        status = str(f.get("status") or "all")
+        plats = {p for p in str(f.get("platforms") or "").split(",") if p}
+        role = str(f.get("role") or "").lower()
+        q = str(f.get("q") or "").strip().lower().lstrip("@")
+        rows: list[dict] = []
+        for c in self.list_chatters(str(f.get("sort") or "first_seen")):
+            if status == "open" and c.ticked or status == "done" and not c.ticked:
+                continue
+            if plats and c.platform not in plats:
+                continue
+            roles = self.roles(c)
+            if role and role not in roles:
+                continue
+            pin = self.cast.find_override(c.platform, c.username)
+            job = str((pin or {}).get("job") or "")
+            if q and q not in c.username.lower() and q not in c.display_name.lower() and q not in job.lower():
+                continue
+            d = c.to_dict()
+            d["key"] = c.key
+            d["roles"] = roles
+            d["job"] = job
+            rows.append(d)
+        return rows
+
+    def unticked(self) -> int:
+        return sum(1 for c in self.chatters.values() if not c.ticked)
+
+    def tick(self, keys: list[str], done: bool) -> int:
+        """Tick (or untick) chatters by key ``platform:username``. Returns how many changed."""
+        changed = 0
+        for key in keys:
+            c = self.chatters.get(str(key))
+            if c and c.ticked != bool(done):
+                c.ticked = bool(done)
+                changed += 1
+        if changed:
+            self._dirty = True
+        return changed
+
+    def checklist_csv(self, filters: Optional[dict[str, Any]] = None) -> str:
+        import io
+
+        from core.csv_safe import SafeWriter
+
+        buf = io.StringIO()
+        writer = SafeWriter(buf)
+        writer.writerow(["ticked", "platform", "username", "display_name", "messages",
+                         "first_seen", "last_seen", "roles", "job"])
+        stamp = lambda ts: time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts)) if ts else ""
+        for r in self.checklist(filters):
+            writer.writerow([int(r["ticked"]), r["platform"], r["username"], r["display_name"],
+                             r["messages"], stamp(r["first_seen"]), stamp(r["last_seen"]),
+                             " ".join(r["roles"]), r["job"]])
+        return buf.getvalue()
 
     def roster_csv(self) -> str:
         """Unique chatters as CSV (same columns as standalone Chat Credits)."""
