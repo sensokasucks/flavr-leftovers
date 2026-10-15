@@ -36,7 +36,9 @@ log = logging.getLogger("core.avatar_store")
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "avatars"
 SIZE = 128
 MAX_BYTES = 3 * 1024 * 1024
-REFRESH_SEC = 7 * 24 * 3600      # re-download weekly, like the link caches
+# Platforms give a new picture a new link, so a link Core already has is not downloaded
+# again; this is only a safety net in case a host ever reuses a link.
+REFRESH_SEC = 30 * 24 * 3600
 RETRY_SEC = 10 * 60              # after a failed download
 MAX_PARALLEL = 3
 PLATFORMS = ("kick", "twitch", "youtube")
@@ -217,7 +219,7 @@ class AvatarStore:
     def note(self, platform: str, user_id: str, url: str, login: str = "", name: str = "",
              on_ready: Optional[Ready] = None) -> None:
         """A chatter's picture link is known: remember their names and fetch the picture
-        in the background if Core doesn't have this version yet."""
+        in the background if Core doesn't have this link yet (a changed picture = a new link)."""
         platform = str(platform or "").lower()
         user_id = str(user_id or "").strip()
         if platform not in PLATFORMS or not user_id:

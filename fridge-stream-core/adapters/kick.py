@@ -739,7 +739,7 @@ class KickAdapter(BaseAdapter):
         pic = sender.get("profile_pic") or self.avatars.get(slug)
         if pic:
             user.profile_image_url = str(pic)
-        elif pic is None:
+        if not sender.get("profile_pic"):
             uid, uname = user.id, user.username
 
             async def _found(url: str) -> None:
@@ -747,6 +747,7 @@ class KickAdapter(BaseAdapter):
                     {"platform": "kick", "id": uid, "username": uname, "profile_image_url": url}
                 )
 
+            # new chatter, or a saved link old enough to re-check (does nothing while it's fresh)
             self.avatars.request(slug, _found)
 
         event = ChatEvent(

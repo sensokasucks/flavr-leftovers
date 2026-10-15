@@ -30,7 +30,7 @@ log = logging.getLogger("adapters.twitch_avatars")
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "twitch_avatars.json"
 USERS_URL = "https://api.twitch.tv/helix/users"
 RETRY_SEC = 10 * 60
-REFRESH_SEC = 7 * 24 * 3600      # pictures change rarely; re-check weekly
+REFRESH_SEC = 1 * 24 * 3600      # one Helix call covers 100 chatters, so a daily re-check is nearly free
 BATCH_DELAY_SEC = 0.5            # gather ids for this long, then one request
 BATCH_MAX = 100                  # Helix limit per call
 
@@ -68,14 +68,16 @@ class TwitchAvatars:
         self._load()
 
     def get(self, user_id: str) -> Optional[str]:
-        """Known picture URL ("" = no picture), or None if we haven't looked yet."""
+        """Known picture URL ("" = no picture), or None if we haven't looked yet. An old link is
+        still returned; ``request()`` re-checks it in the background."""
         entry = self._cache.get(str(user_id))
-        if entry is None or time.time() - float(entry.get("ts", 0)) > REFRESH_SEC:
-            return None if entry is None else str(entry.get("url", ""))
+        if entry is None:
+            return None
         return str(entry.get("url", ""))
 
     def request(self, user_id: str, on_found: Found) -> None:
-        """Queue a lookup; the batch goes out after a short delay. Calls on_found(url) if there is a picture."""
+        """Queue a lookup (new chatter, or a saved link older than REFRESH_SEC); the batch goes out
+        after a short delay. Calls on_found(url) when there is a picture Core didn't know yet."""
         user_id = str(user_id).strip()
         if not self.enabled or not user_id or not user_id.isdigit() or user_id in self._pending:
             return
@@ -146,6 +148,7 @@ class TwitchAvatars:
                 for i in ids:
                     self._failed[i] = now
                 return
+            before = {i: (self._cache.get(i) or {}).get("url") for i in ids}
             for i in ids:
                 url = found.get(i, "")
                 self._cache[i] = {"url": url, "ts": now}
@@ -153,7 +156,8 @@ class TwitchAvatars:
             self.save_soon()
             for i in ids:
                 url = found.get(i, "")
-                if url:
+                # a re-check that finds the same link changes nothing on screen
+                if url and url != before[i]:
                     try:
                         await callbacks[i](url)
                     except Exception as e:

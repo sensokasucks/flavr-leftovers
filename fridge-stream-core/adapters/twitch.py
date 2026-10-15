@@ -388,15 +388,15 @@ class TwitchAdapter(BaseAdapter):
         pic = self.avatars.get(user.id)
         if pic:
             user.profile_image_url = pic
-        elif pic is None:
-            uid, uname = user.id, user.username
+        uid, uname = user.id, user.username
 
-            async def _found(url: str) -> None:
-                await self.bus.publish_user_update(
-                    {"platform": "twitch", "id": uid, "username": uname, "profile_image_url": url}
-                )
+        async def _found(url: str) -> None:
+            await self.bus.publish_user_update(
+                {"platform": "twitch", "id": uid, "username": uname, "profile_image_url": url}
+            )
 
-            self.avatars.request(uid, _found)
+        # new chatter, or a saved link old enough to re-check (does nothing while it's fresh)
+        self.avatars.request(uid, _found)
         log.debug("[Twitch] %s: %s", user.username, msg)
         bits = cheer_bits(tags)
         await self._emit(
