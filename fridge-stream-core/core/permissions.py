@@ -33,6 +33,7 @@ UNIQUE_NAME_PLATFORMS = {"kick", "twitch"}
 
 
 def _plat(user: ChatUser) -> str:
+    """The user's platform as a lower-case string ("kick", "twitch", "youtube")."""
     p = user.platform
     return str(getattr(p, "value", p) or "").lower()
 
@@ -42,6 +43,11 @@ OWN_CHANNEL_FIELD = {"kick": "channel_slug", "twitch": "channel"}
 
 
 class PermissionManager:
+    """Answers "may this chatter run a command of level X?" for the command router and chat games.
+
+    The admin / mod lists are read once at start; ``get_config`` (when given) supplies the live
+    config so switching platforms or channel names in the dashboard applies at once.
+    """
     def __init__(self, config: dict, get_config: Optional[Callable[[], dict]] = None):
         perms = config.get("permissions", {})
         self.admins = self._names(perms.get("admin", []))
@@ -54,6 +60,7 @@ class PermissionManager:
         self._get_config = get_config
 
     def _live(self) -> dict:
+        """The current config: the live copy when ``get_config`` works, else the start copy."""
         if self._get_config:
             try:
                 cfg = self._get_config()
@@ -64,11 +71,13 @@ class PermissionManager:
         return self._config or {}
 
     def own_channel(self, plat: str) -> str:
+        """The streamer's own channel name on ``plat`` (lower case), "" if unset or still a your_... placeholder."""
         section = self._live().get(plat) or {}
         name = str(section.get(OWN_CHANNEL_FIELD.get(plat, "")) or "").lower().strip().lstrip("@#")
         return "" if name.startswith("your_") else name
 
     def _platform_on(self, plat: str) -> bool:
+        """True when that platform's chat adapter is switched on in config."""
         return bool((self._live().get(plat) or {}).get("enabled"))
 
     def bare_name_applies(self, plat: str, name: str) -> bool:
@@ -121,6 +130,7 @@ class PermissionManager:
         return keys
 
     def _temp_keys(self, user: ChatUser | str) -> set[str]:
+        """Keys a !permit can be stored under for this user (a bit looser than ``identity_keys``)."""
         keys = self.identity_keys(user)
         # !permit bob: short-lived and issued by an admin in chat, so a plain name still counts
         if isinstance(user, ChatUser) and _plat(user) in UNIQUE_NAME_PLATFORMS:
@@ -135,6 +145,7 @@ class PermissionManager:
         return keys
 
     def _hint_youtube(self, user: ChatUser) -> None:
+        """Log once per name when a YouTube chatter matches a plain list entry that no longer applies there."""
         if _plat(user) != "youtube":
             return
         name = str(user.username or "").lower().strip()
@@ -149,11 +160,13 @@ class PermissionManager:
 
     # ------------------------------------------------------------------
     def grant_temp(self, username: str, minutes: int = 10) -> None:
+        """!permit: let ``username`` run mod-level commands for ``minutes`` minutes (kept in memory only)."""
         key = str(username or "").lower().strip().lstrip("@")
         if key:
             self._temp_permits[key] = time.time() + minutes * 60
 
     def _is_temp_permitted(self, user: ChatUser | str) -> bool:
+        """True while one of the user's keys has an unexpired permit; expired ones are removed on the way."""
         now = time.time()
         for key in self._temp_keys(user):
             exp = self._temp_permits.get(key)
@@ -166,12 +179,15 @@ class PermissionManager:
         return False
 
     def is_admin(self, user: ChatUser | str) -> bool:
+        """True when the user is on the ``permissions.admin`` list."""
         return bool(self.identity_keys(user) & self.admins)
 
     def is_mod(self, user: ChatUser | str) -> bool:
+        """True when on the ``permissions.mod`` list or holding a live !permit."""
         return bool(self.identity_keys(user) & self.mods) or self._is_temp_permitted(user)
 
     def has_permission(self, user: ChatUser | str, required: PermissionLevel | str) -> bool:
+        """True when the user meets ``required``. Admins pass every level; mods pass mod and public."""
         if isinstance(required, str):
             required = PermissionLevel(required.lower())
 

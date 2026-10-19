@@ -1,4 +1,23 @@
+/*
+ * Credits style editor (Admin → Credits → Style). Loaded by admin/index.html and mounted by
+ * admin/admin.js mountCreditsEditor() into #crd-style-editor as window.CreditsStyleEditor.
+ *
+ * It only edits a "theme" object (the credits look keys, saved under `credits:` in config.yaml).
+ * The host passes callbacks to mount():
+ *   onChange(theme, {persist: false})  every edit, ~180 ms after typing stops (live preview)
+ *   onSave(theme)                      the Save look button
+ *   onStyleChange(styleId)             Cast format picked (config/cast/*.json)
+ *   onRestart()                        Restart roll
+ *   estimate() -> {seconds, names, target}   asked every second for the run-time line
+ * fill(theme) puts a saved theme into the form; collect() reads the form back.
+ *
+ * Keys and their limits are checked again server-side (core/credits_theme.py sanitize_look).
+ * A new key needs: KEYS (and NUMS / BOOLS), a control in html(), fill() and collect(), and
+ * overlay/credits.js reading it. Motion ids must match credits.js and MOTIONS.md
+ * (tests/test_credits.py checks every motion id is listed here).
+ */
 (() => {
+  // The motion picker buttons (Motion tab).
   const MOTIONS = [
     { id: "crawl", label: "Crawl up", hint: "Classic rolling titles" },
     { id: "crawl-down", label: "Crawl down", hint: "Start at the top" },
@@ -17,6 +36,8 @@
   // Every preset starts from this so film looks don't leak from the last preset.
   const PRESET_BASE = { letterbox: false, grain: false, background: "transparent" };
 
+  // Font presets: `family` is the CSS font stack, `url` a Google Fonts stylesheet loaded by the
+  // overlay ("" = a font already on the PC). "custom" uses the typed stack / URL as they are.
   const FONTS = [
     {
       id: "palatino",
@@ -70,6 +91,8 @@
     { id: "custom", label: "Custom…", family: "", url: "" },
   ];
 
+  // Preset buttons along the top. Each `patch` is laid over the current look (after PRESET_BASE);
+  // keys a preset doesn't name keep their value.
   const PRESETS = [
     {
       id: "classic",
@@ -278,6 +301,7 @@
     },
   ];
 
+  // Every look key the editor knows (exported on window.CreditsStyleEditor).
   const KEYS = [
     "title", "subtitle", "footer", "section_label",
     "group_by_platform", "sort", "columns",
@@ -301,6 +325,7 @@
     "style_id",
   ];
 
+  // The keys that are numbers (NUMS) and true / false switches (BOOLS).
   const NUMS = new Set([
     "columns", "speed_px_per_sec", "duration_sec", "gap_after_loop_sec",
     "mask_fade_px", "title_hold_sec", "name_stagger_ms",
@@ -327,6 +352,8 @@
     { id: "list", label: "List" },
   ];
 
+  // root: the element mounted into. filling: true while fill() sets controls, so those changes
+  // don't fire onChange. opts: mount()'s callbacks. styles: the cast formats from setStyles().
   let root = null;
   let filling = false;
   let liveTimer = 0;
@@ -339,6 +366,7 @@
     return root ? root.querySelector("#" + id) : null;
   }
 
+  // Small HTML builders for html(). Values and labels here are fixed strings from this file.
   function field(id, label, control, extra = "") {
     return `<div class="cs-field ${extra}"><label for="${id}">${label}</label>${control}</div>`;
   }
@@ -373,6 +401,7 @@
     return `<label class="cs-check"><input id="${id}" type="checkbox" /> ${label}</label>`;
   }
 
+  // The whole editor's markup (all tabs). Control ids (cs-*) are what fill() / collect() use.
   function html() {
     const motions = MOTIONS.map(
       (m) =>
@@ -567,6 +596,7 @@
     `;
   }
 
+  // "#abc" / "#aabbcc" -> "#aabbcc" for the colour swatch; anything else -> fallback.
   function hexish(v, fallback) {
     const s = String(v || "").trim();
     if (/^#[0-9a-fA-F]{6}$/.test(s)) return s;
@@ -576,6 +606,7 @@
     return fallback;
   }
 
+  // Keep a colour's text box and its swatch in step (the text box is what collect() reads).
   function bindColorPair(textId, swatchId) {
     const text = $(textId);
     const sw = $(swatchId);
@@ -632,6 +663,8 @@
     }
   }
 
+  // Show only the settings that matter for the chosen motion (Star Wars depth, page timing,
+  // typewriter, Matrix), and grey out speed / page time while a Target time is set.
   function syncMotionChrome() {
     const motion = val("cs-motion-hidden") || (root.querySelector(".cs-motion.is-on") || {}).dataset?.motion || "crawl";
     root.querySelectorAll(".cs-motion").forEach((b) => {
@@ -700,6 +733,7 @@
     return MOTION_ALIASES[m] || m;
   }
 
+  // Read every control into a theme object.
   function collect() {
     const fontId = val("cs-font") || "palatino";
     const preset = FONTS.find((f) => f.id === fontId);
@@ -772,12 +806,15 @@
       job_layout: val("cs-jobs") || "dots",
       style_id: val("cs-format") || "names",
     };
+    // Matrix "seconds per screen" is stored as page_duration_sec.
     if (theme.motion === "matrix") theme.page_duration_sec = n("cs-matrix-hold", theme.page_duration_sec);
     const s = theme.shadow_strength;
     theme.text_shadow = s <= 0 ? "none" : `0 2px ${s}px rgba(0,0,0,0.85)`;
     return theme;
   }
 
+  // Put a theme into the controls. Also reads the standalone Chat Credits names (sw_tilt_deg,
+  // page_hold_sec, page_fade_sec ...) so an imported look shows up right.
   function fill(theme) {
     theme = theme || {};
     filling = true;
@@ -864,6 +901,7 @@
     if (sw) sw.value = hexish(value, sw.value || "#f3e2b0");
   }
 
+  // Which FONTS preset a saved font stack starts with, else "custom".
   function matchFont(family) {
     const f = String(family || "").toLowerCase();
     for (const p of FONTS) {
@@ -880,6 +918,8 @@
     root.querySelectorAll(".cs-pane").forEach((p) => p.classList.toggle("is-on", p.dataset.pane === id));
   }
 
+  // An edit happened: refresh the visible settings and send the look to the host after 180 ms
+  // (one push per pause in typing, not per key).
   function emitLive() {
     if (filling) return;
     syncMotionChrome();
@@ -893,6 +933,7 @@
     }, 180);
   }
 
+  // Fill the Cast format list: list is [{id, label, style}] (or plain ids) from the cast API.
   function setStyles(list, styleId) {
     styles = list || [];
     const selEl = $("cs-format");
@@ -907,6 +948,8 @@
     if (styleId) selEl.value = styleId;
   }
 
+  // Stamp a preset over the current look: PRESET_BASE first (no letterbox, grain or backdrop),
+  // then the preset's keys; its font preset brings its stack and stylesheet.
   function applyPreset(id) {
     id = PRESET_ALIASES[id] || id;
     const p = PRESETS.find((x) => x.id === id);
@@ -925,6 +968,8 @@
     emitLive();
   }
 
+  // Build the editor in `el` (an element or its id) and wire every control. Call once; then
+  // fill() with the saved look. options: see the comment at the top.
   function mount(el, options) {
     root = typeof el === "string" ? document.getElementById(el) : el;
     opts = options || {};

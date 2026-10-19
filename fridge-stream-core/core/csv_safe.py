@@ -15,6 +15,7 @@ FORMULA_START = ("=", "+", "-", "@", "\t", "\r")
 
 
 def safe_cell(value: Any) -> Any:
+    """Prefix a text cell with ' when a spreadsheet would read it as a formula."""
     if isinstance(value, str) and value.startswith(FORMULA_START):
         return "'" + value
     return value
@@ -24,7 +25,9 @@ class SafeWriter:
     """csv.writer that defuses formula cells (numbers are left alone)."""
 
     def __init__(self, buf, **kwargs) -> None:
+        """``buf`` is any text file-like object; ``kwargs`` go straight to ``csv.writer``."""
         self._w = csv.writer(buf, **kwargs)
 
     def writerow(self, row: Iterable[Any]) -> Any:
+        """Write one row, defusing each cell with ``safe_cell``."""
         return self._w.writerow([safe_cell(v) for v in row])

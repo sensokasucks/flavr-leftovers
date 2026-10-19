@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 PLATFORMS = [["kick", "Kick"], ["twitch", "Twitch"], ["youtube", "YouTube"]]
+# Every alert kind with a short label; keep in sync with KINDS in core/alerts.py.
 ALERT_KINDS = [["follow", "Follow"], ["subscribe", "Sub / member"], ["resub", "Resub"], ["gift", "Gifted subs"],
                ["raid", "Raid"], ["host", "Host"], ["bits", "Bits"], ["superchat", "Super Chat"],
                ["supersticker", "Super Sticker"], ["jewels", "YouTube gift"], ["kicks", "KICKs"],
@@ -24,9 +25,11 @@ ALERT_KINDS = [["follow", "Follow"], ["subscribe", "Sub / member"], ["resub", "R
                ["member_gift", "Gifted memberships"],
                ["powerup", "Bits power-up"], ["celebration", "Celebration"], ["charity", "Charity"],
                ["hypetrain", "Hype Train"], ["flag", "Chat flag"]]
+# Metrics overlay modules; same names as overlay.modules in core/config.py DEFAULTS.
 METRIC_MODULES = ["health", "food", "xp", "deaths", "armor", "viewers", "cpm", "power", "effects", "inventory"]
 
 
+# Builders for one switch entry (the dict shape the dashboard's Customise panel reads).
 def _bool(key: str, label: str, default: bool, help_text: str = "", on: str = "1", off: str = "0") -> dict[str, Any]:
     return {"key": key, "label": label, "type": "bool", "default": default, "on": on, "off": off, "help": help_text}
 
@@ -198,6 +201,8 @@ OVERLAYS: list[dict[str, Any]] = [
     },
 ]
 
+# The first entry is Core's own page (``url_path``, put first on the list); the rest are
+# other Fridge apps on their fixed ports (CLAUDE.md), listed last.
 # Pages that aren't overlays but belong on the same list
 EXTRA_SOURCES: list[dict[str, Any]] = [
     {"name": "Admin hub (this page)", "url_path": "/admin/", "notes": "Main control panel"},
@@ -239,6 +244,7 @@ def sources(base: str) -> list[dict[str, Any]]:
 
 
 def by_id(overlay_id: str) -> dict[str, Any] | None:
+    """The OVERLAYS entry with this id, or None."""
     for o in OVERLAYS:
         if o["id"] == overlay_id:
             return o

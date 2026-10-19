@@ -1,3 +1,16 @@
+/*
+ * Chat overlay: /overlay/chat.html (OBS / XSplit Webpage source, transparent).
+ *
+ * Shows Core's chat from /ws ("chat", "chat_history" on connect, "user_update" for pictures,
+ * "chat_user_hidden" for red-flagged chatters, "chat_removed" for mod deletes / timeouts /
+ * clears). Look and options come from /api/overlay/chat-settings (core/chat_style.py), polled
+ * every 4 s so dashboard saves apply without a reload.
+ *
+ * Each row carries Streamlabs', StreamElements' and jChat's class names at once so bought or
+ * free chat CSS works unchanged. The markup and selectors are documented in overlay/CHAT.md;
+ * tests/test_overlay_compat.py and test_overlay_catalog.py read this file, so keep class names,
+ * URL switches and CHAT.md in step.
+ */
 (() => {
   const logEl = document.getElementById("log");
   const customLink = document.getElementById("chat-custom-css");
@@ -46,6 +59,7 @@
   const SKINS = ["classic", "plain", "custom"];
 
   // Dashboard settings (Admin → Chat overlay). URL parameters win over these.
+  // Same keys and defaults as OPTIONS in core/chat_style.py; the settings poll overwrites them.
   const options = {
     hide_after_sec: 0,
     max_messages: 30,
@@ -56,6 +70,8 @@
   };
   const urlNum = (key) => (params.has(key) ? Number(params.get(key)) : null);
   const urlBool = (key) => (params.has(key) ? params.get(key) !== "0" && params.get(key) !== "false" : null);
+  // The options in use right now: URL switches first, then the dashboard values.
+  // hide = seconds before a line leaves (0 = never), max = rows kept on screen.
   function effective() {
     const hide = urlNum("hide");
     return {
@@ -69,6 +85,8 @@
 
   let mediaMap = {};   // slot -> url (background, badge-mod, ...)
   let soundMap = {};   // slot -> url (message, paid)
+  // lastCssVer: the custom CSS address last applied (with ?v=), so it's only swapped on a change.
+  // historyLoading: true while history / samples are drawn, so they don't play sounds.
   let lastCssVer = null;
   let historyLoading = false;
   let lastSoundAt = 0;
@@ -83,6 +101,7 @@
                        og: "og-icon", founder: "founder-icon" };
   const BADGE_LABEL = { broadcaster: "Host", mod: "Mod", vip: "VIP", sub: "Sub", og: "OG", founder: "Founder" };
 
+  // Every chat value goes through this before it is put into the row's HTML.
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -125,6 +144,8 @@
     return parts.join("");
   }
 
+  // Message text -> safe HTML with emote pictures: Core's emote ranges when there are any,
+  // else Kick's [emote:ID:NAME] tokens in the text.
   function renderMessageHtml(raw, emotes) {
     if (Array.isArray(emotes) && emotes.length) return renderRangesHtml(raw, emotes);
     const parts = [];
@@ -170,6 +191,8 @@
     return `<span class="badges">${items.join("")}</span>`;
   }
 
+  // The K / T / Y letter. Left out when ?badges=0, a template is used, or the source shows
+  // only that one platform anyway.
   function platformBadge(plat) {
     if (!showPlatformBadge) return "";
     const key = String(plat || "").toLowerCase();
@@ -187,6 +210,8 @@
     return `<img class="avatar"${attrs} alt="" loading="lazy" />`;
   }
 
+  // slot "message" or "paid" (paid falls back to the message sound). At most one sound every
+  // sound_min_gap_sec seconds, so a busy chat isn't a wall of noise.
   function playSound(slot) {
     const eff = effective();
     if (!eff.sound || historyLoading) return;
@@ -207,6 +232,7 @@
     } catch (_) {}
   }
 
+  // After `hide` seconds the row gets .hide (CSS fade-out), and is removed 450 ms later.
   function scheduleHide(row) {
     const sec = Number(effective().hide) || 0;
     if (sec <= 0) return;
@@ -216,11 +242,14 @@
     }, sec * 1000);
   }
 
+  // Draw one Core chat line (the /ws "chat" data: platform, message, emotes, user, message_id,
+  // is_paid, is_system, highlight, reply_to). Trims the list to `max` rows.
   function appendMessage(data) {
     if (!data || !data.message) return;
     if (!allowedPlatform(data.platform)) return;
 
     const user = data.user || {};
+    // a chatter with no name colour gets their platform's colour (Twitch purple, YouTube red, Kick green)
     const defaultColor = data.platform === "twitch" ? "#bf94ff" : data.platform === "youtube" ? "#ff4e45" : "#53fc18";
     const color = user.color || defaultColor;
     const name = escapeHtml(user.display_name || user.username || "unknown");
@@ -282,6 +311,7 @@
     playSound(data.is_paid ? "paid" : "message");
   }
 
+  // chat_history (sent by Core on connect): replaces what is on screen, without sounds.
   function loadHistory(list) {
     if (!Array.isArray(list)) return;
     historyLoading = true;
@@ -356,6 +386,8 @@
     historyLoading = false;
   }
 
+  // Skin, options, pictures, sounds and which custom CSS file to load (the ?v= version makes
+  // the browser fetch it again after a save).
   async function loadSettings() {
     try {
       const res = await fetch("/api/overlay/chat-settings?t=" + Date.now());

@@ -78,6 +78,7 @@ def superchat_item(mid="sc1", who="@big_fan", amount="€2,50", text="love the s
 
 class Money(unittest.TestCase):
     def test_amounts(self):
+        """Super Chat amount texts in many currencies parse to (amount, currency code)."""
         cases = {
             "$5.00": (5.0, "USD"), "CA$10.00": (10.0, "CAD"), "€2,50": (2.5, "EUR"), "1.000,50 €": (1000.5, "EUR"),
             "₹1,000.00": (1000.0, "INR"), "¥500": (500.0, "JPY"), "PHP 100.00": (100.0, "PHP"),
@@ -89,6 +90,7 @@ class Money(unittest.TestCase):
         self.assertEqual(parse_money("free"), (None, ""))
 
     def test_prefix(self):
+        """A "[$5.00] " amount prefix is split off the message."""
         self.assertEqual(split_amount_prefix("[$5.00] hello"), ("hello", "$5.00"))
         self.assertEqual(split_amount_prefix("[nope"), ("[nope", ""))
 
@@ -255,6 +257,7 @@ class CoreRecordsPaid(unittest.TestCase):
     """Core puts paid chat, power-ups and platform subs / tips on the list; tests never."""
 
     def test_core(self):
+        """Core lists paid chat and paid alerts; a red-flagged chatter's money is listed, marked, never alerted."""
         from main import StreamCore
         from core.red_flags import RedFlags
 

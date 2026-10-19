@@ -7,12 +7,19 @@
  *   StreamElements: window "onWidgetLoad" / "onEventReceived", plus a stand-in SE_API
  *   Streamlabs:     document "onLoad" / "onEventReceived", and the chat box itself (fills the
  *                   widget's #chatlist_item template into #log)
+ *
+ * Loaded by the frame page core/widget_store.py compose_frame() builds: jQuery, then this file
+ * (data-platform="streamelements" | "streamlabs" on the script tag), the widget's CSS / HTML /
+ * JS, and last a call to FridgeWidget.ready(), which tells widget.js to send "load".
+ * Message names ({fridge: "load" | "event" | ...}) must match the ones widget.js sends and handles.
  */
 (function () {
   "use strict";
   const me = document.currentScript;
   const platform = (me && me.dataset.platform) || "streamelements";
   const parentWin = window.parent;
+  // Post to widget.js. "*" because the frame's blank origin can't name the parent's origin;
+  // widget.js checks the message comes from this frame's window.
   const send = (msg) => { try { parentWin.postMessage(Object.assign({ fridge: msg.fridge }, msg), "*"); } catch (_) {} };
 
   // A sandboxed frame has no storage of its own; widgets that save things get a memory copy
@@ -35,6 +42,7 @@
   // ── StreamElements' SE_API: the store is kept by the page around the frame ──
   let nextId = 1;
   const waiting = {};
+  // Ask widget.js something and wait for its "store-result" with the same id; gives null after 3 s.
   function ask(kind, payload) {
     return new Promise((resolve) => {
       const id = nextId++;
@@ -67,14 +75,19 @@
 
   // ── Streamlabs chat box ──
   let slHide = 0;
+  // slHide: seconds before a Streamlabs line is removed (the ?hide= switch, 0 = keep).
+  // SL_MAX: most lines kept in #log, oldest go first.
   const SL_MAX = 100;
   function slLog() {
     return document.getElementById("log") || document.querySelector(".sl__chat__layout") || document.body;
   }
+  // The widget's own row template, or a plain row with Core's chat overlay class names.
   function slTemplate() {
     const t = document.getElementById("chatlist_item");
     return t ? t.innerHTML : '<div data-from="{from}" data-id="{messageId}"><span class="meta" style="color: {color}"><span class="badges"></span><span class="name">{from}</span></span><span class="message">{message}</span></div>';
   }
+  // One chat line: fill the {from} {message} ... placeholders (item comes from widget-bridge.js, its
+  // text already escaped there), add it to #log, then fire onEventReceived as Streamlabs does after.
   function slAdd(item, detail) {
     const tpl = slTemplate();
     const html = tpl.replace(/\{(from|message|color|messageId|badges|platform|userId|avatar)\}/g, (_, k) => item[k] || "");
@@ -94,6 +107,8 @@
     while (log !== document.body && log.children.length > SL_MAX) log.firstElementChild.remove();
     fire(document, "onEventReceived", detail);
   }
+  // A mod deleted these message ids (or a timeout / ban removed every line of userId): drop the
+  // rows and send Streamlabs' CLEARMSG for each id.
   function slRemove(ids, userId) {
     const log = slLog();
     Array.from(log.querySelectorAll("[data-id]")).forEach((el) => {
@@ -102,6 +117,7 @@
     ids.forEach((id) => fire(document, "onEventReceived", { command: "CLEARMSG", messageId: id, body: "" }));
   }
 
+  // Everything from widget.js. Only the parent window is listened to, never the widget itself.
   window.addEventListener("message", (ev) => {
     if (ev.source !== parentWin) return;
     const m = ev.data || {};

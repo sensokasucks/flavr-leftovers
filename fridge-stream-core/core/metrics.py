@@ -16,6 +16,11 @@ from .models import MetricsSnapshot, Platform
 
 
 class MetricsAggregator:
+    """Rolling counters fed by main.py; ``snapshot()`` goes out on the EventBus every ~2 s.
+
+    Settings come from the ``metrics:`` config block (camelCase keys, see the defaults below).
+    Window lengths are in seconds; the weights should add up to 1.0.
+    """
     def __init__(self, config: dict):
         m = config.get("metrics", {})
         self.message_window_sec = m.get("messageWindowSec", 60)
@@ -32,14 +37,17 @@ class MetricsAggregator:
         self._viewers: Dict[str, int] = {}  # platform -> count
 
     def record_message(self) -> None:
+        """Count one chat line now (feeds ``cpm``)."""
         self._message_ts.append(time.time())
         self._prune()
 
     def record_command(self) -> None:
+        """Count one successful command now (feeds ``command_rate``)."""
         self._command_ts.append(time.time())
         self._prune()
 
     def set_viewers(self, platform: Platform | str, count: int) -> None:
+        """Store the latest viewer count for one platform (negatives become 0)."""
         key = platform.value if isinstance(platform, Platform) else platform
         self._viewers[key] = max(0, int(count))
 
@@ -49,6 +57,7 @@ class MetricsAggregator:
         self._viewers.pop(key, None)
 
     def _prune(self) -> None:
+        """Drop timestamps older than each window so the deques only hold recent events."""
         now = time.time()
         msg_cutoff = now - self.message_window_sec
         while self._message_ts and self._message_ts[0] < msg_cutoff:
@@ -64,12 +73,14 @@ class MetricsAggregator:
 
     @property
     def cpm(self) -> float:
+        """Chat messages per minute over the message window."""
         self._prune()
         # messages in the window, scaled to per-minute
         return len(self._message_ts) * (60.0 / max(1, self.message_window_sec))
 
     @property
     def command_rate(self) -> float:
+        """Commands within the command window (a count, not per minute)."""
         self._prune()
         return float(len(self._command_ts))
 
@@ -87,6 +98,7 @@ class MetricsAggregator:
         return int(round(min(15, max(0, score * 15))))
 
     def snapshot(self) -> MetricsSnapshot:
+        """Current numbers as a ``MetricsSnapshot`` (cpm rounded to 1 decimal)."""
         return MetricsSnapshot(
             viewers=self.total_viewers,
             viewers_by_platform=dict(self._viewers),

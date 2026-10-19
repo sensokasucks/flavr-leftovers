@@ -32,7 +32,7 @@ log = logging.getLogger("adapters.twitch_emotes")
 
 TWITCH_CDN = "https://static-cdn.jtvnw.net/emoticons/v2/{id}/{fmt}/dark/2.0"
 BTTV_CDN = "https://cdn.betterttv.net/emote/{id}/2x"
-REFRESH_SEC = 30 * 60
+REFRESH_SEC = 30 * 60   # seconds before the third-party emote table is reloaded
 
 
 def parse_twitch_emotes(tag: str, message: str) -> list[dict]:
@@ -100,6 +100,7 @@ def match_words(message: str, table: dict[str, dict], taken: list[dict]) -> list
 
 
 # ── third-party sets ────────────────────────────────────────────────
+# Each helper below turns one provider's JSON into {emote code: entry without start/end}.
 def _bttv(items: list) -> dict[str, dict]:
     out: dict[str, dict] = {}
     for e in items or []:
@@ -170,15 +171,18 @@ class ThirdPartyEmotes:
         self._task = asyncio.create_task(self._load(room_id), name="twitch-3p-emotes")
 
     def stop(self) -> None:
+        """Cancel a load still running (called when the Twitch adapter stops)."""
         if self._task and not self._task.done():
             self._task.cancel()
 
     def match(self, message: str, taken: list[dict]) -> list[dict]:
+        """Third-party emotes in ``message`` that don't overlap ``taken`` (the native emotes)."""
         if not self.enabled:
             return []
         return match_words(message, self.table, taken)
 
     async def _load(self, room_id: str) -> None:
+        """Fetch global + channel sets from all three providers at once and build ``table``."""
         import httpx  # local import keeps the parsing helpers testable without deps
 
         async def get(client: httpx.AsyncClient, url: str):

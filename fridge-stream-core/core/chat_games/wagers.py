@@ -11,6 +11,9 @@ from .engine import Feature, fmt_points, name_key, parse_amount, speaker, user_k
 
 
 def _match_option(word: str, options: List[str]) -> Optional[int]:
+    """The option index for ``word``: a 1-based number, an exact name, or a unique name prefix
+    (case-insensitive, a leading "#" is ignored). None when nothing or several options match.
+    """
     w = str(word or "").strip().lower().lstrip("#")
     if not w:
         return None
@@ -24,6 +27,7 @@ def _match_option(word: str, options: List[str]) -> Optional[int]:
 
 
 def _split_bar(text: str) -> List[str]:
+    """Split "Question? | A | B" on the bars, trimming each part."""
     return [p.strip() for p in text.split("|")]
 
 
@@ -41,6 +45,7 @@ class Predict(Feature):
         return {c["command"]: self.cmd}
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!predict: mods open / lock / win / cancel; anyone else bets, or gets the options listed."""
         who = speaker(event.user)
         first = (args[0].lower() if args else "")
         mod = self.g.is_mod(event.user)
@@ -77,6 +82,9 @@ class Predict(Feature):
         await self.bet(event, args, c)
 
     async def open(self, question: str, options: List[str]) -> Dict[str, Any]:
+        """Start a prediction (question up to 120 chars, up to 9 options of 40 chars, Yes/No by
+        default) and show the board. Also called from the admin page through ``admin``.
+        """
         if self.p and self.p["state"] in ("open", "locked"):
             return {"ok": False, "message": "a prediction is already running."}
         question = (question or "").strip()[:120]
@@ -94,6 +102,7 @@ class Predict(Feature):
         return {"ok": True, "message": "prediction open."}
 
     async def bet(self, event: ChatEvent, args, c) -> None:
+        """Place or top up a bet. One option per person; their total is capped at ``max_bet``."""
         p = self.p
         who = speaker(event.user)
         if p["state"] != "open":
@@ -133,6 +142,7 @@ class Predict(Feature):
         await self.show()
 
     def pots(self) -> List[Dict[str, int]]:
+        """Points and number of people on each option, in option order."""
         p = self.p
         out = [{"pot": 0, "people": 0} for _ in p["options"]]
         for b in p["bets"].values():
@@ -141,6 +151,7 @@ class Predict(Feature):
         return out
 
     async def show(self, winner: Optional[int] = None, footer: str = "") -> None:
+        """Draw the "predict" bar board; ``winner`` highlights the winning option."""
         p = self.p
         c = self.g.cfg["predict"]
         pots = self.pots()
@@ -157,6 +168,7 @@ class Predict(Feature):
                            state=state, ends_at=p.get("lock_at") if state == "open" else None)
 
     async def lock(self) -> Dict[str, Any]:
+        """Stop new bets; the prediction waits for a mod to call the result."""
         if not self.p or self.p["state"] != "open":
             return {"ok": False, "message": "no open prediction."}
         self.p["state"] = "locked"
@@ -165,6 +177,9 @@ class Predict(Feature):
         return {"ok": True, "message": "locked."}
 
     async def resolve(self, word: str) -> Dict[str, Any]:
+        """Pay out: winners split the whole pot by stake. Nobody on the winning option means
+        everyone is refunded.
+        """
         p = self.p
         if not p or p["state"] not in ("open", "locked"):
             return {"ok": False, "message": "no prediction to settle."}
@@ -189,6 +204,7 @@ class Predict(Feature):
             paid += share
             if best is None or share > best["won"]:
                 best = b
+        # Integer division leaves a few points over; give them to the biggest winner.
         best["won"] += pot - paid        # rounding leftovers
         for b in winners:
             await self.g.give(b["uid"], b["won"], "prediction win")
@@ -202,6 +218,7 @@ class Predict(Feature):
         return {"ok": True, "winners": len(winners), "pot": pot}
 
     async def cancel(self) -> Dict[str, Any]:
+        """Refund every bet and close the prediction."""
         p = self.p
         if not p or p["state"] not in ("open", "locked"):
             return {"ok": False, "message": "no prediction to cancel."}
@@ -214,11 +231,13 @@ class Predict(Feature):
         return {"ok": True}
 
     async def tick(self, now: float) -> None:
+        """Auto-lock when ``auto_lock_sec`` has passed."""
         p = self.p
         if p and p["state"] == "open" and p.get("lock_at") and now >= p["lock_at"]:
             await self.lock()
 
     async def admin(self, action: str, body: Dict[str, Any]) -> Dict[str, Any]:
+        """Admin page actions: "open", "lock", "win", "cancel". Same checks as the chat commands."""
         if action == "open":
             return await self.open(str(body.get("question") or ""), [str(o) for o in body.get("options") or [] if str(o).strip()])
         if action == "lock":
@@ -230,6 +249,7 @@ class Predict(Feature):
         return {"ok": False, "error": "unknown action"}
 
     def status(self):
+        """Small summary for the admin page."""
         p = self.p
         if not p:
             return {"open": False}
@@ -250,11 +270,15 @@ class Duel(Feature):
         return {c["command"]: self.cmd, c["accept_command"]: self.accept, c["decline_command"]: self.decline}
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!duel @name 50: takes the challenger's stake now and waits ``accept_sec`` for an answer.
+        Also accepts "!duel accept" / "!duel decline".
+        """
         if args and args[0].lower() in ("accept", "yes"):
             return await self.accept(event, args[1:], c)
         if args and args[0].lower() in ("decline", "no"):
             return await self.decline(event, args[1:], c)
         who = speaker(event.user)
+        # The target is the first @word, else the first word that is not an amount.
         target = next((a for a in args if a.startswith("@")), None) or next(
             (a for a in args if not a.replace(",", "").rstrip("kK").replace(".", "").isdigit() and a.lower() not in ("all", "max")), None)
         amt_word = next((a for a in args if a is not target), None)
@@ -296,12 +320,14 @@ class Duel(Feature):
                                   f"{p}{c['accept_command']} or {p}{c['decline_command']} ({int(c['accept_sec'])}s)")
 
     def _mine(self, event: ChatEvent) -> Optional[str]:
+        """The pending duel aimed at this chatter (by username or display name), if any."""
         for k in (name_key(event.user.username), name_key(event.user.display_name)):
             if k in self.pending:
                 return k
         return None
 
     async def accept(self, event: ChatEvent, args, c) -> None:
+        """Take the second stake, flip a coin, pay both stakes to the winner and throw at the loser."""
         who = speaker(event.user)
         k = self._mine(event)
         if not k:
@@ -327,6 +353,7 @@ class Duel(Feature):
                               f"and takes {fmt_points(pot)} points!")
 
     async def decline(self, event: ChatEvent, args, c) -> None:
+        """Refund the challenger. Does nothing if the chatter has no duel waiting."""
         k = self._mine(event)
         if not k:
             return
@@ -336,6 +363,7 @@ class Duel(Feature):
                                   f"declined the duel. Points refunded.")
 
     async def tick(self, now: float) -> None:
+        """Refund duels nobody answered in time."""
         for k, d in list(self.pending.items()):
             if now >= d["expires"]:
                 self.pending.pop(k, None)
@@ -344,6 +372,7 @@ class Duel(Feature):
                                       f"Points refunded.")
 
     def status(self):
+        """How many duels are waiting for an answer."""
         return {"waiting": len(self.pending)}
 
 
@@ -351,6 +380,8 @@ class Slots(Feature):
     """Three reels. About 93% comes back on average; big wins set off confetti."""
 
     KEY = "slots"
+    # Symbol, reel weight (chance out of the total 91). TRIPLE = payout times the bet for three
+    # of a kind; any pair pays CHERRY_PAIR (cherries) or OTHER_PAIR.
     REELS = [("🍒", 30), ("🍋", 24), ("🔔", 16), ("⭐", 12), ("💎", 6), ("7️⃣", 3)]
     TRIPLE = {"🍒": 4, "🍋": 8, "🔔": 15, "⭐": 25, "💎": 60, "7️⃣": 200}
     CHERRY_PAIR = 1.5
@@ -360,12 +391,14 @@ class Slots(Feature):
         return {c["command"]: self.cmd}
 
     def spin(self) -> List[str]:
+        """Three weighted random symbols."""
         syms = [s for s, _ in self.REELS]
         weights = [w for _, w in self.REELS]
         return [self.g.rng.choices(syms, weights)[0] for _ in range(3)]
 
     @classmethod
     def multiplier(cls, reels: List[str]) -> float:
+        """How many times the bet comes back for these reels (0 for no win)."""
         a, b, c = reels
         if a == b == c:
             return float(cls.TRIPLE[a])
@@ -375,6 +408,7 @@ class Slots(Feature):
         return 0.0
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!slots 50: take the bet, spin, pay the win and reply. Wins of 4x and up play effects."""
         who = speaker(event.user)
         if not args:
             await self.g.reply(event, f"@{who} {self.g.prefix()}{c['command']} {c['min_bet']}-{c['max_bet']}")
@@ -426,6 +460,9 @@ class Heist(Feature):
     KEY = "heist"
 
     def __init__(self, g):
+        """``h`` is the crew while it is forming (None otherwise); ``running`` is True while the
+        story plays out, so nobody can start or join a new one then.
+        """
         super().__init__(g)
         self.h: Optional[Dict[str, Any]] = None
         self.running = False
@@ -434,6 +471,7 @@ class Heist(Feature):
         return {c["command"]: self.start, c["join_command"]: self.join}
 
     async def start(self, event: ChatEvent, args, c) -> None:
+        """!heist 50: start a crew (or join one that is forming). One heist per ``cooldown_sec``."""
         if self.h:
             return await self.join(event, args, c)
         who = speaker(event.user)
@@ -457,6 +495,7 @@ class Heist(Feature):
             self.h = None
 
     async def join(self, event: ChatEvent, args, c) -> None:
+        """!join 50: join the forming crew. With no amount, uses the first member's stake."""
         who = speaker(event.user)
         if not self.h:
             if not self.running:
@@ -469,6 +508,7 @@ class Heist(Feature):
         await self._add(event, args[0] if args else str(self.h["stake"]), c)
 
     async def _add(self, event: ChatEvent, word: str, c) -> bool:
+        """Take the stake and add the chatter to the crew. False if the amount or balance is wrong."""
         who = speaker(event.user)
         uid = await self.g.uid(event.user)
         bal = await self.g.balance(uid)
@@ -486,6 +526,7 @@ class Heist(Feature):
         return True
 
     async def show(self, c, state="open", results: Optional[Dict[str, int]] = None, footer: str = ""):
+        """Draw the "heist" list board (first 12 members). ``results`` turns notes into hauls."""
         h = self.h
         crew = list(h["crew"].items())
         top = max([m["stake"] for _, m in crew] or [1])
@@ -505,10 +546,16 @@ class Heist(Feature):
                            ends_at=h["ends"] if state == "open" else None)
 
     def chance(self, n: int) -> float:
+        """Success chance for a crew of ``n``: ``base_success`` plus ``per_member`` per extra
+        member, capped at ``max_success``.
+        """
         c = self.g.cfg["heist"]
         return min(c["max_success"], c["base_success"] + c["per_member"] * max(0, n - 1))
 
     async def tick(self, now: float) -> None:
+        """When join time ends, decide every result now, then tell the story over about 6 seconds
+        (``g.later``). Stakes were already taken when people joined; only winners get paid.
+        """
         if not self.h or now < self.h["ends"]:
             return
         c = self.g.cfg["heist"]
@@ -535,6 +582,7 @@ class Heist(Feature):
             for k, v in results.items():
                 if v > 0:
                     await self.g.give(crew[k]["uid"], v, "heist haul")
+            # show() reads self.h, so put the crew back for the final board.
             self.h = h
             if got:
                 total = sum(results.values())
@@ -551,9 +599,11 @@ class Heist(Feature):
             self.h = None
             self.running = False
 
+        # Forming is over; ``running`` keeps a new heist from starting until end() runs.
         self.h = None
         self.g.later(3, middle)
         self.g.later(6, end)
 
     def status(self):
+        """Small summary for the admin page."""
         return {"forming": bool(self.h), "crew": len(self.h["crew"]) if self.h else 0, "running": self.running}

@@ -60,6 +60,7 @@ class Rig:
 
 class TwitchTests(unittest.TestCase):
     def test_kinds(self):
+        """Twitch USERNOTICE msg-ids map to subscribe / resub / gift alerts."""
         self.assertEqual(usernotice_alert({"msg-id": "sub", "login": "bob", "display-name": "Bob"})["kind"],
                          "subscribe")
         r = usernotice_alert({"msg-id": "resub", "login": "bob", "msg-param-cumulative-months": "7"}, "hi")
@@ -89,6 +90,7 @@ class TwitchTests(unittest.TestCase):
 
 class YouTubeTests(unittest.TestCase):
     def test_official(self):
+        """YouTube official API membership events become member alerts."""
         author = {"displayName": "Ann", "channelId": "UC1"}
         _, n = official_member_alert({"type": "newSponsorEvent",
                                       "newSponsorDetails": {"memberLevelName": "Gold"}}, author)
@@ -152,6 +154,7 @@ class YouTubeTests(unittest.TestCase):
 
 class KickTests(unittest.TestCase):
     def test_kinds(self):
+        """Kick subscription events map to subscribe / resub / gift alerts."""
         self.assertEqual(kick_sub_alert("App\\Events\\SubscriptionEvent", {"username": "z", "months": 1})["kind"],
                          "subscribe")
         r = kick_sub_alert("App\\Events\\SubscriptionEvent", {"username": "z", "months": 6})

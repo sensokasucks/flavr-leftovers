@@ -70,18 +70,24 @@ KNOWN_FIELDS = {
 
 
 class FieldScout:
-    """Remembers what it already reported, so each new thing is saved once per run."""
+    """Remembers what it already reported, so each new thing is saved once per run.
+
+    Used by the InnerTube reader in adapters/youtube.py. When Core starts reading a new
+    action / renderer / field, add its name to the KNOWN_* sets above so it stops being noted.
+    """
 
     def __init__(self, path: Optional[Path] = None):
         self._path = path or DATA_PATH
         self._seen: set[str] = set()
 
     def check_action(self, action: dict) -> None:
+        """Note any top-level action key not in KNOWN_ACTIONS."""
         for key in action:
             if key not in KNOWN_ACTIONS:
                 self._note(f"action:{key}", action)
 
     def check_item(self, item: dict) -> None:
+        """Note an unknown renderer, or unknown fields inside a renderer Core knows."""
         for key, renderer in item.items():
             if key not in KNOWN_ITEMS:
                 self._note(f"item:{key}", item)
@@ -106,6 +112,7 @@ class FieldScout:
         if len(text.encode("utf-8")) > MAX_ITEM_BYTES:
             text = json.dumps({"truncated": True, "start": text[: MAX_ITEM_BYTES // 2]}, ensure_ascii=False)
         line = json.dumps({"time": time.strftime("%Y-%m-%d %H:%M:%S"), "new": what}, ensure_ascii=False)
+        # splice the already-encoded sample into the JSON object (drop its closing "}")
         line = line[:-1] + ', "sample": ' + text + "}\n"
         try:
             self._path.parent.mkdir(parents=True, exist_ok=True)

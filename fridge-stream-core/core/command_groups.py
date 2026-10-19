@@ -23,6 +23,8 @@ from typing import Any, Dict, Iterable, Optional, Set
 
 from core import plugin_manifest as _plugin_manifest
 
+# Built-in groups. A config.yaml ``command_groups`` entry with the same name is merged on top
+# (see merge_group_catalog); "core" can never be switched off.
 DEFAULT_GROUPS: Dict[str, Dict[str, Any]] = {
     "core": {
         "enabled": True,
@@ -67,10 +69,14 @@ def game_binds() -> Set[str]:
 
 
 def _norm_name(name: Any) -> str:
+    """Group names are compared trimmed and lower-case."""
     return str(name or "").strip().lower()
 
 
 def normalize_group_spec(raw: Any, name: str = "") -> Dict[str, Any]:
+    """One group entry (from defaults or hand-edited YAML) in the full shape the rest expects:
+    {"enabled", "always", "bind", "description"}. "none" / "null" / "-" as bind mean unbound.
+    """
     data = raw if isinstance(raw, dict) else {}
     always = bool(data.get("always", name == "core"))
     bind = data.get("bind")
@@ -153,6 +159,10 @@ def resolve_active_groups(
     running_games: Optional[Iterable[str]] = None,
     extra_names: Optional[Iterable[str]] = None,
 ) -> Set[str]:
+    """Names of the groups whose commands should run now (always includes "core").
+
+    main.py passes the result to ``CommandRouter.set_enabled_groups``.
+    """
     games = {str(g).lower() for g in (running_games or [])}
     catalog = merge_group_catalog((config or {}).get("command_groups"), extra_names)
     active: Set[str] = set()
@@ -206,6 +216,7 @@ class CommandGroups:
         self.reload(config)
 
     def reload(self, config: dict | None = None) -> None:
+        """Rebuild the catalog from ``config`` (or the last config when None)."""
         if config is not None:
             self._config = config
         extra = None

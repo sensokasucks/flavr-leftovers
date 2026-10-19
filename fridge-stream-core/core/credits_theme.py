@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from typing import Any
 
+# Every look key with its default. config.py copies these into DEFAULTS["credits"], so a new
+# key added here shows up in config.yaml and the dashboard; add its type to ENUM_FIELDS /
+# NUM_FIELDS / BOOL_FIELDS below too so ``sanitize_look`` cleans it.
 LOOK_DEFAULTS: dict[str, Any] = {
     # Copy
     "title": "Thanks for watching",
@@ -115,6 +118,8 @@ MOTION_ALIASES = {
     "name-tape": "ticker",
 }
 
+# Play modes the overlay understands (overlay/credits.js): loop, play once, hold (stand still)
+# and clear (empty the screen at the end).
 PLAY_MODES = ("loop", "once", "hold", "clear")
 
 # key -> allowed values (first is the fallback)
@@ -180,6 +185,7 @@ BOOL_FIELDS = (
 
 
 def _num(raw: Any, lo: float, hi: float, default: float, whole: bool) -> float | int:
+    """Number clamped to lo..hi (``default`` for junk, NaN and infinity); rounded when ``whole``."""
     try:
         n = float(raw)
     except (TypeError, ValueError):
@@ -191,6 +197,7 @@ def _num(raw: Any, lo: float, hi: float, default: float, whole: bool) -> float |
 
 
 def _bool(raw: Any) -> bool:
+    """Truthy check that also reads "1" / "true" / "yes" / "on" from text."""
     if isinstance(raw, str):
         return raw.strip().lower() in ("1", "true", "yes", "on")
     return bool(raw)
@@ -243,6 +250,7 @@ def sanitize_look(raw: Any) -> dict[str, Any]:
 
 
 def merge_look(base: Any, patch: Any) -> dict[str, Any]:
+    """``base`` with a cleaned ``patch`` laid over it (a new dict)."""
     merged = dict(base or {})
     merged.update(sanitize_look(patch))
     return merged

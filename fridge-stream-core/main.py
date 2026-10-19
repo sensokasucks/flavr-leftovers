@@ -7,6 +7,16 @@ Starts (all chat platforms and games are opt-in via config):
   - Game plugins found in plugins/ (Minecraft, Factorio, Granvir, OpenTTD live in the flavr-game-plugins repo)
   - Command router + metrics aggregator
   - FastAPI HTTP/WS server on the configured port (default 3850)
+
+How it fits together: adapters push ChatEvents onto the EventBus; StreamCore (below)
+listens there and runs red flags, overlays (WebSocket broadcast), credits, the Paid list,
+points, reactions, chat games and commands, then fans commands out to game plugins.
+api/server.py serves overlays + WebSocket, api/admin_routes.py the dashboard API; both
+read and call StreamCore through the shared CoreState (``self.state``).
+
+Run by start.bat (or the workshop's "START Stream Core.bat"). Binds 127.0.0.1:3850 by
+default (fixed by CLAUDE.md); STREAM_CORE_HOST / STREAM_CORE_PORT override it. The dashboard Restart button makes
+_run() return True and main() then restarts the process (core/restart.py).
 """
 
 from __future__ import annotations
@@ -110,6 +120,13 @@ def _cmd_word(text: str) -> str:
 
 
 class StreamCore:
+    """Everything Core runs, wired together. One instance per process, built in _run().
+
+    ``self.state`` (CoreState, api/server.py) is what the HTTP routes see: most parts are
+    stored on it here, and admin saves replace ``state.config`` with a fresh dict, which
+    ``_sync_live_config`` copies back into ``self.config``.
+    """
+
     def __init__(self, config: dict):
         self.config = config
         self.bus = EventBus()
@@ -243,6 +260,7 @@ class StreamCore:
         self.recent_replies_max = 20
 
     async def start(self) -> None:
+        """Subscribe the handlers to the bus and start plugins, chat platforms and background loops."""
         # Chat lines are written to the database in batches by one task
         self.store.start_writer()
         # Wire chat → command router + overlay broadcast
@@ -323,6 +341,7 @@ class StreamCore:
                 }
 
     async def _start_platform(self, name: str) -> None:
+        """Start one adapter if ``<name>.enabled``; an adapter that won't run keeps its reason in platform_status."""
         section = self.config.get(name) or {}
         self.platform_status.pop(name, None)
         if not section.get("enabled", False):
@@ -351,6 +370,7 @@ class StreamCore:
         return dict(self.platform_status.get(name) or {})
 
     async def _stop_platform(self, name: str) -> None:
+        """Stop one adapter (errors only logged) and drop its viewer count."""
         adapter = self.adapters.pop(name, None)
         if adapter:
             try:
@@ -361,6 +381,7 @@ class StreamCore:
 
     @staticmethod
     def _platform_changed(new: dict, old: dict | None) -> bool:
+        """Does this platform's config section differ enough from the applied one to reconnect?"""
         if old is None:
             return True
         # chatroom_id is a cached lookup: gaining one is a change, losing one is not
@@ -370,6 +391,7 @@ class StreamCore:
         return new.get("chatroom_id") not in (None, "", old.get("chatroom_id"))
 
     def _kick_room_found_live(self, name: str, section: dict, old: dict | None) -> bool:
+        """True when the only change is a chatroom_id the running Kick adapter saved itself."""
         if name != "kick" or old is None:
             return False
         strip = lambda d: {k: v for k, v in d.items() if k != "chatroom_id"}
@@ -539,6 +561,7 @@ class StreamCore:
         return out
 
     async def _credits_persist_loop(self) -> None:
+        """Save the credits roster every 10 s when it changed."""
         while not self._stop.is_set():
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=10)
@@ -567,6 +590,7 @@ class StreamCore:
                 log.exception("chat history trim failed")
 
     async def stop(self) -> None:
+        """Stop loops, save what is pending (chat games, credits, chat log), then adapters and games."""
         self._stop.set()
         if getattr(self, "_chat_trim_task", None):
             self._chat_trim_task.cancel()
@@ -620,6 +644,12 @@ class StreamCore:
     # ------------------------------------------------------------------
 
     async def _on_chat(self, event: ChatEvent) -> None:
+        """Every chat line from every platform (EventBus ``on_chat``). Order matters:
+
+        flags / red flags (may hide the line) -> overlay broadcast + catch-up history ->
+        credits -> Paid list / paid alert -> chat log + points -> reactions -> chat games ->
+        command router (Core command, or ``publish_execute`` to the game plugins).
+        """
         # Red-flagged chatters (or the line that flags them) never reach an overlay or Stream Rooms
         live = getattr(self.state, "config", None) or self.config
         self.red_flags.configure(live.get("red_flags"))
@@ -776,6 +806,7 @@ class StreamCore:
         await self.bus.publish_execute(req)
 
     async def _handle_core_command(self, event: ChatEvent, req: ExecuteRequest, cmd_def) -> None:
+        """Commands with ``handler: core`` in commands.json, picked by their ``special``; the answer is a reply."""
         special = (cmd_def.special or req.special or "").lower()
         text = None
         if special == "points_balance":
@@ -901,10 +932,12 @@ class StreamCore:
         ))
 
     async def _ws_broadcast(self, payload: dict) -> None:
+        """Send to every overlay WebSocket (handed to plugins, reactions and chat games)."""
         if self.state.ws_manager:
             await self.state.ws_manager.broadcast(payload)
 
     async def _reaction_reply(self, event: ChatEvent, text: str) -> None:
+        """A reaction's answer to the chatter who triggered it."""
         await self.bus.publish_reply(ChatReply(
             platform=event.platform,
             message=text,
@@ -1342,6 +1375,7 @@ class StreamCore:
         await self._send_user_update(payload)
 
     async def _send_user_update(self, payload: dict) -> None:
+        """Patch the picture into the catch-up history and broadcast ``user_update``."""
         plat = payload.get("platform")
         uid = str(payload.get("id") or "")
         for item in self.recent_chat:
@@ -1411,6 +1445,11 @@ class StreamCore:
                                                   "profile_image_url": "", "avatar_local": ""})
 
     async def _on_alert(self, payload: dict) -> None:
+        """Every alert (EventBus ``on_alert``): Paid list row, points, overlay broadcast, credits tag.
+
+        ``source`` says where it came from: "platform" (an adapter), "chat" (paid chat line),
+        "flag", or none / ``is_test`` for the dashboard's alert test.
+        """
         hidden = not payload.get("is_test") and self.red_flags.hides(
             str(payload.get("platform") or ""), "", str(payload.get("username") or ""))
         if (payload.get("source") == "platform" and not payload.get("is_test")
@@ -1476,6 +1515,7 @@ class StreamCore:
         kind = payload.get("kind") or ""
 
         def amount(key: str) -> int:
+            """``points.<key>`` as a whole number >= 0 (default from DEFAULTS)."""
             try:
                 return max(0, int(pts.get(key, DEFAULTS["points"][key])))
             except (TypeError, ValueError):
@@ -1581,6 +1621,7 @@ class StreamCore:
         await self.bus.publish_alert(payload)
 
     async def _on_execute(self, req: ExecuteRequest) -> None:
+        """A game command passed the router: send it to the plugin owning its group (else every game)."""
         # Fan-out to every registered game integration that claims this command group
         cmd_def = self.router.find(req.command_name)
         group = (cmd_def.group if cmd_def else "") or ""
@@ -1612,6 +1653,7 @@ class StreamCore:
                 log.exception("[%s] execute error", name)
 
     async def _on_metrics(self, snap) -> None:
+        """Every metrics snapshot (each 2 s): to each game, then a full ``update`` to the overlays."""
         for game in self.games.values():
             try:
                 await game.on_metrics(snap)
@@ -1639,6 +1681,7 @@ class StreamCore:
             })
 
     async def _metrics_loop(self) -> None:
+        """Publish a metrics snapshot every 2 seconds."""
         while not self._stop.is_set():
             snap = self.metrics.snapshot()
             await self.bus.publish_metrics(snap)
@@ -1655,6 +1698,7 @@ def mask_token(token: str) -> str:
 
 
 def dashboard_link(host: str, port: int, token: str) -> str:
+    """Dashboard URL with the token in the #fragment (never sent to the server or logged by it)."""
     shown = "127.0.0.1" if host in ("", "0.0.0.0", "::") else host
     return f"http://{shown}:{port}/admin/#token={token}"
 
@@ -1702,6 +1746,7 @@ async def _open_when_up(server, link: str) -> None:
 
 
 async def _run() -> None:
+    """Load config, start Core and uvicorn in one event loop, wait for a stop. Returns True to restart."""
     ensure_seed_files()
     try:
         config = load_config()
@@ -1785,6 +1830,7 @@ async def _run() -> None:
 
 
 def main():
+    """Run Core; on a dashboard restart re-exec Python, or exit with RESTART_EXIT_CODE for the .bat to loop."""
     from core.restart import RESTART_EXIT_CODE, can_restart
 
     try:

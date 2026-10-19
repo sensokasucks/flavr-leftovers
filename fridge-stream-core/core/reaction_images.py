@@ -22,6 +22,8 @@ from typing import Any, Dict, List, Optional
 
 log = logging.getLogger("core.reaction_images")
 
+# Upload limit in bytes (stricter than Stored files' own limit). URL_PREFIX is where Core serves
+# the built-in and old upload folders; OBJECT_PREFIX marks a picture in a reaction's object param.
 MAX_BYTES = 5 * 1024 * 1024
 NAME_RE = re.compile(r"[^a-z0-9_-]+")
 EXT_FOR_KIND = {"png": ".png", "jpeg": ".jpg", "gif": ".gif"}
@@ -31,6 +33,7 @@ OBJECT_PREFIX = "img:"
 
 
 def clean_name(raw: str) -> str:
+    """A picture's name: lowercase letters, numbers, - and _ (max 40)."""
     name = NAME_RE.sub("-", str(raw or "").strip().lower()).strip("-_")
     return name[:40]
 
@@ -47,6 +50,10 @@ def sniff(data: bytes) -> Optional[str]:
 
 
 class ReactionImages:
+    """Finds the pictures a reaction can use, by name. Owned by the ReactionEngine (core/reactions.py).
+
+    ``builtin_dir`` = overlay/assets/reactions, ``custom_dir`` = data/reaction_images.
+    """
     def __init__(self, builtin_dir: Path, custom_dir: Path, library: Any = None):
         self.builtin_dir = Path(builtin_dir)
         self.custom_dir = Path(custom_dir)
@@ -54,6 +61,7 @@ class ReactionImages:
 
     # ── lookup ─────────────────────────────────────────────────
     def _scan(self, folder: Path, source: str) -> Dict[str, Dict[str, Any]]:
+        """{name: info} for the PNG / JPEG / GIF files in one folder, tagged with ``source``."""
         out: Dict[str, Dict[str, Any]] = {}
         if not folder.is_dir():
             return out
@@ -78,6 +86,7 @@ class ReactionImages:
         return out
 
     def _stored(self) -> Dict[str, Dict[str, Any]]:
+        """{name: info} for the pictures in Stored files (same shape as ``_scan``, ``path`` None)."""
         out: Dict[str, Dict[str, Any]] = {}
         if self.library is None:
             return out
@@ -97,15 +106,18 @@ class ReactionImages:
         return out
 
     def all(self) -> Dict[str, Dict[str, Any]]:
+        """Every usable picture by name; when two share a name the later source wins."""
         found = self._scan(self.builtin_dir, "built-in")
         found.update(self._scan(self.custom_dir, "custom"))     # uploads win
         found.update(self._stored())                            # Stored files win over both
         return found
 
     def list(self) -> List[Dict[str, Any]]:
+        """``all()`` for the API, without the local file paths."""
         return [{k: v for k, v in info.items() if k != "path"} for info in self.all().values()]
 
     def get(self, name: str) -> Optional[Dict[str, Any]]:
+        """Info for one picture name, or None."""
         return self.all().get(clean_name(name))
 
     def file_path(self, file_name: str) -> Optional[Path]:
@@ -163,6 +175,7 @@ class ReactionImages:
         return {k: v for k, v in info.items() if k != "path"}
 
     def save_base64(self, name: str, b64: str) -> Dict[str, Any]:
+        """``save`` for an upload sent as base64 text (a data: url prefix is allowed)."""
         raw = str(b64 or "")
         if raw.startswith("data:") and "," in raw:
             raw = raw.split(",", 1)[1]

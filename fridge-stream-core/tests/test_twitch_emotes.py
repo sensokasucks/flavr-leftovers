@@ -60,6 +60,7 @@ class ThirdPartyTests(unittest.TestCase):
             "data": {"animated": False, "host": {"url": "//cdn.7tv.app/emote/s1"}}}]))
 
     def test_urls(self):
+        """BTTV / 7TV / FFZ picture addresses, and the still picture for animated ones."""
         self.assertEqual(self.table["monkaS"]["static_url"], "https://cdn.betterttv.net/emote/b2/2x")
         self.assertEqual(self.table["catJAM"]["static_url"], "")        # animated GIF, no still
         self.assertEqual(self.table["PogU"]["static_url"], "https://cdn.7tv.app/emote/s1/2x_static.webp")
@@ -75,6 +76,7 @@ class ThirdPartyTests(unittest.TestCase):
         self.assertEqual(em, [])
 
     def test_disabled(self):
+        """Third-party emotes switched off: nothing matches."""
         t = ThirdPartyEmotes(enabled=False)
         t.table = self.table
         self.assertEqual(t.match("PogU", []), [])

@@ -6,6 +6,8 @@
  * never inside OBS (window.obsstudio) unless the address has ?hint=1; ?hint=0 hides it, and so
  * does ?preview=1 (the dashboard's look previews).
  * Overlays call FridgeHint.set(key, text) and FridgeHint.count().
+ * Loaded by chat.html, alerts.html and widget.html before the page's own script, which uses
+ * `window.FridgeHint || {set() {}, count() {}}` so it still works without this file.
  */
 (function () {
   const q = new URLSearchParams(location.search);
@@ -13,6 +15,7 @@
   // not on the dashboard's own look previews (?preview=1), which show sample messages anyway
   const quiet = want === "0" || want === "false" || q.get("preview") === "1" || q.get("preview") === "true";
   const show = want === "1" || want === "true" || (!window.obsstudio && !quiet);
+  // The pieces of the line, joined in this order; FridgeHint.set(key, text) replaces one.
   const parts = { core: "Connecting to Core…", platforms: "", filter: "", count: "", note: "" };
   let messages = 0;
   let box = null;
@@ -33,6 +36,7 @@
       " (only shown outside OBS; add ?hint=0 to hide)";
   }
 
+  // Which chat platforms are switched on / connected, from /api/health (every 10 s while shown).
   async function platforms() {
     try {
       const h = await fetch("/api/health", { cache: "no-store" }).then((r) => r.json());

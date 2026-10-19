@@ -11,6 +11,11 @@ Two modes (config youtube.mode):
 
 Default mode is innertube when no api_key is set; official when api_key is present
 unless mode is forced.
+
+Settings live in the ``youtube:`` block of config.yaml. Both modes poll (there is no push),
+turn each item into a ChatEvent / removal / alert through BaseAdapter, and fall back to
+retrying until the stream is live. Helpers: youtube_avatar.py (photo size), youtube_capture.py
+(notes InnerTube fields Core doesn't know yet).
 """
 
 from __future__ import annotations
@@ -52,6 +57,7 @@ MAX_POLL_SEC = 30.0
 # what Core waits when it follows YouTube's suggestion
 AUTO_MIN_SEC = 2.0
 
+# InnerTube is the website's own API, so Core asks like a normal desktop browser
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -96,6 +102,7 @@ _NUM_RE = re.compile(r"\d[\d,.]*")
 
 
 def _first_int(text: str) -> Optional[int]:
+    """First number in a text, thousands separators removed ("Gifted 1,000" -> 1000)."""
     m = _NUM_RE.search(text or "")
     if not m:
         return None
@@ -132,6 +139,7 @@ KNOWN_CHIPS = {"MESSAGE", "CROWN_FILLED"}
 
 
 def _panel(vm: dict) -> dict:
+    """The engagement panel a buttonViewModel opens when tapped ({} if none)."""
     return (((vm.get("onTap") or {}).get("innertubeCommand") or {}).get("showEngagementPanelEndpoint") or {})
 
 
@@ -210,6 +218,8 @@ def youtube_removed(action: dict) -> dict:
 
 
 class YouTubeAdapter(BaseAdapter):
+    """Polls one live video's chat, by the official Data API or InnerTube (see the module notes)."""
+
     platform = Platform.YOUTUBE
 
     def __init__(self, config: dict, bus: EventBus, metrics: MetricsAggregator):
@@ -250,6 +260,7 @@ class YouTubeAdapter(BaseAdapter):
         self._reached = False  # this attempt got as far as reading chat
 
     async def start(self) -> None:
+        """Check the settings, pick the mode and start the poll loop in the background."""
         if not self.video_id and not self.live_chat_id:
             log.warning("YouTube needs video_id (or live_chat_id) — adapter disabled")
             self._set_stopped("No YouTube live video set. Paste your live video link, then Connect.")
@@ -277,6 +288,7 @@ class YouTubeAdapter(BaseAdapter):
         )
 
     async def stop(self) -> None:
+        """Cancel the poll loop."""
         self._running = False
         self._set_stopped()
         self._stop.set()
@@ -323,6 +335,7 @@ class YouTubeAdapter(BaseAdapter):
     # ------------------------------------------------------------------
 
     async def _loop_official(self) -> None:
+        """Find the liveChatId, then poll until stopped. Returning hands control back to _loop's retry."""
         interval = 5.0
         async with httpx.AsyncClient(timeout=20.0) as client:
             if not self.live_chat_id:
@@ -372,6 +385,7 @@ class YouTubeAdapter(BaseAdapter):
                     pass
 
     async def _resolve_chat_id(self, client: httpx.AsyncClient) -> str:
+        """videos.list -> the video's activeLiveChatId ("" when it isn't live). Costs 1 quota unit."""
         r = await client.get(
             VIDEOS_URL,
             params={
@@ -388,6 +402,7 @@ class YouTubeAdapter(BaseAdapter):
         return details.get("activeLiveChatId") or ""
 
     async def _poll_official(self, client: httpx.AsyncClient) -> float:
+        """One liveChatMessages.list page; returns the seconds to wait before the next one."""
         params: dict[str, Any] = {
             "liveChatId": self.live_chat_id,
             "part": "snippet,authorDetails",
@@ -409,6 +424,7 @@ class YouTubeAdapter(BaseAdapter):
         return next_poll_delay(interval_ms / 1000.0, self.poll_interval, official=True)
 
     async def _on_official_item(self, item: dict) -> None:
+        """One Data API chat item -> alert (memberships) and / or a ChatEvent (text, Super Chat / Sticker)."""
         mid = str(item.get("id") or "")
         if mid and mid in self._seen_ids:
             return
@@ -492,6 +508,7 @@ class YouTubeAdapter(BaseAdapter):
     # ------------------------------------------------------------------
 
     async def _loop_innertube(self) -> None:
+        """Read the chat page once for a key + continuation token, then poll until the chat ends."""
         interval = 4.0
         async with httpx.AsyncClient(
             timeout=25.0, headers=BROWSER_HEADERS, follow_redirects=True
@@ -602,6 +619,7 @@ class YouTubeAdapter(BaseAdapter):
         return api_key, continuation, client_version
 
     def _find_continuation(self, obj: Any, depth: int = 0) -> Optional[str]:
+        """Search ytInitialData (at most 12 levels deep) for the first chat continuation token."""
         if depth > 12:
             return None
         if isinstance(obj, dict):
@@ -631,6 +649,7 @@ class YouTubeAdapter(BaseAdapter):
         continuation: str,
         client_version: str,
     ) -> tuple[str, float]:
+        """One get_live_chat call: handle its actions, return (next continuation, seconds to wait)."""
         body = {
             "context": {
                 "client": {
@@ -683,6 +702,7 @@ class YouTubeAdapter(BaseAdapter):
         return next_cont, next_poll_delay(interval, self.poll_interval)
 
     async def _on_innertube_action(self, action: dict) -> None:
+        """One InnerTube action: removals, gifts, Jewels, memberships, then ordinary / paid chat lines."""
         self.scout.check_action(action)
         self._note_gift_sender(action)
         removed = youtube_removed(action)
@@ -907,9 +927,11 @@ class YouTubeAdapter(BaseAdapter):
 
     @staticmethod
     def _runs_to_text(node: Any) -> str:
+        """Just the text of an InnerTube ``runs`` / ``simpleText`` node."""
         return runs_to_text_and_emotes(node)[0]
 
     def _remember(self, mid: str) -> None:
+        """Mark a message id as handled, so overlapping poll pages don't show it twice."""
         self._seen_ids.add(mid)
         if len(self._seen_ids) > self._seen_max:
             # Drop arbitrary older half (set has no order; rebuild is fine for dedupe)
@@ -942,6 +964,7 @@ def sticker_picture(renderer: dict) -> tuple[str, str]:
 
 
 def _emoji_image(emoji: dict) -> str:
+    """The widest picture of an InnerTube emoji (same rule as _best_source)."""
     thumbs = ((emoji.get("image") or {}).get("thumbnails") or [])
     best = ""
     best_w = -1

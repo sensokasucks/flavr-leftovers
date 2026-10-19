@@ -31,6 +31,7 @@ ENGINE_KEYS = (
     "command_permission",
 )
 
+# Bots left off the roll when ``credits.ignore_usernames`` is empty (config.py DEFAULTS has its own list).
 DEFAULT_IGNORE = [
     "nightbot",
     "streamelements",
@@ -48,6 +49,7 @@ DEFAULT_IGNORE = [
 
 @dataclass
 class Chatter:
+    """One chatter in this session's credits (one per platform + username). Saved in the session file."""
     platform: str
     username: str
     display_name: str
@@ -63,6 +65,7 @@ class Chatter:
 
     @property
     def key(self) -> str:
+        """"platform:username", the dict key in ``CreditsEngine.chatters``."""
         return f"{self.platform}:{self.username}"
 
     def to_dict(self) -> dict:
@@ -84,6 +87,7 @@ class Chatter:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Chatter":
+        """Rebuild a Chatter from the session file (missing fields get safe defaults)."""
         return cls(
             platform=str(data.get("platform") or ""),
             username=str(data.get("username") or ""),
@@ -101,6 +105,12 @@ class Chatter:
 
 
 class CreditsEngine:
+    """The Core Credits roll: who chatted this session, plus the movie-style cast (core/cast.py).
+
+    One instance in main.py; the chat handler calls ``ingest`` for every line, the admin
+    Credits pages and /overlay/credits.html read ``snapshot()``. The session lives in
+    data/credits_session.json and survives restarts until the streamer resets it.
+    """
     def __init__(self, config: dict, root: Path):
         self.root = root
         self.enabled = False
@@ -126,6 +136,11 @@ class CreditsEngine:
         self.load()
 
     def configure(self, config: dict) -> None:
+        """Apply the ``credits:`` config block (start, and live on every save).
+
+        Engine keys (ENGINE_KEYS) drive the roll; every other key is treated as look (theme).
+        The streamer's own Kick / Twitch channel is added to the ignore list unless turned off.
+        """
         cfg = config.get("credits") or {}
         self.enabled = bool(cfg.get("enabled"))
         ignore = list(cfg.get("ignore_usernames") or DEFAULT_IGNORE)
@@ -154,6 +169,7 @@ class CreditsEngine:
         log.info("Credits %s — %s unique", "on" if self.enabled else "off", len(self.chatters))
 
     def load(self) -> None:
+        """Read the saved session (start time + chatters); a missing or broken file is ignored."""
         if not self.session_path.exists():
             return
         try:
@@ -171,6 +187,7 @@ class CreditsEngine:
                 continue
 
     def save(self) -> None:
+        """Write the session now, on the calling thread."""
         self._dirty = False
         self._write(self.started_at, list(self.chatters.values()))
 
@@ -188,6 +205,7 @@ class CreditsEngine:
         tmp.replace(self.session_path)
 
     def save_if_dirty(self) -> None:
+        """``save()`` only when something changed."""
         if self._dirty:
             self.save()
 
@@ -203,6 +221,11 @@ class CreditsEngine:
             raise
 
     def ingest(self, event: ChatEvent, *, force: bool = False) -> Optional[Chatter]:
+        """Count one chat line. Returns the Chatter only when this is someone new, else None.
+
+        Skipped when credits are off (unless ``force``), for ignored names, and for lines
+        shorter than ``min_message_length``.
+        """
         if not self.enabled and not force:
             return None
         user = event.user
@@ -262,6 +285,7 @@ class CreditsEngine:
         return bool(drop)
 
     def reset(self) -> None:
+        """Start a new session: empty roll, new start time (which also reshuffles the cast), saved at once."""
         self.chatters.clear()
         self.started_at = time.time()
         self.play["frozen_roster"] = None
@@ -270,6 +294,7 @@ class CreditsEngine:
         self.save()
 
     def list_chatters(self, sort: str = "first_seen") -> list[Chatter]:
+        """Chatters sorted by "name", "last_seen", "messages" (most first) or "first_seen" (default)."""
         items = list(self.chatters.values())
         if sort == "name":
             items.sort(key=lambda c: c.display_name.lower())
@@ -282,6 +307,10 @@ class CreditsEngine:
         return items
 
     def snapshot(self) -> dict:
+        """What the credits overlay draws: chatters, counts, chat-game titles and the cast.
+
+        While frozen, the roster captured at freeze time is returned instead.
+        """
         sort = self.theme.get("sort") or "first_seen"
         if self.play.get("freeze") and self.play.get("frozen_roster"):
             return self.play["frozen_roster"]
@@ -312,9 +341,14 @@ class CreditsEngine:
         return self.cast.decorate(snap, self.started_at)
 
     def public_play(self) -> dict:
+        """The play state for the overlay / API, without the (large) frozen roster."""
         return {k: v for k, v in self.play.items() if k != "frozen_roster"}
 
     def set_play(self, body: dict[str, Any]) -> dict:
+        """Playback controls from the dashboard: playing, mode, freeze (take a fixed roster) and restart.
+
+        ``generation`` goes up on restart; the overlay starts the roll over when it sees a new one.
+        """
         if "playing" in body:
             self.play["playing"] = bool(body["playing"])
         if body.get("mode") in PLAY_MODES:
@@ -333,6 +367,7 @@ class CreditsEngine:
         return self.public_play()
 
     def apply_theme(self, body: dict[str, Any]) -> dict:
+        """Change look keys live (not saved here). A ``style_id`` also switches the cast style."""
         body.pop("persist", None)   # the admin route decides about saving
         body = sanitize_look(body)
         if "style_id" in body and self.cast:
@@ -344,9 +379,11 @@ class CreditsEngine:
         return self.theme
 
     def note_alert(self, kind: str, platform: str, username: str) -> None:
+        """An alert happened (raid, follow, sub, paid ...): tag the chatter for the cast groups."""
         self.cast.tag_alert(kind, platform, username)
 
     def apply_credit_command(self, raw_message: str, default_platform: str, set_by: str) -> str:
+        """Handle !credit "name" "job" / !credit "name" clear / !credit "name". Returns the chat reply."""
         # strip command token
         text = raw_message or ""
         text = text.split(None, 1)[1] if text.split() else ""
@@ -419,6 +456,7 @@ class CreditsEngine:
         return rows
 
     def unticked(self) -> int:
+        """How many chatters are not ticked yet on the Credits list."""
         return sum(1 for c in self.chatters.values() if not c.ticked)
 
     def tick(self, keys: list[str], done: bool) -> int:
@@ -434,6 +472,7 @@ class CreditsEngine:
         return changed
 
     def checklist_csv(self, filters: Optional[dict[str, Any]] = None) -> str:
+        """The Credits list (with the same filters) as CSV text, formula-safe."""
         import io
 
         from core.csv_safe import SafeWriter

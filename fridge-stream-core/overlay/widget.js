@@ -9,6 +9,12 @@
  *   ?alerts=0 (chat only), ?hide=<seconds> (Streamlabs chat box: lines leave after that),
  *   ?history=1 (start with the last few messages), ?preview=1 (made-up chatters when quiet),
  *   ?hint=0 / ?hint=1 (the corner line outside OBS)
+ *
+ * Talks to: /api/overlay/widget/<name> (api/server.py: version, platform, values, channel,
+ *   currency; polled every 4 s so a dashboard save reloads the frame), /api/overlay/chat-settings
+ *   (badge pictures), /ws (chat, chat_history, chat_removed, chat_user_hidden, alert,
+ *   alert_history, widget_button). The {fridge: ...} messages to and from the frame must match
+ *   overlay/widget-frame.js.
  */
 (() => {
   const B = window.FridgeWidgetBridge;
@@ -21,6 +27,7 @@
   const wantHistory = params.get("history") === "1";
   const hideSec = Math.max(0, Number(params.get("hide")) || 0);
 
+  // Words accepted in ?platform= / ?platforms= (short forms too) -> Core's platform names.
   const PLATFORM_NAMES = { kick: "kick", twitch: "twitch", youtube: "youtube", yt: "youtube", ttv: "twitch", tw: "twitch", k: "kick" };
   const platformFilter = new Set();
   [params.get("platform") || "", ...(params.get("platforms") || "").split(/[,+\s]+/)]
@@ -32,6 +39,7 @@
   let info = null;        // {name, platform, values, version, channel, currency}
   let media = {};         // the chat overlay's badge pictures, when uploaded
   let ready = false;      // the frame said hello after the widget's code ran
+  // messages for the frame held until it says "ready" (a reload empties it)
   let queue = [];
   const seen = [];        // recent lines, so deletions by user / name can name the message ids
 
@@ -40,6 +48,7 @@
   // StreamElements' session data: the latest follower / sub / tip / cheer / raid and recent lists
   const session = {};
 
+  // "*": the sandboxed frame has a blank ("null") origin, so it can't be named as the target.
   function post(msg) {
     if (!frame.contentWindow) return;
     frame.contentWindow.postMessage(msg, "*");
@@ -50,12 +59,15 @@
   }
   const isSL = () => info && info.platform === "streamlabs";
 
+  // (Re)load the widget's frame; ?v= changes with every saved edit so the browser doesn't cache it.
   function loadFrame() {
     ready = false;
     queue = [];
     frame.src = `/widget-frame/${encodeURIComponent(name)}?v=${info.version}`;
   }
 
+  // Messages from the frame: "ready" (send "load" + the queue), and SE_API.store get / set.
+  // Anything not from our own frame is ignored.
   window.addEventListener("message", (ev) => {
     if (ev.source !== frame.contentWindow) return;
     const m = ev.data || {};
@@ -75,12 +87,14 @@
     }
   });
 
+  // One Core chat line -> the frame. `quiet` = history / samples: not counted in the corner hint.
   function chat(data, quiet) {
     if (!data || !allowed(data.platform)) return;
     if (!quiet) hint.count("chat messages");
     const user = data.user || {};
     seen.push({ platform: data.platform, id: String(data.message_id || ""), user: String(user.id || ""),
       name: String(user.username || "").toLowerCase(), display: String(user.display_name || "").toLowerCase() });
+    // (only the last 300 lines can be matched for deletions)
     if (seen.length > 300) seen.splice(0, seen.length - 300);
     if (isSL()) {
       const m = B.slMessage(data, media);
@@ -90,6 +104,8 @@
     }
   }
 
+  // Tell the frame these `seen` lines are gone. StreamElements gets delete-message per id and
+  // delete-messages for a whole user; Streamlabs' chat box removes the rows itself (sl-remove).
   function removed(list, userId) {
     const ids = list.map((s) => s.id).filter(Boolean);
     list.forEach((s) => { const i = seen.indexOf(s); if (i !== -1) seen.splice(i, 1); });
@@ -109,6 +125,7 @@
     const uname = String(d.username || "").toLowerCase();
     const hits = seen.filter((s) => (!plat || s.platform === plat) && (d.all || (mid ? s.id === mid
       : (uid && s.user === uid) || (uname && (s.name === uname || s.display === uname)))));
+    // A line not in `seen` (older, or before this page loaded) can still be removed by its id.
     if (!hits.length && mid) hits.push({ id: mid });
     removed(hits, !mid && !d.all ? uid || (hits[0] && hits[0].user) || "" : "");
   }
@@ -122,6 +139,8 @@
     removed(hits, id || (hits[0] && hits[0].user) || "");
   }
 
+  // One Core alert -> the frame (unless ?alerts=0 or another platform). StreamElements widgets
+  // also get onSessionUpdate with the latest / recent lists.
   function alert(a) {
     if (!wantAlerts || !a || !allowed(a.platform)) return;
     if (isSL()) {
@@ -145,6 +164,7 @@
     });
   }
 
+  // ?preview=1: made-up chatters and a test follow, shown when no real chat came in yet.
   function samples() {
     const now = Date.now() / 1000;
     [
@@ -165,6 +185,8 @@
     } catch (_) { media = {}; }
   }
 
+  // Fetch the widget's info; reload the frame only when its version or platform changed.
+  // Returns false (and keeps retrying from the caller) while Core or the widget isn't there.
   async function loadInfo() {
     if (!name) {
       hint.set("core", "Add ?name=<widget> to the address (Overlays → Chat widgets copies it)");
@@ -225,6 +247,7 @@
     // keep checking: saving the widget's settings on the dashboard reloads it here
     setInterval(loadInfo, 4000);
     setInterval(loadMedia, 30000);
+    // keep the WebSocket from going idle (25 s)
     setInterval(() => { if (ws && ws.readyState === WebSocket.OPEN) ws.send("ping"); }, 25000);
   }
 

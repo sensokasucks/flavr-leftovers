@@ -9,13 +9,23 @@
  *   {messageId}, {badges}) and fires onEventReceived with the message; alerts arrive in the
  *   Streamlabs socket shape {type, for, message: [{name, amount, ...}]}.
  * Kick and YouTube are dressed as the nearest Twitch thing (badges, tiers, cheers).
+ *
+ * Input shapes are Core's /ws packets: "chat" data {platform, message_id, timestamp (seconds),
+ * message, emotes: [{start, end, url, name, ...}], user: {id, username, display_name, color,
+ * badges, is_mod, is_vip, is_subscriber, ...}} and "alert" data {kind, platform, display_name,
+ * amount, currency, months, qty, viewers, message, is_test, ...}. Alert kinds are the ones in
+ * core/alerts.py KINDS; a new kind needs a line in seAlert() and SL_TYPE or widgets never see it.
+ * Emote start / end are character positions (code points, Array.from), end included.
+ * What widgets get is listed for users in overlay/WIDGETS.md; keep the two in step.
  */
+// Works both as a browser script (window.FridgeWidgetBridge) and as a node module (tests).
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory();
   else root.FridgeWidgetBridge = factory();
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
+  // Address of a Twitch global badge picture by its id (/3 = the largest size).
   const TWITCH_BADGE = (id) => `https://static-cdn.jtvnw.net/badges/v1/${id}/3`;
   // Twitch's global badge pictures (version 1)
   const BADGES = {
@@ -35,14 +45,18 @@
   };
   // Core's chat picture slots (Chat overlay -> Pictures) for these, when uploaded
   const SLOT_FOR = { broadcaster: "badge-broadcaster", moderator: "badge-mod", vip: "badge-vip", subscriber: "badge-sub", founder: "badge-founder" };
+  // Kick writes emotes into the text as [emote:<id>:<name>].
   const KICK_EMOTE_RE = /\[emote:(\d+):([^\]]+)\]/g;
   const KICK_EMOTE_URL = (id) => `https://files.kick.com/emotes/${id}/fullsize`;
+  // For onWidgetLoad's currency (config overlay.widget_currency); unknown codes show the code itself.
   const CURRENCY_SYMBOL = { USD: "$", CAD: "$", AUD: "$", NZD: "$", EUR: "€", GBP: "£", JPY: "¥", BRL: "R$", INR: "₹", KRW: "₩", PLN: "zł", SEK: "kr", NOK: "kr", DKK: "kr", CHF: "CHF", MXN: "$", RUB: "₽", TRY: "₺" };
 
+  // HTML-escape. Everything put into widget HTML (renderedText, the Streamlabs item) goes through it.
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // The chatter's badges as Twitch badge names (keys of BADGES), in Twitch's order.
   function badgeKeys(user) {
     const out = [];
     const add = (k) => { if (k && !out.includes(k)) out.push(k); };
@@ -59,6 +73,8 @@
     return out.sort((a, b) => order.indexOf(a) - order.indexOf(b));
   }
 
+  // SE badge objects. `media` is the chat overlay's picture slots (from /api/overlay/chat-settings);
+  // an uploaded badge picture is used instead of Twitch's.
   function badgeList(user, media) {
     return badgeKeys(user).map((k) => ({
       type: k,
@@ -165,6 +181,8 @@
     return session;
   }
 
+  // onWidgetLoad detail. `info` is /api/overlay/widget/<name> (api/server.py): {values, channel,
+  // currency, ...}; `session` is the seRemember() data so far.
   function seLoadDetail(info, session) {
     const channel = String(info.channel || "");
     return {
@@ -178,12 +196,14 @@
     };
   }
 
+  // Core chat line -> SE onEventReceived {listener: "message", event: {...}} with Twitch-style tags.
   function seMessage(data, media) {
     const user = data.user || {};
     const plain = plainText(data);
     const { text, emotes } = spaceEmotes(plain.text, plain.emotes);
     const badges = badgeList(user, media);
     const keys = badges.map((b) => b.type);
+    // Twitch /me lines arrive wrapped in \u0001ACTION ... \u0001
     const isAction = /^\u0001ACTION /.test(text);
     const clean = isAction ? text.replace(/^\u0001ACTION /, "").replace(/\u0001$/, "") : text;
     const name = user.display_name || user.username || "";
@@ -234,6 +254,7 @@
     };
   }
 
+  // Core's sub tier number -> SE's tier string.
   const TIER = { 1: "1000", 2: "2000", 3: "3000" };
 
   /* Core alert -> SE "*-latest" event, or null for kinds SE has nothing for */
@@ -277,6 +298,8 @@
   }
 
   // ── Streamlabs ────────────────────────────────────────────────────────
+  // Core chat line -> {item, detail} for the Streamlabs chat box in widget-frame.js (slAdd).
+  // Every item field is already HTML-escaped, since it is pasted into the widget's template.
   function slMessage(data, media) {
     const user = data.user || {};
     const { text, emotes } = plainText(data);
@@ -318,14 +341,18 @@
     };
   }
 
+  // Core alert kind -> Streamlabs socket event type. Kinds not listed are not sent to Streamlabs widgets.
   const SL_TYPE = {
     follow: "follow", subscribe: "subscription", member: "subscription", resub: "resub", member_milestone: "resub",
     gift: "subscription", member_gift: "subscription", raid: "raid", host: "host", bits: "bits", powerup: "bits",
     kicks: "bits", superchat: "superchat", supersticker: "superchat", donation: "donation", jewels: "donation",
     charity: "donation",
   };
+  // Streamlabs' "for" field (which account the event came from); Kick passes as Twitch.
   const SL_FOR = { twitch: "twitch_account", youtube: "youtube_account", kick: "twitch_account" };
 
+  // Core alert -> Streamlabs socket event {type, for, message: [{name, amount, ...}]}, or null.
+  // `amount` means viewers for raids / hosts, months for resubs and the count for gifts.
   function slAlert(a) {
     const type = SL_TYPE[a.kind];
     if (!type) return null;

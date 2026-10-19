@@ -29,6 +29,7 @@ WOFF2 = b"wOF2" + b"\0" * 20
 
 class NameTests(unittest.TestCase):
     def test_names(self):
+        """Stored file names are cleaned to lowercase-with-dashes, at most 40 characters."""
         self.assertEqual(clean_name("  Party Time! "), "party-time")
         self.assertEqual(name_from_filename(r"C:\Users\me\My Ding.MP3"), "my-ding")
         self.assertEqual(name_from_filename("archive.tar.gz"), "archive-tar")
@@ -61,6 +62,7 @@ class LibraryTests(unittest.TestCase):
             self.assertTrue(again.save(MP3, "x")[1])
 
     def test_rejects(self):
+        """Empty files, SVG, programs and files over MAX_BYTES are refused."""
         with tempfile.TemporaryDirectory() as d:
             lib = MediaLibrary(Path(d))
             for bad in (b"", b"<svg onload=alert(1)>", b"MZ\x90\0 not a picture"):
@@ -104,6 +106,7 @@ class LibraryTests(unittest.TestCase):
             self.assertEqual([f["name"] for f in lib.list()], ["ding"])
 
     def test_resolve(self):
+        """A name finds its stored file; odd names and path tricks find nothing."""
         with tempfile.TemporaryDirectory() as d:
             lib = MediaLibrary(Path(d))
             lib.save(PNG, "boot")

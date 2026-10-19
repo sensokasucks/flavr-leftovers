@@ -114,6 +114,7 @@ class FillTests(unittest.TestCase):
         self.assertEqual(fill_fields("{a} {{a}}", {"a": True}, single=False), "{a} true")
 
     def test_compose(self):
+        """The frame page: jQuery and widget-frame.js before the widget's code, which can't break out of its <script>."""
         values = field_values(SE_FIELDS, SE_DATA)
         page = compose_frame("streamelements", {"html": SE_HTML, "css": SE_CSS, "js": SE_JS}, values)
         self.assertIn('data-title="hi"', page)
@@ -163,6 +164,7 @@ class RouteTests(unittest.TestCase):
     TOKEN = "test-token-widgets-123"
 
     def test_routes(self):
+        """The widget admin API and the public widget / frame routes."""
         from fastapi.testclient import TestClient
 
         from api.server import CoreState, create_app
@@ -211,6 +213,7 @@ class BridgeTests(unittest.TestCase):
         return json.loads(out.stdout)
 
     def test_se_message(self):
+        """A Core chat line becomes a StreamElements "message" event with Twitch-style tags."""
         ev = self.run_js("""return B.seMessage({platform: 'twitch', message_id: 'm1', timestamp: 1700000000,
             message: 'hi Kappa <b>', emotes: [{start: 3, end: 7, url: 'https://static-cdn.jtvnw.net/emoticons/v2/25/default/dark/2.0', id: '25'}],
             user: {id: '42', username: 'luna', display_name: 'Luna', color: '#f0f', is_mod: true, badges: ['subscriber', 'moderator']}}, {});""")
@@ -245,6 +248,7 @@ class BridgeTests(unittest.TestCase):
         self.assertEqual(r, ["hi :_k: :_k: !", [[3, 6], [8, 11]], "a b", [[0, 0], [2, 2]], "x Kappa", True, True])
 
     def test_alerts(self):
+        """Core alerts become StreamElements *-latest / Streamlabs events (or nothing)."""
         r = self.run_js("""return [B.seAlert({kind: 'gift', display_name: 'Gifter', qty: 5}),
             B.seAlert({kind: 'resub', display_name: 'R', months: 7}), B.seAlert({kind: 'superchat', display_name: 'S', amount: 5, currency: 'USD'}),
             B.seAlert({kind: 'raid', display_name: 'Raider', viewers: 12}), B.seAlert({kind: 'hypetrain'}),

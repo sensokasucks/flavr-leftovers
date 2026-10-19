@@ -6,11 +6,16 @@ from PIL import Image
 src=sys.argv[1] if len(sys.argv) > 1 else 'MANUAL.md'; md=open(src,encoding='utf-8').read()
 body=markdown.markdown(md, extensions=['tables','toc','fenced_code'])
 def emb(m):
+    """re.sub callback: read the matched local image and return a src= attribute holding it as an
+    inline JPEG (quality 86), so the HTML file needs no images folder.
+    """
     path=m.group(1)
     im=Image.open(path).convert('RGB'); b=io.BytesIO(); im.save(b,'JPEG',quality=86,optimize=True)
     return 'src="data:image/jpeg;base64,'+base64.b64encode(b.getvalue()).decode()+'"'
+# Only relative "images/..." paths are embedded, relative to the folder you run this in.
 body=re.sub(r'src="(images/[^"]+)"',emb,body)
 # captions from alt text
+# An image alone in a paragraph becomes a figure, its alt text shown as the caption.
 body=re.sub(r'<p><img alt="([^"]*)" (src="[^"]+") /></p>', r'<figure><img alt="\1" \2 loading="lazy"><figcaption>\1</figcaption></figure>', body)
 css='''
 :root{--bg:#f7f6f3;--fg:#1d1d22;--muted:#5d5d68;--card:#ffffff;--line:#dedbd4;--accent:#b4341f;--code:#efece6}

@@ -73,6 +73,10 @@ class _Lane:
         self.task: Optional[asyncio.Task] = None
 
     def note_arrival(self, now: float) -> None:
+        """Record one incoming line; when a new clump starts, update ``rate`` from the clump that ended.
+
+        The rate is a moving average (60% old, 40% new) so one odd poll does not swing the pace.
+        """
         if now - self.last_arrival >= BURST_GAP:
             if self.burst_start:
                 # the clump just finished came in over the time until this one started
@@ -121,6 +125,7 @@ class ChatPacer:
         self._lanes: dict[str, _Lane] = {}
 
     def settings(self) -> tuple[set[str], float]:
+        """(platforms with smoothing on, max delay in seconds) from the live config; off if unreadable."""
         try:
             return smoothing_settings(self._get_config())
         except Exception:
@@ -128,12 +133,14 @@ class ChatPacer:
             return set(), DEFAULT_MAX_DELAY
 
     def queued(self, platform: str = "") -> int:
+        """Lines still held for ``platform``, or for every platform when it is ""."""
         if platform:
             lane = self._lanes.get(platform)
             return len(lane.queue) if lane else 0
         return sum(len(l.queue) for l in self._lanes.values())
 
     async def submit(self, event: ChatEvent) -> None:
+        """Take one chat line from the bus: deliver it now, or queue it and make sure the lane's drain task runs."""
         platform = getattr(event.platform, "value", str(event.platform))
         on, _ = self.settings()
         lane = self._lanes.get(platform)
@@ -188,22 +195,26 @@ class ChatPacer:
         return dropped
 
     async def flush_all(self) -> None:
+        """Let every held line out at once, in order (no pacing)."""
         for lane in list(self._lanes.values()):
             await self._flush(lane)
 
     async def _flush(self, lane: _Lane) -> None:
+        """Deliver everything in one lane right now."""
         while lane.queue:
             _, ev = lane.queue.popleft()
             await self._safe_deliver(ev)
         lane.last_release = self._clock()
 
     async def _safe_deliver(self, event: ChatEvent) -> None:
+        """Deliver one line; a failing handler is logged so the queue keeps moving."""
         try:
             await self._deliver(event)
         except Exception:
             log.exception("chat delivery failed")
 
     async def _drain(self, platform: str, lane: _Lane) -> None:
+        """Background task per lane: let lines out one at a time at ``gap`` spacing until the queue is empty."""
         while lane.queue:
             on, max_delay = self.settings()
             if platform not in on:

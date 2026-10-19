@@ -1,5 +1,8 @@
 """
-Abstract base for platform adapters.
+Abstract base for platform adapters (Twitch, Kick, YouTube in this folder).
+
+main.py builds one adapter per enabled platform (``PLATFORM_ADAPTERS``), calls
+``start()`` / ``stop()`` and reads ``status_info()`` for the dashboard Status page.
 
 Every adapter must:
   - connect / disconnect
@@ -22,10 +25,16 @@ from core.models import ChatEvent, Platform
 
 log = logging.getLogger("adapters.base")
 
-CHAT_SUMMARY_SEC = 60.0
+CHAT_SUMMARY_SEC = 60.0   # seconds between the "N chat lines" summary lines in the console
 
 
 class BaseAdapter(abc.ABC):
+    """Shared state and helpers for one chat platform connection.
+
+    Subclasses set ``platform``, implement ``start`` / ``stop``, and call ``_emit`` (chat),
+    ``_emit_removed`` (mod deletions) and ``_emit_alert`` (subs, raids, tips ...).
+    """
+
     platform: Platform
 
     def __init__(
@@ -47,6 +56,7 @@ class BaseAdapter(abc.ABC):
         self.last_message_at: Optional[float] = None
 
     def _set_connected(self) -> None:
+        """Mark the platform as connected and clear the last error."""
         self.state = "connected"
         self.connected = True
         self.last_error = ""
@@ -64,6 +74,7 @@ class BaseAdapter(abc.ABC):
             self.last_error = str(reason).strip()
 
     def status_info(self) -> dict:
+        """Dashboard status for this platform (read by main.py ``platform_info``)."""
         return {
             "state": self.state,
             "connected": bool(self.connected),
@@ -78,6 +89,7 @@ class BaseAdapter(abc.ABC):
 
     @abc.abstractmethod
     async def stop(self) -> None:
+        """Disconnect and cancel background tasks. Also called on an adapter that failed to start."""
         ...
 
     async def send_message(self, text: str, reply_to: Optional[ChatEvent] = None) -> bool:
@@ -86,6 +98,7 @@ class BaseAdapter(abc.ABC):
         return False
 
     async def _emit(self, event: ChatEvent) -> None:
+        """Hand one normalized chat line to the EventBus (commands, points, overlays listen there)."""
         now = time.time()
         self.last_message_at = now
         # Each chat line is logged at DEBUG by the adapter; the console gets one line a minute

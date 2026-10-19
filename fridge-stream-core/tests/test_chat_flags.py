@@ -35,6 +35,7 @@ def chat(name: str, text: str, uid: str = "", platform: Platform = Platform.KICK
 
 class Settings(unittest.TestCase):
     def test_normalize(self):
+        """Saved flags are cleaned: ids from names, duplicate phrases dropped, numbers clamped."""
         flags = normalize_custom([
             {"name": "  Giveaway   entry ", "phrases": "enter me\n\nENTER ME\ngiveaway*", "points": "25"},
             {"name": "Giveaway entry"},          # same name: its own id
@@ -159,6 +160,7 @@ class CoreActions(unittest.TestCase):
         self.alerts.append(p)
 
     def test_actions(self):
+        """A matching flag runs its actions: alert, reply, points, reaction, game hook."""
         core = self.core([{"name": "Giveaway", "phrases": ["enter me"], "alert": True,
                            "alert_text": "{name} is in!", "reply": "@{name} you're in ({flag})",
                            "points": 25, "reaction": "boo"}])

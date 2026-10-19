@@ -1,12 +1,20 @@
-"""Chat command / emote cheat sheets -> PNGs (rendered with headless Chromium)."""
+"""Chat command / emote cheat sheets -> PNGs (rendered with headless Chromium).
+
+Run: python build_chat_guide.py (needs the playwright package and its Chromium).
+Each entry in ``sheets`` is an HTML page built from the helpers below; main() screenshots
+it to chat_guide_<name>.png in OUT. The PNGs in this folder were made this way.
+"""
 import asyncio, html
 from pathlib import Path
 from playwright.async_api import async_playwright
 
+# Output folder for the PNGs (an absolute path; change it to build somewhere else).
 OUT = Path("/mnt/user-data/outputs/chat_guide")
 OUT.mkdir(parents=True, exist_ok=True)
 E = html.escape
 
+# Shared page styles. The @font-face paths expect the Poppins fonts installed under
+# /usr/share/fonts/truetype/google-fonts. --acc is the accent colour, set per sheet by page().
 CSS = r"""
 @font-face { font-family: Pop; src: url(file:///usr/share/fonts/truetype/google-fonts/Poppins-Regular.ttf); font-weight: 400; }
 @font-face { font-family: Pop; src: url(file:///usr/share/fonts/truetype/google-fonts/Poppins-Medium.ttf); font-weight: 500; }
@@ -62,14 +70,17 @@ h1 { font-size:54px; line-height:1.05; font-weight:700; margin:6px 0 10px; }
         font-size:17px; line-height:1.5; margin-top:18px; }
 """
 
+# Platform letter -> (label, CSS class of its coloured dot).
 PLAT = {"k": ("Kick", "k"), "t": ("Twitch", "t"), "y": ("YouTube", "y")}
 
 def chips(plats):
+    """Platform chips for a row: "all" or a string of letters from PLAT, e.g. "k" or "kt"."""
     if plats == "all":
         return '<span class="chip"><span class="dot k"></span><span class="dot t"></span><span class="dot y"></span>All platforms</span>'
     return "".join(f'<span class="chip"><span class="dot {PLAT[p][1]}"></span>{PLAT[p][0]}</span>' for p in plats)
 
 def cmd_html(c):
+    """A command line as HTML: the command words escaped, argument tokens greyed out."""
     # <arg>, [optional] and @name are arguments (brackets may hold spaces)
     import re
     out = []
@@ -82,6 +93,10 @@ def cmd_html(c):
 
 
 def row(ico, cmd, what, ex="", status="live", plats="all", tags=()):
+    """One command row: icon, command, description and meta column. ``what`` and ``ex`` are
+    inserted as HTML (not escaped), so they may hold <b> and entities. ``status`` is "live"
+    or anything else for PLANNED; ``tags`` are small dashed labels.
+    """
     badge = '<span class="badge live">LIVE</span>' if status == "live" else '<span class="badge soon">PLANNED</span>'
     tg = "".join(f'<span class="tag">{E(t)}</span>' for t in tags)
     exh = f'<span class="ex">{ex}</span>' if ex else ""
@@ -91,8 +106,10 @@ def row(ico, cmd, what, ex="", status="live", plats="all", tags=()):
             f'<div class="line">{tg}</div></div></div>')
 
 def section(title, sub, rows):
+    """A titled block of rows. ``title`` and ``sub`` are inserted as HTML."""
     return f'<div class="section"><h2>{title} <small>{sub}</small></h2><div class="rows">{"".join(rows)}</div></div>'
 
+# Reused at the top and bottom of most sheets.
 LEGEND = ('<div class="legend">'
           '<span class="badge live">LIVE</span> works now'
           '<span class="chip"><span class="dot k"></span><span class="dot t"></span><span class="dot y"></span>All platforms</span> same on Kick, Twitch, YouTube'
@@ -104,10 +121,15 @@ FOOT = ('<div class="foot"><span><b>Answers show on the reply screen</b> above t
         '<span><b>Cooldowns apply.</b> Spamming won\'t make things happen faster.</span></div>')
 
 def page(kicker, title, sub, body, acc="#53fc18"):
+    """A whole HTML page for one sheet. ``title``, ``sub`` and ``body`` are HTML; ``acc`` is the
+    accent colour.
+    """
     return (f'<!doctype html><html><head><meta charset="utf-8"><style>{CSS}</style></head>'
             f'<body style="--acc:{acc}"><div class="sheet" id="sheet"><div class="kicker">{E(kicker)}</div>'
             f'<h1>{title}</h1><div class="sub">{sub}</div>{body}</div></body></html>')
 
+# Sheet name -> HTML. Each one becomes chat_guide_<name>.png. The text is written by hand:
+# keep it in step with the real chat commands and settings when they change.
 sheets = {}
 
 # ── 1. Reactions + crowd moments ───────────────────────────────
@@ -129,7 +151,11 @@ sheets["1_reactions"] = page("Stream chat guide · 1 of 5", "Throw things &amp; 
 
 # ── 2. Emote combos ────────────────────────────────────────────
 def mood(ico, name, eff, k, t, y, emo):
+    """One emote group card: the emote names that trigger it on Kick, Twitch and YouTube plus
+    plain emoji. A name ending in "*" is a third-party (BTTV / FFZ / 7TV) emote and is drawn dashed.
+    """
     def names(lst):
+        """The emote name chips for one platform, or a dash when the list is empty."""
         if not lst:
             return '<span class="none">—</span>'
         out = []
@@ -245,6 +271,9 @@ sheets["6_mods"] = page("Stream chat guide · for mods", "Running the games",
     ]) + FOOT, "#ffb347")
 
 async def main():
+    """Open headless Chromium once, then for each sheet: write a temporary HTML file, load it,
+    screenshot the #sheet element to a PNG and delete the HTML. Prints each sheet's height.
+    """
     async with async_playwright() as pw:
         b = await pw.chromium.launch()
         pg = await b.new_page(viewport={"width": 1600, "height": 900}, device_scale_factor=1)
@@ -252,6 +281,7 @@ async def main():
             f = OUT / f"{name}.html"
             f.write_text(doc, encoding="utf-8")
             await pg.goto(f.as_uri())
+            # A short pause (400 ms) so the page finishes drawing before the screenshot.
             await pg.wait_for_timeout(400)
             el = await pg.query_selector("#sheet")
             await el.screenshot(path=str(OUT / f"chat_guide_{name}.png"))

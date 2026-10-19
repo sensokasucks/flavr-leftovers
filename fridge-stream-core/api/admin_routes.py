@@ -3,6 +3,21 @@ Admin API for users, points, account linking, chat history export,
 and the hybrid config / commands editor.
 
 Protected by a simple shared token from config (points.admin_token).
+
+Every route lives under /api/admin and checks the ``X-Admin-Token`` header (``_auth``),
+which admin/admin.js sends on each call. ``create_admin_router`` is mounted by
+api/server.py; routes reach the running Core through ``core_state`` (CoreState,
+filled by main.py's StreamCore).
+
+Config saves: each page saves only its own block of config.yaml, starting from the whole
+live (or on-disk) config, so the other blocks (command_groups, plugin / market settings,
+reactions ...) are kept. ``save_config`` writes exactly what it is given, so never call it
+with a partial dict.
+
+Map of the sections below (in order): stats / users / chat, Paid list, config + commands
+editor, platforms, Twitch sign-in, command groups, reactions, chat games, alerts, avatars,
+red flags, chat overlay style, overlay assets, stored files, chat widgets, integrations
+test bench, credits, game plugins.
 """
 
 from __future__ import annotations
@@ -42,15 +57,22 @@ from core.alerts import (
 
 log = logging.getLogger("api.admin")
 
+# the fridge-stream-core folder (data/, config/ live under it)
 _CORE_ROOT = Path(__file__).resolve().parent.parent
+
+# Request bodies (pydantic models). FastAPI answers 422 on its own when a body doesn't fit.
 
 
 class PointsBody(BaseModel):
+    """POST /users/{id}/points: add (or with a negative delta, take) points."""
+
     delta: int
     reason: str = "admin adjust"
 
 
 class LinkBody(BaseModel):
+    """POST /users/{id}/link: attach another platform account to this person."""
+
     platform: str
     platform_user_id: str = ""          # empty: link by ``username`` instead
     username: str = ""
@@ -58,6 +80,8 @@ class LinkBody(BaseModel):
 
 
 class MergeBody(BaseModel):
+    """POST /users/{id}/merge: fold another user (and their points) into this one."""
+
     absorb_user_id: int = Field(..., description="User id to merge INTO the path user")
 
 
@@ -160,6 +184,8 @@ class MetricsTestBody(BaseModel):
 
 
 class CreditsPlayBody(BaseModel):
+    """POST /credits/play: roll / stop / freeze the end credits (None = leave as is)."""
+
     playing: Optional[bool] = None
     mode: Optional[str] = None
     freeze: Optional[bool] = None
@@ -167,6 +193,8 @@ class CreditsPlayBody(BaseModel):
 
 
 class CreditsSeedBody(BaseModel):
+    """POST /credits/seed: add a name to the credits by hand (testing, or someone chat missed)."""
+
     username: str
     display_name: str = ""
     platform: str = "twitch"
@@ -178,6 +206,7 @@ class CreditsEnableBody(BaseModel):
     enabled: bool
 
 
+# coerce_plugin_field returns this for "leave the saved value as it is" (an empty number box)
 _SKIP = object()
 
 
@@ -236,6 +265,7 @@ def coerce_plugin_field(field: dict, raw: Any) -> Any:
 
 
 def _get_path(data: dict, key: str) -> Any:
+    """``data["a"]["b"]`` for key "a.b", or None when a part is missing."""
     cur: Any = data
     for part in key.split("."):
         if not isinstance(cur, dict):
@@ -245,6 +275,7 @@ def _get_path(data: dict, key: str) -> Any:
 
 
 def _set_path(data: dict, key: str, value: Any) -> None:
+    """Set ``data["a"]["b"] = value`` for key "a.b", creating the dicts in between."""
     parts = key.split(".")
     cur = data
     for part in parts[:-1]:
@@ -257,6 +288,7 @@ def _set_path(data: dict, key: str, value: Any) -> None:
 
 
 def _core_base(cfg: dict) -> str:
+    """Core's own address from config (``core.host`` / ``core.port``), for overlay links."""
     core = cfg.get("core") or {}
     return f"http://{core.get('host', '127.0.0.1')}:{int(core.get('port', 3850))}"
 
@@ -277,6 +309,7 @@ def clean_platform_fields(cfg: dict) -> None:
 
 
 def restart_info(core_state) -> list:
+    """What changed since Core started that only a restart applies (shown after a save)."""
     from core.restart import restart_needed
 
     boot = getattr(core_state, "boot_config", None)
@@ -292,6 +325,7 @@ def _can_restart_raw():
 
 
 def _can_restart() -> bool:
+    """Can the dashboard's Restart button bring Core back by itself (core/restart.py)?"""
     return _can_restart_raw()[0]
 
 
@@ -313,8 +347,10 @@ def keep_admin_token(incoming: dict, live: dict) -> None:
 
 
 def create_admin_router(core_state) -> APIRouter:
+    """Build every /api/admin route around ``core_state``. Called once by api/server.py."""
     router = APIRouter(prefix="/api/admin", tags=["admin"])
 
+    # Small getters: each raises 503 while that part of Core isn't ready yet.
     def _store():
         store = getattr(core_state, "store", None)
         if not store:
@@ -322,15 +358,18 @@ def create_admin_router(core_state) -> APIRouter:
         return store
 
     def _plugin_rows(cfg: dict, base: str) -> list:
+        """One row per installed plugin (core/plugins.py PluginManager.info), [] without plugins."""
         mgr = getattr(core_state, "plugins", None)
         return mgr.info(cfg, base) if mgr is not None else []
 
     def _plugins_follow(cfg: dict) -> None:
+        """Hand a saved config to the running plugins (they apply what they can live)."""
         mgr = getattr(core_state, "plugins", None)
         if mgr is not None:
             mgr.apply_config(cfg)
 
     def _auth(token: Optional[str]):
+        """Raise 401 unless ``token`` is the admin token. Every route calls this first."""
         # Placeholder tokens ("change-me") are never accepted; Core falls back
         # to the random token it generated in data/admin_token.txt.
         expected = resolve_admin_token(core_state.config or {}, _CORE_ROOT)
@@ -347,6 +386,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/stats")
     async def stats(x_admin_token: Optional[str] = Header(None)):
+        """Database totals: users, saved chat messages, points handed out."""
         _auth(x_admin_token)
         return await _store().stats()
 
@@ -617,6 +657,7 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(503, "Paid list not ready")
         return paid
 
+    # Keep these filter names in sync with the Paid page's query string (admin/admin.js)
     def _paid_filters(status: str, since: Optional[float], until: Optional[float], platforms: str,
                       group: str, kinds: str, min: Optional[float], has_message: str, q: str, sort: str) -> dict:
         return {"status": status, "since": since, "until": until, "platforms": platforms, "group": group,
@@ -648,6 +689,7 @@ def create_admin_router(core_state) -> APIRouter:
         return out
 
     def _midnight() -> float:
+        """Today 00:00 local time, as unix seconds."""
         t = time.localtime()
         return time.mktime((t.tm_year, t.tm_mon, t.tm_mday, 0, 0, 0, 0, 0, -1))
 
@@ -748,6 +790,8 @@ def create_admin_router(core_state) -> APIRouter:
         incoming = dict(body.config)
         # Preserve command_groups unless the payload includes them
         live = getattr(core_state, "config", None) or load_config()
+        # The form sends the whole config it got from GET /config; the blocks below are the
+        # ones other pages own, so the live copy wins over the form's (possibly stale) one.
         if "command_groups" not in incoming:
             if isinstance(live.get("command_groups"), dict):
                 incoming["command_groups"] = live["command_groups"]
@@ -908,6 +952,7 @@ def create_admin_router(core_state) -> APIRouter:
     # ------------------------------------------------------------------
 
     def _twitch_auth():
+        """The shared TwitchAuth (adapters/twitch_auth.py), configured from the live config."""
         from adapters.twitch_auth import get_auth
 
         return get_auth(getattr(core_state, "config", None) or load_config())
@@ -928,6 +973,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.post("/twitch/auth/cancel")
     async def twitch_auth_cancel(x_admin_token: Optional[str] = Header(None)):
+        """Stop waiting for the code to be typed at twitch.tv/activate."""
         _auth(x_admin_token)
         auth = _twitch_auth()
         auth.cancel_login()
@@ -943,6 +989,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/commands")
     async def get_commands(x_admin_token: Optional[str] = Header(None)):
+        """commands.json plus the plugins' default commands, for the Commands editor."""
         _auth(x_admin_token)
         cmds = load_commands()
         # Game plugins' default commands show too (marked with "plugin"); editing one and saving
@@ -1007,6 +1054,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/command-groups")
     async def get_command_groups(x_admin_token: Optional[str] = Header(None)):
+        """Every command group with its on/off and binding, and which are active right now."""
         _auth(x_admin_token)
         cfg = getattr(core_state, "config", None) or load_config()
         router = getattr(core_state, "router", None)
@@ -1110,6 +1158,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/reactions")
     async def get_reactions(x_admin_token: Optional[str] = Header(None)):
+        """The reactions block (normalized), available effects, live status and name conflicts."""
         _auth(x_admin_token)
         from core.reactions import normalize_config
 
@@ -1171,6 +1220,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/reactions/images")
     async def list_reaction_images(x_admin_token: Optional[str] = Header(None)):
+        """Built-in and stored pictures a reaction can throw, and the upload size limit."""
         _auth(x_admin_token)
         from core.reaction_images import MAX_BYTES
 
@@ -1190,6 +1240,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.delete("/reactions/images/{name}")
     async def delete_reaction_image(name: str, x_admin_token: Optional[str] = Header(None)):
+        """Delete an older custom upload (built-in and Stored files pictures are refused)."""
         _auth(x_admin_token)
         lib = _images()
         if not lib.delete(name):
@@ -1258,6 +1309,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/chat_games")
     async def get_chat_games(x_admin_token: Optional[str] = Header(None)):
+        """The chat_games block, the form description the page draws, status and conflicts."""
         _auth(x_admin_token)
         from core.chat_games import FORM, normalize_config
 
@@ -1350,6 +1402,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/chat_games/moments.csv")
     async def chat_games_moments_csv(x_admin_token: Optional[str] = Header(None)):
+        """Download the moments chat marked with !clip / !moment (stream time + note) as CSV."""
         _auth(x_admin_token)
         stamp = time.strftime("%Y%m%d-%H%M", time.localtime())
         return Response(
@@ -1412,6 +1465,7 @@ def create_admin_router(core_state) -> APIRouter:
         return {"ok": True, "alert": payload}
 
     def _saved_message(settings: Dict[str, Any]) -> str:
+        """The "Saved." line shown after an alerts / chat style save."""
         n = int(settings.get("placeholders_filled") or 0)
         extra = f" Filled in {n} template setting{'s' if n != 1 else ''} like {{font_size}} with Core's own." if n else ""
         return "Saved. The overlay picks it up within a few seconds." + extra
@@ -1465,12 +1519,14 @@ def create_admin_router(core_state) -> APIRouter:
     # ------------------------------------------------------------------
     # Chat overlay look (same idea as the alerts: skin + custom CSS + options)
     # ------------------------------------------------------------------
+    # (the /chat/style routes are further down, after the red flags)
 
     # ------------------------------------------------------------------
     # Chatter profile pictures (core/avatar_store.py): save on/off + hide list
     # ------------------------------------------------------------------
 
     def _avatars_info() -> Dict[str, Any]:
+        """Pictures page data: save_local, hide list, how many are saved, Pillow installed (png)."""
         cfg = (getattr(core_state, "config", None) or {}).get("avatars") or {}
         store = getattr(core_state, "avatars", None)
         try:
@@ -1487,6 +1543,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/avatars")
     async def get_avatars(x_admin_token: Optional[str] = Header(None)):
+        """Chatter picture settings (see _avatars_info)."""
         _auth(x_admin_token)
         return _avatars_info()
 
@@ -1520,6 +1577,7 @@ def create_admin_router(core_state) -> APIRouter:
     # Red flags (core/red_flags.py): phrases + the flagged chatters (Chat history tab)
     # ------------------------------------------------------------------
 
+    # These two re-read their settings from the live config on every call, so a save shows at once
     def _red_flags():
         rf = getattr(core_state, "red_flags", None)
         if rf is None:
@@ -1535,6 +1593,7 @@ def create_admin_router(core_state) -> APIRouter:
         return cf
 
     async def _red_flags_info() -> Dict[str, Any]:
+        """Everything the red flags page shows: settings, flagged people, custom flags, reactions."""
         rf = _red_flags()
         out = {**rf.info(), "flagged": await rf.list()}
         cf = getattr(core_state, "chat_flags", None)
@@ -1553,12 +1612,14 @@ def create_admin_router(core_state) -> APIRouter:
         return out
 
     async def _hide_now(platform: str, uid: str, username: str, display: str) -> None:
+        """Take a just-flagged chatter off every overlay now (StreamCore.hide_flagged)."""
         hide = getattr(core_state, "red_flag_hide", None)
         if hide is not None:
             await hide(platform, uid, username.lower(), display)
 
     @router.get("/red-flags")
     async def get_red_flags(x_admin_token: Optional[str] = Header(None)):
+        """Red flags page data (see _red_flags_info)."""
         _auth(x_admin_token)
         return await _red_flags_info()
 
@@ -1747,6 +1808,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/chat/style")
     async def get_chat_style(slot: str = "", x_admin_token: Optional[str] = Header(None)):
+        """Chat overlay skin, custom CSS (``slot`` = a saved extra stylesheet), options, pictures, sounds."""
         _auth(x_admin_token)
         from core.chat_style import CHAT_STYLE
 
@@ -1796,6 +1858,7 @@ def create_admin_router(core_state) -> APIRouter:
     # ------------------------------------------------------------------
 
     def _overlay_style(name: str):
+        """``alerts`` / ``chat`` -> its style store (core/alerts.py, core/chat_style.py), else 404."""
         from core.alerts import ALERT_STYLE
         from core.chat_style import CHAT_STYLE
 
@@ -1815,6 +1878,7 @@ def create_admin_router(core_state) -> APIRouter:
         return {"ok": True, "css_slots": style.list_css_slots()}
 
     def _assets_payload(style) -> Dict[str, Any]:
+        """What an overlay's pictures / sounds panel shows."""
         from core.overlay_style import MAX_ASSET_BYTES
 
         media, sounds = style.list_assets()
@@ -1830,6 +1894,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/overlays/{name}/assets")
     async def list_overlay_assets(name: str, x_admin_token: Optional[str] = Header(None)):
+        """Pictures and sounds the alerts or chat overlay uses, slot by slot."""
         _auth(x_admin_token)
         return _assets_payload(_overlay_style(name))
 
@@ -1868,12 +1933,17 @@ def create_admin_router(core_state) -> APIRouter:
     # ------------------------------------------------------------------
 
     def _media():
+        """The stored files library (one copy of each upload, served at /media/<name>)."""
         from core.media_library import default_library
 
         return getattr(core_state, "media", None) or default_library()
 
     class _ReactionPictures:
-        """Reactions whose object is "img:<stored file>" (config.yaml reactions entries)."""
+        """Reactions whose object is "img:<stored file>" (config.yaml reactions entries).
+
+        Same methods as the overlay style stores (media_refs / media_renamed / media_forgotten /
+        write_settings), so the stored-files routes can treat all users of a file alike.
+        """
 
         @staticmethod
         def _cfg() -> Dict[str, Any]:
@@ -1890,6 +1960,7 @@ def create_admin_router(core_state) -> APIRouter:
             core_state.config = load_config()
 
         def media_refs(self) -> list:
+            """Each reaction that throws a stored picture: {name, overlay, slot, kind}."""
             out = []
             for e in self._cfg().get("entries") or []:
                 obj = str((e.get("params") or {}).get("object") or "").strip()
@@ -1899,6 +1970,7 @@ def create_admin_router(core_state) -> APIRouter:
             return out
 
         def _rewrite(self, old: str, new: Optional[str]) -> int:
+            """Point reactions at ``new`` instead of ``old`` (None = drop the picture); saves if any changed."""
             cfg = self._cfg()
             n = 0
             for e in cfg.get("entries") or []:
@@ -1916,9 +1988,11 @@ def create_admin_router(core_state) -> APIRouter:
             return n
 
         def media_renamed(self, old: str, new: str) -> int:
+            """A stored file was renamed: follow it. Returns how many reactions changed."""
             return self._rewrite(old, new)
 
         def media_forgotten(self, name: str) -> int:
+            """A stored file was deleted: empty the reactions that used it. Returns how many."""
             # a built-in (or older upload) of that name keeps img:<name> working: leave it alone
             imgs = getattr(getattr(core_state, "reactions", None), "images", None)
             if imgs is not None and (name in imgs._scan(imgs.builtin_dir, "built-in")
@@ -1940,6 +2014,7 @@ def create_admin_router(core_state) -> APIRouter:
         return users
 
     def _media_payload() -> Dict[str, Any]:
+        """Stored files page data: each file with where it is used, plus the size limits."""
         from core.media_library import MAX_BYTES, MAX_FILES, MAX_VIDEO_BYTES
 
         used: Dict[str, list] = {}
@@ -1959,6 +2034,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/media")
     async def list_media(x_admin_token: Optional[str] = Header(None)):
+        """Stored files page data (see _media_payload)."""
         _auth(x_admin_token)
         return _media_payload()
 
@@ -2027,15 +2103,18 @@ def create_admin_router(core_state) -> APIRouter:
     # ------------------------------------------------------------------
 
     def _widgets():
+        """The chat widget store (core/widget_store.py)."""
         from core.widget_store import default_store
 
         return getattr(core_state, "widgets", None) or default_store()
 
     def _widgets_payload() -> Dict[str, Any]:
+        """Chat widgets page data: every widget (without its code)."""
         return {"widgets": _widgets().list()}
 
     @router.get("/widgets")
     async def list_widgets(x_admin_token: Optional[str] = Header(None)):
+        """Chat widgets page data."""
         _auth(x_admin_token)
         return _widgets_payload()
 
@@ -2107,6 +2186,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.delete("/widgets/{name}")
     async def delete_widget(name: str, x_admin_token: Optional[str] = Header(None)):
+        """Delete a chat widget (its overlay address stops working)."""
         _auth(x_admin_token)
         if not _widgets().delete(name):
             raise HTTPException(404, "No widget by that name.")
@@ -2327,6 +2407,7 @@ def create_admin_router(core_state) -> APIRouter:
         return eng
 
     async def _credits_broadcast(eng):
+        """Send theme, play state and roster to the open credits overlays after any change."""
         mgr = getattr(core_state, "ws_manager", None)
         if not mgr:
             return
@@ -2335,6 +2416,7 @@ def create_admin_router(core_state) -> APIRouter:
         await mgr.broadcast({"type": "credits_roster", "data": eng.snapshot()})
 
     def _persist_credits_look(eng):
+        """Write credits.enabled and the theme into config.yaml (merged into the live config)."""
         cfg = getattr(core_state, "config", None) or load_config()
         section = dict(cfg.get("credits") or {})
         section["enabled"] = eng.enabled
@@ -2345,6 +2427,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/credits")
     async def credits_status(x_admin_token: Optional[str] = Header(None)):
+        """Credits page data: on/off, theme, play state, roster and the cast (jobs) settings."""
         _auth(x_admin_token)
         eng = _credits()
         return {
@@ -2366,6 +2449,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.get("/credits/roster.csv")
     async def credits_roster_csv(x_admin_token: Optional[str] = Header(None)):
+        """Download everyone in the credits as CSV."""
         _auth(x_admin_token)
         eng = _credits()
         stamp = time.strftime("%Y%m%d-%H%M", time.localtime())
@@ -2399,7 +2483,7 @@ def create_admin_router(core_state) -> APIRouter:
         return out
 
     @router.get("/credits/checklist")
-    async def credits_checklist(
+    async def credits_checklist(  # Credits list page: filtered rows with pictures and tick state
         status: str = "open", platforms: str = "", role: str = "", q: str = "", sort: str = "first_seen",
         limit: int = Query(500, ge=1, le=2000),
         x_admin_token: Optional[str] = Header(None),
@@ -2436,7 +2520,7 @@ def create_admin_router(core_state) -> APIRouter:
         return {"ok": True, "changed": n, "unticked": eng.unticked()}
 
     @router.get("/credits/checklist.csv")
-    async def credits_checklist_csv(
+    async def credits_checklist_csv(  # the Credits list as CSV, same filters
         status: str = "all", platforms: str = "", role: str = "", q: str = "", sort: str = "first_seen",
         x_admin_token: Optional[str] = Header(None),
     ):
@@ -2454,6 +2538,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: CreditsEnableBody,
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Credits on/off (owned by the Credits page; PUT /config keeps this value)."""
         _auth(x_admin_token)
         eng = _credits()
         eng.enabled = bool(body.enabled)
@@ -2469,6 +2554,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: Dict[str, Any],
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Change the credits look; ``persist: false`` only previews it on the overlay."""
         _auth(x_admin_token)
         eng = _credits()
         persist = bool(body.pop("persist", True))
@@ -2483,11 +2569,13 @@ def create_admin_router(core_state) -> APIRouter:
         body: CreditsPlayBody,
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Start / stop / freeze / restart the credits roll on the overlay."""
         _auth(x_admin_token)
         eng = _credits()
         payload = body.model_dump() if hasattr(body, "model_dump") else body.dict()
         public = dict(eng.set_play(payload))
         await _credits_broadcast(eng)
+        # (model_dump is pydantic 2, dict() pydantic 1)
         # Rolling still works (seeded or earlier names), but say plainly that nobody new is collected
         public["credits_enabled"] = bool(eng.enabled)
         if not eng.enabled:
@@ -2496,6 +2584,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     @router.post("/credits/reset")
     async def credits_reset(x_admin_token: Optional[str] = Header(None)):
+        """Empty the credits roster."""
         _auth(x_admin_token)
         eng = _credits()
         eng.reset()
@@ -2507,6 +2596,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: CreditsSeedBody,
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Add one name to the credits as if they had chatted (works while credits are off)."""
         _auth(x_admin_token)
         eng = _credits()
         name = (body.username or body.display_name or "").strip()
@@ -2536,6 +2626,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: Dict[str, Any] = Body(default={}),
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Pick the credits cast style (``style_id``); saved into config.yaml."""
         _auth(x_admin_token)
         eng = _credits()
         sid = eng.cast.set_style(str(body.get("style_id") or body.get("id") or "names"))
@@ -2550,6 +2641,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: Dict[str, Any] = Body(default={}),
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Save a cast style file (core/cast.py)."""
         _auth(x_admin_token)
         eng = _credits()
         try:
@@ -2563,6 +2655,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: Dict[str, Any] = Body(default={}),
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Give a chatter a fixed job in the credits (``{username, platform, job}``), or ``clear`` it."""
         _auth(x_admin_token)
         eng = _credits()
         name = str(body.get("username") or "").strip().lstrip("@")
@@ -2582,6 +2675,7 @@ def create_admin_router(core_state) -> APIRouter:
         body: Dict[str, Any] = Body(default={}),
         x_admin_token: Optional[str] = Header(None),
     ):
+        """Who may use the chat credit command: public / mod / admin (anything else = mod)."""
         _auth(x_admin_token)
         eng = _credits()
         perm = str(body.get("command_permission") or "mod").lower()

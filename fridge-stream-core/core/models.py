@@ -14,12 +14,14 @@ import time
 
 
 class Platform(str, Enum):
+    """The chat platforms Core has adapters for (``adapters/``). The value is used in config keys and JSON."""
     KICK = "kick"
     YOUTUBE = "youtube"
     TWITCH = "twitch"
 
 
 class PermissionLevel(str, Enum):
+    """Who may run a command; checked by core/permissions.py (admin > mod > public)."""
     PUBLIC = "public"
     MOD = "mod"
     ADMIN = "admin"
@@ -27,6 +29,7 @@ class PermissionLevel(str, Enum):
 
 @dataclass
 class ChatUser:
+    """A chatter as one platform sees them. ``id`` is the platform's own user id."""
     platform: Platform
     id: str
     username: str
@@ -45,6 +48,7 @@ class ChatUser:
         self.username = (self.username or "").lower().strip()
 
     def to_dict(self) -> dict:
+        """JSON-ready dict (platform as its string value), as sent to overlays."""
         d = asdict(self)
         d["platform"] = self.platform.value
         return d
@@ -93,6 +97,7 @@ class ChatEvent:
     highlight: Optional[str] = None
 
     def to_dict(self) -> dict:
+        """JSON-ready dict with the nested user, as sent to overlays and kept in recent chat."""
         d = asdict(self)
         d["platform"] = self.platform.value
         d["user"] = self.user.to_dict()
@@ -144,6 +149,7 @@ class CommandDefinition:
     platform_overrides: dict[str, Any] = field(default_factory=dict)
 
     def matches(self, name: str) -> bool:
+        """True when ``name`` is this command's name or one of its aliases (case-insensitive)."""
         n = name.lower()
         return n == self.name.lower() or n in [a.lower() for a in self.aliases]
 

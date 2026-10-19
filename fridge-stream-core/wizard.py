@@ -6,6 +6,11 @@ Asks a few plain questions and writes config/config.yaml.
 Optionally tries to auto-resolve the Kick chatroom id.
 
 Safe to re-run: existing values are shown as defaults; press Enter to keep them.
+
+Run by install.bat (offered at the end) and by start.bat when config/config.yaml is
+missing. It loads the whole config, changes only the sections it asks about and saves it
+all back with core.config.save_config, so blocks it never touches (command_groups,
+plugin settings ...) are kept. Game questions appear only for plugins installed in plugins/.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
+# make `core` / `adapters` importable however the script is started (double-click, other cwd)
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
@@ -25,12 +31,14 @@ from core.platform_links import kick_slug, twitch_channel, youtube_video_id  # n
 
 
 def _prompt(label: str, default: str = "") -> str:
+    """Ask one question; an empty answer keeps ``default``."""
     suffix = f" [{default}]" if default else ""
     raw = input(f"{label}{suffix}: ").strip()
     return raw if raw else default
 
 
 def _prompt_yes_no(label: str, default: bool = False) -> bool:
+    """Yes / no question; Enter keeps ``default``, anything but y/yes/1/true means no."""
     hint = "Y/n" if default else "y/N"
     raw = input(f"{label} ({hint}): ").strip().lower()
     if not raw:
@@ -53,6 +61,7 @@ def _prompt_int(label: str, default: int, lo: int = 1, hi: int = 65535) -> int:
 
 
 def _as_int(raw, default: int) -> int:
+    """A config value as int, or ``default`` when it isn't a number."""
     try:
         return int(raw)
     except (TypeError, ValueError):
@@ -67,6 +76,7 @@ def _start_file_name() -> str:
 
 
 def _split_usernames(raw: str) -> list[str]:
+    """"a, @b; c" -> ["a", "b", "c"] (commas or semicolons, leading @ dropped)."""
     parts = []
     for chunk in raw.replace(";", ",").split(","):
         name = chunk.strip().lstrip("@")
@@ -94,6 +104,7 @@ async def _try_resolve_chatroom(slug: str) -> int | None:
 
 
 def main() -> int:
+    """Ask everything in order and save config.yaml. Returns the process exit code."""
     print()
     print("=== Fridge Stream Core – first-run wizard ===")
     print("Press Enter to keep the value in [brackets].")
@@ -243,6 +254,8 @@ def main() -> int:
     cfg["chat_log"] = clog
 
     # --- Game plugins (asked only for the ones installed in plugins/) ---
+    # Only Minecraft, Granvir and OpenTTD have questions here; other plugins (Factorio, ...)
+    # are switched on under Settings -> Plugins in the dashboard.
     games = set(plugin_manifest.installed_ids())
 
     # --- Minecraft (opt-in) ---
@@ -290,6 +303,7 @@ def main() -> int:
         cfg["openttd"] = ot
 
     # --- Core host/port (rarely changed) ---
+    # 127.0.0.1 and port 3850 are fixed by the workshop rules (CLAUDE.md); never expose Core.
     core = dict(cfg.get("core") or {})
     core.setdefault("host", "127.0.0.1")
     core.setdefault("port", 3850)

@@ -31,16 +31,20 @@ from .config import normalize_config
 
 log = logging.getLogger("core.chat_games")
 
+# Callback types: a reply (event None = an announcement), an overlay broadcast, and a
+# feature's command handler (event, the words after the command, the feature's config block).
 ReplyFn = Callable[[Optional[ChatEvent], str], Awaitable[None]]
 BroadcastFn = Callable[[dict], Awaitable[None]]
 Handler = Callable[[ChatEvent, List[str], Dict[str, Any]], Awaitable[None]]
 
 
 def speaker(user: ChatUser) -> str:
+    """The name used in "@name" replies (YouTube names already start with "@")."""
     return (user.display_name or user.username or "").lstrip("@")
 
 
 def user_key(user: ChatUser) -> str:
+    """"platform:id" (the name when there is no id): one chatter, for cooldowns and game state."""
     return f"{user.platform.value}:{(user.id or user.username or '').lower()}"
 
 
@@ -50,6 +54,7 @@ def name_key(name: Any) -> str:
 
 
 def user_ref(user: ChatUser) -> Dict[str, Any]:
+    """The ``from`` block sent with an effect (same shape as core/reactions.py user_ref)."""
     return {
         "platform": user.platform.value,
         "id": user.id,
@@ -80,10 +85,12 @@ def parse_amount(word: Any, balance: Optional[int], lo: int, hi: int) -> Optiona
 
 
 def fmt_points(n: int) -> str:
+    """1234567 -> "1,234,567"."""
     return f"{int(n):,}"
 
 
 def clock(sec: float) -> str:
+    """Seconds as "m:ss", or "h:mm:ss" from an hour up."""
     sec = max(0, int(sec))
     h, rem = divmod(sec, 3600)
     m, s = divmod(rem, 60)
@@ -98,19 +105,29 @@ class Gate:
         self._last: Dict[str, float] = {}
 
     def remaining(self, key: str, cooldown_sec: float) -> float:
+        """Seconds left on ``key``'s cooldown (0 when free or never used)."""
         cd = float(cooldown_sec or 0)
         if cd <= 0 or key not in self._last:
             return 0.0
         return max(0.0, cd - (self._now() - self._last[key]))
 
     def allow(self, key: str, cooldown_sec: float) -> bool:
+        """True when ``key`` is off cooldown (does not start it)."""
         return self.remaining(key, cooldown_sec) <= 0
 
     def touch(self, key: str, at: Optional[float] = None) -> None:
+        """Start ``key``'s cooldown now (or at time ``at``)."""
         self._last[key] = self._now() if at is None else at
 
 
 class ChatGames:
+    """Every chat game and crowd moment. One per Core (main.py).
+
+    main.py hands it every chat line (``handle_chat``) and calls ``tick()`` twice a second.
+    Each feature (crowd.py, regulars.py, wagers.py, watch.py) is a ``Feature`` that gets this
+    object as ``g`` and uses its helpers below for replies, effects, points, boards and timers.
+    ``saved`` is the part kept in data/chat_games.json.
+    """
     SAVE_FILE = "chat_games.json"
 
     def __init__(
@@ -183,6 +200,7 @@ class ChatGames:
 
     @property
     def cfg(self) -> Dict[str, Any]:
+        """The ``chat_games:`` block, normalized, re-read at most once a second (see ``invalidate``)."""
         t = time.monotonic()
         if self._cfg_cache is None or t - self._cfg_at > 1.0:
             full = self._get_config() or {}
@@ -195,10 +213,12 @@ class ChatGames:
         self._cfg_cache = None
 
     def prefix(self) -> str:
+        """The chat command prefix ("!" by default)."""
         p = self._prefix() if callable(self._prefix) else self._prefix
         return p or "!"
 
     def active(self) -> bool:
+        """True when chat games are on and their command group is active."""
         if not self.cfg["enabled"]:
             return False
         if self._groups_active is not None:
@@ -209,16 +229,19 @@ class ChatGames:
         return True
 
     def on(self, feature: str) -> bool:
+        """True when chat games are active and this one feature is switched on."""
         block = self.cfg.get(feature)
         return self.active() and isinstance(block, dict) and bool(block.get("enabled"))
 
     def points_on(self) -> bool:
+        """True when chat points are on and there is a store to keep them."""
         full = self._get_config() or {}
         return bool((full.get("points") or {}).get("enabled")) and self.store is not None
 
     # ---------------- chat ----------------
 
     def command_table(self) -> Dict[str, Tuple[Any, Handler]]:
+        """{command name: (feature, handler)} for every switched-on feature; the first feature wins a clash."""
         table: Dict[str, Tuple[Any, Handler]] = {}
         for f in self.features:
             if not self.on(f.KEY):
@@ -229,6 +252,7 @@ class ChatGames:
         return table
 
     def command_names(self) -> List[str]:
+        """Every chat-games command that works right now, sorted (for !help and the dashboard)."""
         return sorted(self.command_table()) if self.active() else []
 
     async def handle_chat(self, event: ChatEvent, command_taken: bool = False) -> bool:
@@ -275,6 +299,7 @@ class ChatGames:
         return self.streaks.cached_title(user)
 
     def title_by_name(self, platform: str, username: str) -> str:
+        """``title_for`` by platform + username (credits roll, where there is no ChatUser)."""
         if not self.on("streak") or not self.cfg["streak"]["show_titles"]:
             return ""
         return self.streaks.title_by_name(platform, username)
@@ -282,12 +307,14 @@ class ChatGames:
     # ---------------- helpers for features ----------------
 
     def is_mod(self, user: ChatUser) -> bool:
+        """True for platform mods and for Core's mod / admin lists (or a !permit)."""
         if user.is_mod:
             return True
         return bool(self.perms and (self.perms.has_permission(user, PermissionLevel.MOD)
                                     or self.perms.has_permission(user, PermissionLevel.ADMIN)))
 
     async def reply(self, event: Optional[ChatEvent], text: str) -> None:
+        """Answer in chat (if ``replies`` is on). Errors are logged, never raised."""
         if not text or not self._reply or not self.cfg["replies"]:
             return
         try:
@@ -296,9 +323,11 @@ class ChatGames:
             log.exception("chat game reply failed")
 
     async def announce(self, text: str) -> None:
+        """A reply addressed to nobody in particular."""
         await self.reply(None, text)
 
     async def play(self, effect: str, params: Optional[Dict[str, Any]] = None, **kw) -> Optional[str]:
+        """Play one effect through the reaction path; the reaction id, or None if nothing can show it."""
         if self.reactions is None:
             return None
         try:
@@ -321,11 +350,13 @@ class ChatGames:
     # points ------------------------------------------------------------
 
     async def uid(self, user: ChatUser) -> Optional[int]:
+        """Core user id for a chatter (created when new), or None without a store."""
         if not self.store:
             return None
         return await self.store.get_or_create_user(user.platform.value, user.id, user.username, user.display_name)
 
     async def balance(self, uid: int) -> int:
+        """A user's points now."""
         u = await self.store.get_user(uid)
         return int((u or {}).get("points") or 0)
 
@@ -340,6 +371,7 @@ class ChatGames:
         return bool(got), int(bal)
 
     async def give(self, uid: int, amount: int, reason: str) -> int:
+        """Pay (or, negative, take) points from the game ledger. Returns the new balance."""
         amount = int(amount)
         if amount == 0:
             return await self.balance(uid)
@@ -396,14 +428,17 @@ class ChatGames:
         return b
 
     async def clear_board(self, bid: str) -> None:
+        """Take a board off every screen now."""
         self._board_drop.pop(bid, None)
         if self.boards.pop(bid, None) is not None:
             await self._send({"type": "board_clear", "data": {"id": bid}})
 
     def board_state(self) -> List[Dict[str, Any]]:
+        """Every board on screen now (sent to new sockets as board_history)."""
         return list(self.boards.values())
 
     async def _send(self, payload: dict) -> None:
+        """Broadcast a packet to the overlays / Stream Rooms; errors are logged."""
         if self._broadcast:
             try:
                 await self._broadcast(payload)
@@ -413,10 +448,14 @@ class ChatGames:
     # timers ------------------------------------------------------------
 
     def later(self, delay: float, fn: Callable[[], Awaitable[None]]) -> None:
+        """Run ``fn`` once after ``delay`` seconds (from ``tick``, on the engine's clock)."""
         self._job_seq += 1
         self._jobs.append((self.now() + max(0.0, float(delay)), self._job_seq, fn))
 
     async def tick(self) -> None:
+        """The clock: run due timers, clear closed boards whose hold ran out, tick every switched-on
+        feature, and save ``saved`` when something changed.
+        """
         now = self.now()
         due = sorted(j for j in self._jobs if j[0] <= now)
         if due:
@@ -442,9 +481,11 @@ class ChatGames:
     # persistence (requests, moments, ratings, trivia progress) --------------
 
     def _path(self) -> Optional[Path]:
+        """data/chat_games.json (None without a data folder, as in tests)."""
         return self.data_dir / self.SAVE_FILE if self.data_dir else None
 
     def _load(self) -> Dict[str, Any]:
+        """The saved state, or {} when missing or broken."""
         p = self._path()
         if p and p.exists():
             try:
@@ -456,6 +497,7 @@ class ChatGames:
         return {}
 
     def mark_dirty(self) -> None:
+        """``saved`` changed: write it on the next tick."""
         self._dirty = True
 
     def tick_save(self) -> None:
@@ -464,6 +506,7 @@ class ChatGames:
             self._save()
 
     def _save(self) -> None:
+        """Write ``saved`` through a temp file."""
         self._dirty = False
         p = self._path()
         if not p:
@@ -479,6 +522,7 @@ class ChatGames:
     # ---------------- admin ----------------
 
     def status(self) -> Dict[str, Any]:
+        """Everything the admin Chat games page shows, plus each feature's own status under its KEY."""
         out = {
             "enabled": self.cfg["enabled"],
             "active": self.active(),
@@ -515,7 +559,9 @@ class Feature:
     KEY = ""
 
     def __init__(self, g: ChatGames):
+        """``g`` is the ChatGames engine. ``KEY`` is the feature's block name in ``chat_games:``."""
         self.g = g
 
     def commands(self, c: Dict[str, Any]) -> Dict[str, Handler]:
+        """{command name: handler} this feature answers, given its config block ``c``."""
         return {}

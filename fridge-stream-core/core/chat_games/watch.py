@@ -16,10 +16,12 @@ from .wagers import _split_bar
 
 log = logging.getLogger("core.chat_games")
 
+# A poll length such as "90", "90s" or "2m"; plain numbers are seconds.
 _DURATION = re.compile(r"^(\d{1,4})\s*(s|sec|m|min)?$", re.IGNORECASE)
 
 
 def _duration(word: str) -> Optional[int]:
+    """Seconds for a poll length word ("90", "90s", "2 min"), or None if it is not one."""
     m = _DURATION.match((word or "").strip())
     if not m:
         return None
@@ -28,6 +30,9 @@ def _duration(word: str) -> Optional[int]:
 
 
 def normalize_answer(text: str) -> str:
+    """Fold a trivia answer for comparing: drop accents, case, punctuation, spaces and a
+    leading "the" / "a" / "an", so "The Beatles!" matches "beatles".
+    """
     t = unicodedata.normalize("NFKD", str(text or "")).encode("ascii", "ignore").decode().lower()
     t = re.sub(r"[^a-z0-9 ]+", " ", t)
     t = " ".join(t.split())
@@ -47,6 +52,9 @@ class Poll(Feature):
         self.p: Optional[Dict[str, Any]] = None
 
     def commands(self, c):
+        """The engine reads this on every message, so !vote and !1 !2 ... exist only while a poll
+        is open.
+        """
         out = {c["command"]: self.cmd}
         if self.p:
             out[c["vote_command"]] = self.vote_cmd
@@ -55,11 +63,13 @@ class Poll(Feature):
         return out
 
     def _digit(self, i: int):
+        """A handler for the !<n> command that votes for option ``i`` (0-based)."""
         async def vote(event, args, c):
             await self.vote(event, i)
         return vote
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!poll: mods open or end a poll; others get the question repeated while one is open."""
         who = speaker(event.user)
         if not self.g.is_mod(event.user):
             if self.p:
@@ -76,6 +86,7 @@ class Poll(Feature):
                 await self.g.reply(event, f"@{who} {res['message']}")
             return
         parts = [p for p in _split_bar(" ".join(args)) if p]
+        # A last part that looks like a time ("90s") is the poll length, not an option.
         secs = None
         if len(parts) > 3 and _duration(parts[-1]) is not None:
             secs = _duration(parts.pop())
@@ -84,6 +95,9 @@ class Poll(Feature):
             await self.g.reply(event, f"@{who} {res['message']}")
 
     async def open(self, question: str, options: List[str], seconds: Optional[int] = None) -> Dict[str, Any]:
+        """Start a poll (2 to ``max_options`` options). ``seconds`` None uses ``default_sec``;
+        0 means it stays open until a mod ends it.
+        """
         c = self.g.cfg["poll"]
         if self.p:
             return {"ok": False, "message": "a poll is already running."}
@@ -99,24 +113,28 @@ class Poll(Feature):
         return {"ok": True}
 
     async def vote_cmd(self, event, args, c):
+        """!vote 2: the same as !2."""
         if self.p and args and args[0].isdigit():
             i = int(args[0]) - 1
             if 0 <= i < len(self.p["options"]):
                 await self.vote(event, i)
 
     async def vote(self, event: ChatEvent, i: int) -> None:
+        """Record (or change) this chatter's vote. The board is redrawn on the next tick, not per vote."""
         if not self.p:
             return
         self.p["votes"][user_key(event.user)] = i
         self.p["dirty"] = True
 
     def counts(self) -> List[int]:
+        """Votes per option, in option order."""
         out = [0] * len(self.p["options"])
         for i in self.p["votes"].values():
             out[i] += 1
         return out
 
     async def show(self, state: str = "open", footer: str = "") -> None:
+        """Draw the "poll" bar board; when closed, the top option(s) are marked as winners."""
         p = self.p
         counts = self.counts()
         total = max(1, sum(counts))
@@ -132,6 +150,7 @@ class Poll(Feature):
         p["dirty"] = False
 
     async def end(self) -> Dict[str, Any]:
+        """Close the poll, show the result (ties included) and announce it in chat."""
         p = self.p
         if not p:
             return {"ok": False, "message": "no poll is running."}
@@ -153,6 +172,7 @@ class Poll(Feature):
         return {"ok": True, "counts": counts}
 
     async def tick(self, now: float) -> None:
+        """End the poll when its time is up; otherwise redraw if votes came in."""
         p = self.p
         if not p:
             return
@@ -162,6 +182,7 @@ class Poll(Feature):
             await self.show()
 
     async def admin(self, action, body):
+        """Admin page actions: "open" (question, options, seconds) and "end"."""
         if action == "open":
             secs = body.get("seconds")
             return await self.open(str(body.get("question") or ""), [str(o) for o in body.get("options") or []],
@@ -171,6 +192,7 @@ class Poll(Feature):
         return {"ok": False, "error": "unknown action"}
 
     def status(self):
+        """Small summary for the admin page."""
         p = self.p
         return {"open": bool(p), "question": p["question"] if p else "", "options": p["options"] if p else [],
                 "counts": self.counts() if p else []}
@@ -190,6 +212,9 @@ class Rate(Feature):
         return {c["command"]: self.cmd}
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!rate 7 (or 7.5, 7/10). Mods can also !rate open <title> / !rate close. With
+        ``open_on_first`` the first score opens a window.
+        """
         who = speaker(event.user)
         first = args[0].lower() if args else ""
         if self.g.is_mod(event.user) and first in ("open", "start"):
@@ -212,6 +237,7 @@ class Rate(Feature):
         self.w["dirty"] = True
 
     async def open(self, title: str, seconds: Optional[int] = None) -> Dict[str, Any]:
+        """Open a rating window for ``seconds`` (default ``window_sec``), closing any open one first."""
         c = self.g.cfg["rate"]
         if self.w:
             await self.close()
@@ -221,10 +247,12 @@ class Rate(Feature):
         return {"ok": True}
 
     def average(self) -> float:
+        """Average score so far, to one decimal (0.0 with no votes)."""
         v = list(self.w["votes"].values())
         return round(sum(v) / len(v), 1) if v else 0.0
 
     async def show(self, state: str = "open") -> None:
+        """Draw the "rate" board with the average out of 10."""
         w = self.w
         avg = self.average()
         n = len(w["votes"])
@@ -236,6 +264,9 @@ class Rate(Feature):
         w["dirty"] = False
 
     async def close(self) -> Dict[str, Any]:
+        """Close the window. If anyone voted, keep the result in ``saved["ratings"]`` (last 200),
+        which feeds the admin history and ``credits_line``.
+        """
         w = self.w
         if not w:
             return {"ok": False, "message": "no rating is open."}
@@ -260,6 +291,7 @@ class Rate(Feature):
         return ""
 
     async def tick(self, now: float) -> None:
+        """Close the window when its time is up; otherwise redraw if votes came in."""
         w = self.w
         if not w:
             return
@@ -269,6 +301,7 @@ class Rate(Feature):
             await self.show()
 
     async def admin(self, action, body):
+        """Admin page actions: "open" (title, seconds) and "close"."""
         if action == "open":
             secs = body.get("seconds")
             return await self.open(str(body.get("title") or ""), int(secs) if str(secs or "").isdigit() else None)
@@ -277,6 +310,7 @@ class Rate(Feature):
         return {"ok": False, "error": "unknown action"}
 
     def status(self):
+        """The open window (if any) and the last 10 ratings, newest first, for the admin page."""
         w = self.w
         return {"open": bool(w), "title": w["title"] if w else "", "average": self.average() if w else 0,
                 "votes": len(w["votes"]) if w else 0, "history": (self.g.saved.get("ratings") or [])[-10:][::-1]}
@@ -292,12 +326,17 @@ class Requests(Feature):
 
     @property
     def items(self) -> List[Dict[str, Any]]:
+        """The queue, kept in ``saved["requests"]`` so it survives a restart."""
         return self.g.saved.setdefault("requests", [])
 
     def _sort(self) -> None:
+        """Bumped requests first (in the order they were bumped), then the rest by request time."""
         self.items.sort(key=lambda r: (0 if r.get("bumped") else 1, r.get("bumped") or r["ts"]))
 
     async def add(self, event: ChatEvent, args, c) -> None:
+        """!request <link or title>: add to the queue, with per-person and queue size limits and no
+        duplicates (same link or same title).
+        """
         who = speaker(event.user)
         text = " ".join(args).strip()
         if not text:
@@ -330,6 +369,7 @@ class Requests(Feature):
         await self.g.reply(event, f"@{who} added: {text} (#{pos}).{tip}")
 
     async def bump(self, event: ChatEvent, args, c) -> None:
+        """!bump: move the chatter's first un-bumped request up, paying ``bump_cost`` points if set."""
         who = speaker(event.user)
         uk = user_key(event.user)
         mine = next((r for r in self.items if r["ukey"] == uk and not r.get("bumped")), None)
@@ -351,6 +391,7 @@ class Requests(Feature):
         await self.g.reply(event, f"@{who} bumped {mine['text']} to #{pos}.")
 
     async def queue(self, event: ChatEvent, args, c) -> None:
+        """!queue: reply with the next three requests."""
         if not self.items:
             await self.g.reply(event, f"@{speaker(event.user)} the request queue is empty.")
             return
@@ -359,6 +400,7 @@ class Requests(Feature):
         await self.g.reply(event, "Up next: " + " · ".join(bits) + more)
 
     async def admin(self, action, body):
+        """Admin page actions: "remove" / "played" (by id) and "clear"."""
         rid = str(body.get("id") or "")
         if action in ("remove", "played"):
             before = len(self.items)
@@ -372,6 +414,7 @@ class Requests(Feature):
         return {"ok": False, "error": "unknown action"}
 
     def status(self):
+        """The whole queue for the admin page."""
         return {"queue": list(self.items)}
 
 
@@ -381,13 +424,18 @@ class Moments(Feature):
     KEY = "moment"
 
     def commands(self, c):
+        """Every name in ``commands`` (e.g. !clip, !moment) marks a moment."""
         return {name: self.mark for name in c["commands"]}
 
     @property
     def items(self) -> List[Dict[str, Any]]:
+        """Marked moments, kept in ``saved["moments"]`` (last 500)."""
         return self.g.saved.setdefault("moments", [])
 
     async def mark(self, event: ChatEvent, args, c) -> None:
+        """Mark the current stream time. A mark within ``merge_sec`` of the last one in the same
+        stream joins it (more people, one reply) instead of making a new one.
+        """
         who = speaker(event.user)
         uk = user_key(event.user)
         if not self.g.gate.allow(f"moment|{uk}", c["cooldown_sec"]):
@@ -405,6 +453,7 @@ class Moments(Feature):
                 last["note"] = note
             self.g.mark_dirty()
             return          # one reply per moment is enough
+        # ``offset`` is seconds since the stream started (from the engine's stream record).
         m = {"id": uuid.uuid4().hex[:8], "ts": now, "offset": round(now - float(s.get("started") or now), 1),
              "stream": s.get("id"), "users": [who], "count": 1, "note": note}
         self.items.append(m)
@@ -413,6 +462,9 @@ class Moments(Feature):
         await self.g.reply(event, f"📌 @{who} marked {clock(m['offset'])} into the stream.")
 
     def csv(self) -> str:
+        """All moments as CSV for the admin download (api/admin_routes.py, /chat_games/moments.csv).
+        SafeWriter stops spreadsheet formula injection from chat notes.
+        """
         import io
 
         from core.csv_safe import SafeWriter
@@ -426,6 +478,7 @@ class Moments(Feature):
         return buf.getvalue()
 
     async def admin(self, action, body):
+        """Admin page action: "clear"."""
         if action == "clear":
             self.g.saved["moments"] = []
             self.g.mark_dirty()
@@ -433,6 +486,7 @@ class Moments(Feature):
         return {"ok": False, "error": "unknown action"}
 
     def status(self):
+        """The latest 50 moments, newest first, for the admin page."""
         return {"moments": list(reversed(self.items[-50:]))}
 
 
@@ -442,6 +496,9 @@ class Trivia(Feature):
     KEY = "trivia"
 
     def __init__(self, g):
+        """``q`` is the open question (None when none). The question bank is cached and re-read
+        when the file changes; ``next_auto`` is when the next automatic question is due.
+        """
         super().__init__(g)
         self.q: Optional[Dict[str, Any]] = None
         self._bank: Optional[List[Dict[str, Any]]] = None
@@ -449,12 +506,17 @@ class Trivia(Feature):
         self.next_auto: Optional[float] = None
 
     def commands(self, c):
+        """!answer only exists while a question is up (the engine reads this on every message)."""
         out = {c["command"]: self.cmd}
         if self.q:
             out[c["answer_command"]] = self.answer
         return out
 
     def bank(self) -> List[Dict[str, Any]]:
+        """Questions from config/trivia.json, or trivia.example.json when there is none. Format:
+        {"questions": [{"q": "...", "a": ["answer", ...]}]}; the first answer is the one shown.
+        Re-read only when the file or its modified time changes.
+        """
         d = self.g.config_dir
         if not d:
             return self._bank or []
@@ -477,6 +539,7 @@ class Trivia(Feature):
         return self._bank or []
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!trivia: mods ask a question or stop it; others get the open question repeated."""
         if not self.g.is_mod(event.user):
             if self.q:
                 await self.g.reply(event, f"@{speaker(event.user)} ❓ {self.q['q']} — "
@@ -490,6 +553,9 @@ class Trivia(Feature):
             await self.g.reply(event, f"@{speaker(event.user)} {res['message']}")
 
     async def ask(self) -> Dict[str, Any]:
+        """Ask a random question not asked yet (``saved["trivia_asked"]`` holds bank positions;
+        it starts over when all were asked) and open the "trivia" board for ``time_sec``.
+        """
         if self.q:
             return {"ok": False, "message": "a question is already up."}
         bank = self.bank()
@@ -517,6 +583,9 @@ class Trivia(Feature):
         return {"ok": True, "question": self.q["q"]}
 
     async def answer(self, event: ChatEvent, args, c) -> None:
+        """!answer <guess>: the first right guess wins ``points`` (when points are on) and a
+        spotlight; wrong guesses are ignored silently.
+        """
         q = self.q
         if not q or not args:
             return
@@ -540,6 +609,7 @@ class Trivia(Feature):
         await self.g.announce(f"✅ @{who} got it: {q['show']}!{prize}")
 
     async def timeout(self, skipped: bool = False) -> None:
+        """Close the question with no winner and show the answer."""
         q = self.q
         if not q:
             return
@@ -551,6 +621,9 @@ class Trivia(Feature):
         await self.g.announce(f"⏰ {'Skipped' if skipped else 'Time'}! It was {q['show']}.")
 
     async def tick(self, now: float) -> None:
+        """Time out the open question, and ask a new one every ``auto_every_min`` minutes (0 = off).
+        The first automatic one comes a full interval after the timer starts.
+        """
         if self.q and now >= self.q["ends"]:
             await self.timeout()
         every = self.g.cfg["trivia"]["auto_every_min"]
@@ -564,6 +637,7 @@ class Trivia(Feature):
             await self.ask()
 
     async def admin(self, action, body):
+        """Admin page actions: "ask" and "stop"."""
         if action == "ask":
             return await self.ask()
         if action == "stop":
@@ -572,4 +646,5 @@ class Trivia(Feature):
         return {"ok": False, "error": "unknown action"}
 
     def status(self):
+        """Small summary for the admin page, including how many questions the bank has."""
         return {"open": bool(self.q), "question": self.q["q"] if self.q else "", "bank": len(self.bank())}

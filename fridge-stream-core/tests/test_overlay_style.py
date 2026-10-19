@@ -48,6 +48,7 @@ def alert_style(root: Path) -> OverlayStyle:
 
 class SniffTests(unittest.TestCase):
     def test_types(self):
+        """Uploaded files are recognised by their first bytes, not their name."""
         self.assertEqual(sniff(PNG), "png")
         self.assertEqual(sniff(GIF), "gif")
         self.assertEqual(sniff(WEBM), "webm")

@@ -10,10 +10,12 @@ from core.models import ChatEvent
 
 from .engine import Feature, clock, speaker, user_key, user_ref
 
+# Kick sends emotes inline as "[emote:123:Name]".
 _KICK_EMOTE = re.compile(r"\[emote:(\d+):([^\]]+)\]")
 
 
 def _vs16(s: str) -> str:
+    """Drop the emoji variation selector so both spellings of an emoji match."""
     return (s or "").replace("️", "")
 
 
@@ -42,11 +44,13 @@ class Combos(Feature):
     KEY = "combos"
 
     def __init__(self, g):
+        """``hits`` keeps, per mood, who used it inside the window; ``last_fired`` the 10 newest combos."""
         super().__init__(g)
         self.hits: Dict[str, deque] = {}        # mood id -> deque[(ts, ukey, ref, emote name or "")]
         self.last_fired: List[Dict[str, Any]] = []
 
     def moods_hit(self, event: ChatEvent, moods: List[Dict[str, Any]]) -> List[tuple]:
+        """[(mood, emote name or "")] for every switched-on mood this message counts towards."""
         t = message_tokens(event)
         out = []
         for m in moods:
@@ -63,6 +67,9 @@ class Combos(Feature):
         return out
 
     async def observe(self, event: ChatEvent) -> None:
+        """Count one chat line; fire a mood once ``min_people`` different people hit it within
+        ``window_sec`` (and its cooldown is over), then start counting that mood from zero.
+        """
         c = self.g.cfg["combos"]
         now = self.g.now()
         for mood, emote in self.moods_hit(event, c["moods"]):
@@ -81,6 +88,9 @@ class Combos(Feature):
             q.clear()
 
     async def fire(self, mood: Dict[str, Any], crowd: List[Dict[str, Any]], emotes: List[str]) -> None:
+        """Play a mood's effects for the crowd; "{emote}" becomes the emote used most. Bigger crowds
+        scale ``count`` params up (at most 3x).
+        """
         c = self.g.cfg["combos"]
         top = Counter(emotes).most_common(1)[0][0] if emotes else (mood["emoji"][0] if mood["emoji"] else "✨")
         effects = []
@@ -96,6 +106,7 @@ class Combos(Feature):
         del self.last_fired[10:]
 
     def status(self) -> Dict[str, Any]:
+        """The last combos fired, for the admin page."""
         return {"recent": list(self.last_fired)}
 
 
@@ -105,6 +116,7 @@ class Hype(Feature):
     KEY = "hype"
 
     def __init__(self, g):
+        """``seen`` = (time, chatter) per line inside the window; ``fired_level`` = the level already celebrated."""
         super().__init__(g)
         self.seen: deque = deque()     # (ts, ukey)
         self.fired_level = 0
@@ -112,10 +124,12 @@ class Hype(Feature):
         self._board_at = 0.0
 
     async def observe(self, event: ChatEvent) -> None:
+        """Count one chat line and check for a new level."""
         self.seen.append((self.g.now(), user_key(event.user)))
         await self._check()
 
     def people(self) -> int:
+        """Different chatters inside the hype window (old entries are dropped here)."""
         c = self.g.cfg["hype"]
         now = self.g.now()
         while self.seen and now - self.seen[0][0] > c["window_sec"]:
@@ -123,9 +137,11 @@ class Hype(Feature):
         return len({k for _, k in self.seen})
 
     def level_of(self, people: int) -> int:
+        """How many of the configured levels ``people`` reaches (0 = none)."""
         return sum(1 for n in self.g.cfg["hype"]["levels"] if people >= n)
 
     async def _check(self) -> None:
+        """Celebrate when the level goes up (each level has its own cooldown); a drop just lowers it."""
         c = self.g.cfg["hype"]
         n = self.people()
         level = self.level_of(n)
@@ -141,6 +157,7 @@ class Hype(Feature):
             self.fired_level = level
 
     async def tick(self, now: float) -> None:
+        """Keep the meter board up to date (every 10 s at most when nothing changed); hide it below 2 people."""
         await self._check()
         c = self.g.cfg["hype"]
         n = self.people()
@@ -164,6 +181,7 @@ class Hype(Feature):
                            footer=("Max level!" if level >= len(levels) else f"Level {level + 1} at {nxt} people"))
 
     def status(self) -> Dict[str, Any]:
+        """People and level now, for the admin page."""
         n = self.people()
         return {"people": n, "level": self.level_of(n)}
 
@@ -174,6 +192,7 @@ class Tug(Feature):
     KEY = "tug"
 
     def __init__(self, g):
+        """``round`` is the running round (counts, end time, each voter's last vote) or None."""
         super().__init__(g)
         self.round: Optional[Dict[str, Any]] = None
         self._dirty = False
@@ -182,12 +201,17 @@ class Tug(Feature):
         return {c["cheer_command"]: self.cheer, c["boo_command"]: self.boo}
 
     async def cheer(self, event, args, c):
+        """!cheer handler."""
         await self.vote(event, c, "cheer")
 
     async def boo(self, event, args, c):
+        """!boo handler."""
         await self.vote(event, c, "boo")
 
     async def vote(self, event: ChatEvent, c: Dict[str, Any], side: str) -> None:
+        """Count one vote; the first vote after the cooldown starts a round. One vote per person per
+        ``per_user_gap_sec``.
+        """
         now = self.g.now()
         r = self.round
         if r is None:
@@ -210,6 +234,7 @@ class Tug(Feature):
         await self._show(c)
 
     async def _show(self, c, state="open", winner=None, hold=None):
+        """Draw the tug board (``state`` "closed" with the winner at the end of a round)."""
         r = self.round
         total = max(1, r["cheer"] + r["boo"])
         lines = [
@@ -226,6 +251,9 @@ class Tug(Feature):
         self._dirty = False
 
     async def tick(self, now: float) -> None:
+        """Redraw after new votes; at the end of the round show the result, play the winner's effects
+        and start the cooldown.
+        """
         r = self.round
         if r is None:
             return
@@ -254,6 +282,7 @@ class Tug(Feature):
             await self.g.announce(f"It's a tie, {score}!")
 
     def status(self):
+        """Round open or not, and its counts."""
         r = self.round
         return {"open": bool(r), "cheer": r["cheer"] if r else 0, "boo": r["boo"] if r else 0}
 
@@ -264,6 +293,7 @@ class Launch(Feature):
     KEY = "launch"
 
     def __init__(self, g):
+        """``window`` = the open sign-up (people, end time) or None; ``flying`` while the countdown runs."""
         super().__init__(g)
         self.window: Optional[Dict[str, Any]] = None
         self.flying = False
@@ -272,6 +302,7 @@ class Launch(Feature):
         return {c["command"]: self.cmd}
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!launch: open the window (after the recharge) or join it; enough people sets it off."""
         if self.flying:
             return
         now = self.g.now()
@@ -293,6 +324,7 @@ class Launch(Feature):
             await self._show(c)
 
     async def _show(self, c, state="open", title="🚀 Launch", footer=None):
+        """Draw the launch board with the crew count."""
         w = self.window
         n = len(w["people"]) if w else c["people"]
         await self.g.board("launch", kind="count", title=title, state=state,
@@ -302,6 +334,7 @@ class Launch(Feature):
                            ends_at=w["ends"] if (w and state == "open") else None)
 
     async def go(self, c) -> None:
+        """Lights down, a 3-2-1 countdown board (one step a second, via ``later``), then liftoff."""
         crowd = list(self.window["people"].values())
         self.window = None
         self.flying = True
@@ -311,6 +344,7 @@ class Launch(Feature):
                           label="Launch", reaction="launch")
 
         async def count(n: int):
+            """One countdown step on the board."""
             await self.g.board("launch", kind="count", title=f"🚀 {n}…", state="locked",
                                lines=[{"key": "t", "label": "Liftoff in", "value": n, "pct": round((4 - n) / 3, 3),
                                        "note": str(n)}], footer="Hold on!")
@@ -320,6 +354,7 @@ class Launch(Feature):
         self.g.later(2, lambda: count(1))
 
         async def liftoff():
+            """The big finish: fireworks, confetti, shake, everyone cheers."""
             self.flying = False
             await self.g.board("launch", kind="count", title="🚀 LIFTOFF!", state="closed",
                                lines=[{"key": "t", "label": "Crew", "value": len(crowd), "pct": 1.0,
@@ -335,6 +370,7 @@ class Launch(Feature):
         self.g.later(3, liftoff)
 
     async def tick(self, now: float) -> None:
+        """The window ran out before enough people joined: show "fizzled"."""
         w = self.window
         if w and now >= w["ends"]:
             c = self.g.cfg["launch"]
@@ -345,5 +381,6 @@ class Launch(Feature):
             self.g.gate.touch("launch", now - max(0.0, c["cooldown_sec"] - min(60.0, c["cooldown_sec"])))
 
     def status(self):
+        """Window open, people so far, countdown running."""
         return {"open": bool(self.window), "people": len(self.window["people"]) if self.window else 0,
                 "flying": self.flying}

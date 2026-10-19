@@ -22,22 +22,30 @@ from fastapi.staticfiles import StaticFiles
 ROOT = Path(__file__).resolve().parents[2]
 app = FastAPI()
 
+# Emote and emoji image URL patterns; fill in the id with .format().
 TW = "https://static-cdn.jtvnw.net/emoticons/v2/{}/default/dark/2.0"
 BTTV = "https://cdn.betterttv.net/emote/{}/2x"
 EMOJI = "https://cdn.jsdelivr.net/gh/twitter/twemoji@14.0.2/assets/72x72/{}.png"
 
 
 def em(start: int, end: int, url: str, name: str) -> dict:
+    """One emote entry for a chat message. ``start`` / ``end`` are character positions in the
+    message text, end included (e.g. "LUL" at the start is 0, 2).
+    """
     return {"start": start, "end": end, "url": url, "name": name, "provider": "showcase"}
 
 
 def user(platform: str, name: str, color: str, **flags) -> dict:
+    """A chat user dict in the shape Core sends to overlays. ``flags``: mod, vip, sub, badges."""
     return {"id": name.lower(), "username": name.lower(), "display_name": name, "color": color,
             "is_mod": flags.get("mod", False), "is_vip": flags.get("vip", False),
             "is_subscriber": flags.get("sub", False), "badges": flags.get("badges", [])}
 
 
 def chat(platform: str, who: dict, text: str, emotes=None, reply_to=None, paid=None, mid=None) -> dict:
+    """A chat message dict like the real Core sends. ``paid`` is (amount, currency) for paid chat;
+    ``mid`` sets a fixed message id so replies can point at it.
+    """
     d = {"platform": platform, "message_id": mid or f"m{int(time.time() * 1000) % 100000}{abs(hash(text)) % 1000}",
          "message": text, "timestamp": time.time(), "emotes": emotes or [], "user": who, "reply_to": reply_to}
     if paid:
@@ -46,6 +54,9 @@ def chat(platform: str, who: dict, text: str, emotes=None, reply_to=None, paid=N
 
 
 def script() -> list[dict]:
+    """The made-up chat history, oldest first: all three platforms, emotes, a Core reply
+    (``is_system``), reply threads, paid chat and a Super Sticker.
+    """
     kappa, lul, pog, hey, keepo = TW.format(25), TW.format(425618), TW.format(305954156), TW.format(30259), TW.format(1902)
     fire, heart = EMOJI.format("1f525"), EMOJI.format("2764")
     sticker = EMOJI.format("1f389")
@@ -86,6 +97,7 @@ def script() -> list[dict]:
     return rows
 
 
+# A Stream Core reply, a poll board and a subscribe alert, shaped like Core's real messages.
 REPLY = {"id": "r1", "message": "@quietfox: you have 25 points", "reply_to_user": "quietfox", "reply_to_message_id": "t4",
          "source": "command", "platform": "twitch", "timestamp": time.time(), "posted_to_chat": False}
 BOARD = {"id": "poll", "kind": "bars", "title": "📊 Which room next?",
@@ -101,11 +113,15 @@ ALERT = {"id": "a1", "kind": "subscribe", "title": "New subscriber", "headline":
 
 @app.get("/api/overlay/replies")
 async def replies_cfg():
+    """replies.html asks this before it shows anything; say replies are on."""
     return {"enabled": True}
 
 
 @app.websocket("/ws")
 async def ws(sock: WebSocket):
+    """Send the history messages a real Core sends on connect, then one alert, then keep the
+    socket open (ignoring anything the page sends) until it closes.
+    """
     await sock.accept()
     await sock.send_text(json.dumps({"type": "chat_history", "data": script()}))
     await sock.send_text(json.dumps({"type": "reply_history", "data": [REPLY]}))

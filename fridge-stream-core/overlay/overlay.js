@@ -1,3 +1,18 @@
+/*
+ * Metrics overlay (/overlay/overlay.html): Minecraft-style stats widgets (hearts, food, XP,
+ * deaths, armour) plus Core's own numbers (viewers, chat per minute, power level), active
+ * effects and the inventory panel.
+ *
+ * Data: the "update" payload Core builds in api/server.py (build_state), pushed over the root
+ * WebSocket (ws://host/, kept for this file) and polled from /api/state as a backup. Game
+ * stats come from the Minecraft plugin's state fragment; with no game running they stay at
+ * the defaults below.
+ *
+ * Which widgets show: config `overlay.modules` (core/config.py DEFAULTS) arrives in the payload,
+ * and the address wins over it: ?show=health,power (or ?only=) keeps just those, ?hide=food
+ * drops some. Keep ALL_WIDGETS in sync with the data-widget names in overlay.html and the
+ * modules list in core/config.py (checklists/overlays.md).
+ */
 (() => {
   const heartsEl = document.getElementById('hearts');
   const hpText = document.getElementById('hp-text');
@@ -13,6 +28,7 @@
   const invPanel = document.getElementById('inventory-panel');
   const invGrid = document.getElementById('inv-grid');
 
+  // Every widget key; each matches a data-widget="..." element in overlay.html.
   const ALL_WIDGETS = ["health","food","xp","deaths","armor","viewers","cpm","power","effects","inventory"];
   const params = new URLSearchParams(location.search);
   const showParam = (params.get("show") || params.get("only") || "")
@@ -21,6 +37,9 @@
     .split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
   let modules = Object.fromEntries(ALL_WIDGETS.map((k) => [k, true]));
 
+  // Turn widgets on/off. `src` is overlay.modules from the payload ({health: true, ...}) or null;
+  // ?show= / ?hide= are applied after it so the address always wins. A [data-row] whose widgets
+  // are all off is hidden too, so empty rows don't leave gaps.
   function applyModules(src) {
     if (src && typeof src === "object") {
       ALL_WIDGETS.forEach((k) => {
@@ -43,6 +62,8 @@
   }
   applyModules(null);
 
+  // True when overlay/assets/heart.png exists: hearts then use the picture classes (img-*)
+  // instead of the drawn CSS ones (css-*), see overlay.css.
   let useCustomHearts = false;
 
   // Detect custom heart images
@@ -51,6 +72,7 @@
   testImg.onerror = () => { useCustomHearts = false; };
   testImg.src = '/overlay/assets/heart.png';
 
+  // health / maxHealth are Minecraft half-hearts (20 = 10 full hearts); an odd value draws a half.
   function renderHearts(health, maxHealth) {
     heartsEl.innerHTML = '';
     const fullHearts = Math.floor(health / 2);
@@ -74,6 +96,7 @@
     hpText.textContent = `${health.toFixed(1)} / ${maxHealth}`;
   }
 
+  // inv = {slots: [{id: "minecraft:stone", count: 64} | null, ...]}; the item name is shown, not an icon.
   function renderInventory(inv) {
     if (!inv || !inv.slots) {
       invPanel.classList.add('hidden');
@@ -96,6 +119,8 @@
     }
   }
 
+  // Draw one "update" payload: data.stats (game), data.metrics (Core), data.overlay.modules,
+  // data.showInventory (true while a game plugin wants the inventory shown) and data.inventory.
   function update(data) {
     const s = data.stats || {};
     renderHearts(s.health ?? 20, s.maxHealth ?? 20);
@@ -139,10 +164,12 @@
         if (msg.type === 'update' || msg.stats) update(msg);
       } catch (_) {}
     };
+    // Core restarting or not up yet: try again every 2 s.
     ws.onclose = () => setTimeout(connect, 2000);
   }
   connect();
 
+  // (every 2.5 s, in case the WebSocket is down or missed an update)
   // safety poll
   setInterval(async () => {
     try {
