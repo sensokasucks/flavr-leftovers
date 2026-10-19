@@ -64,6 +64,7 @@ class CssSlots(unittest.TestCase):
             self.assertEqual(style.list_css_slots(root), {})
 
     def test_slot_cap(self):
+        """Only MAX_CSS_SLOTS saved stylesheets; re-saving an existing one still works."""
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)
             style = chat_style(root)
@@ -108,6 +109,7 @@ class CssSlots(unittest.TestCase):
 
 class TemplatePlaceholders(unittest.TestCase):
     def test_fill(self):
+        """Streamlabs {key} and StreamElements {{key}} placeholders get Core's values."""
         from core.css_templates import fill_placeholders
 
         css = ("body { font-size: {font_size}; color: {text_color}; background: {background_color}; }\n"
@@ -195,6 +197,7 @@ class Rig:
 
 class Removals(unittest.TestCase):
     def test_twitch(self):
+        """Twitch CLEARMSG / CLEARCHAT become chat_removed (one line, one user, everything)."""
         rig = Rig(TwitchAdapter, {"twitch": {"channel": "fridge", "third_party_emotes": False}})
         run(rig.adapter._on_line(None, "@login=amy;room-id=1;target-msg-id=abc-123;tmi-sent-ts=1 "
                                        ":tmi.twitch.tv CLEARMSG #fridge :bad words"))
@@ -206,6 +209,7 @@ class Removals(unittest.TestCase):
         self.assertEqual({r["platform"] for r in rig.removed}, {"twitch"})
 
     def test_kick(self):
+        """Kick's deleted / banned / chat cleared events become chat_removed."""
         self.assertEqual(kick_removed("App\\Events\\MessageDeletedEvent", {"id": "x", "message": {"id": "m1"}}),
                          {"message_id": "m1"})
         self.assertEqual(kick_removed("App\\Events\\UserBannedEvent", {"user": {"id": 5, "username": "Spam"}}),
@@ -220,6 +224,7 @@ class Removals(unittest.TestCase):
         self.assertEqual([(r["platform"], r["message_id"]) for r in rig.removed], [("kick", "m1")])
 
     def test_youtube(self):
+        """YouTube's deleted-message and removed-author actions become chat_removed."""
         self.assertEqual(youtube_removed({"markChatItemAsDeletedAction": {"targetItemId": "Ch1"}}), {"message_id": "Ch1"})
         self.assertEqual(youtube_removed({"removeChatItemByAuthorAction": {"externalChannelId": "UCx"}}), {"user_id": "UCx"})
         self.assertEqual(youtube_removed({"addChatItemAction": {}}), {})

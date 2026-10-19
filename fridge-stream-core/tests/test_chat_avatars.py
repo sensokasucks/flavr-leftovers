@@ -82,6 +82,7 @@ class KickAvatarTests(unittest.TestCase):
         self.assertEqual(calls, ["x"])
 
     def test_disabled(self):
+        """Kick pictures switched off: no lookups at all."""
         async def fetch(slug):
             raise AssertionError("should not fetch")
 
@@ -168,6 +169,7 @@ class PictureRecheckTests(unittest.TestCase):
 
 class YouTubePhotoTests(unittest.TestCase):
     def test_best_photo(self):
+        """The YouTube author photo link is asked for at 128 px."""
         thumbs = {"thumbnails": [
             {"url": "https://yt3.ggpht.com/abc=s32-c-k-c0x00ffffff-no-rj", "width": 32},
             {"url": "//yt3.ggpht.com/abc=s64-c-k-c0x00ffffff-no-rj", "width": 64},

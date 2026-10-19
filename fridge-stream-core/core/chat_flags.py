@@ -48,6 +48,7 @@ from core.red_flags import (MAX_PAST_PEOPLE, PAST_EXAMPLES, compile_phrase, norm
 
 log = logging.getLogger("core.chat_flags")
 
+# Limits for what the dashboard can save: number of flags, name / text lengths, points per action.
 MAX_FLAGS = 50
 MAX_NAME_LEN = 40
 MAX_TEXT_LEN = 300
@@ -56,6 +57,7 @@ MAX_POINTS = 1_000_000
 # what a flag can do (the booleans), in the order the dashboard shows them
 ACTION_KEYS = ("log", "hide", "alert", "notify")
 
+# Every key a flag has, with its default (see the module docstring for what each one does).
 DEFAULT_FLAG: dict[str, Any] = {
     "id": "",
     "name": "",
@@ -77,11 +79,13 @@ DEFAULT_FLAG: dict[str, Any] = {
 
 
 def slug(text: str) -> str:
+    """A flag id from its name: lower-case letters, digits and -, at most 32 characters."""
     s = re.sub(r"[^a-z0-9]+", "-", normalize(text)).strip("-")
     return s[:32] or "flag"
 
 
 def _int(value: Any, default: int, lo: int, hi: int) -> int:
+    """int(value) clamped to lo..hi, or ``default`` when it is not a number."""
     try:
         n = int(float(value))
     except (TypeError, ValueError):
@@ -137,6 +141,9 @@ class Flag:
     """One custom flag, its phrases compiled."""
 
     def __init__(self, cfg: dict):
+        """``cfg`` is one entry from ``normalize_custom``. All phrases are also joined into one regex
+        so a line that matches none of them costs a single search.
+        """
         self.cfg = cfg
         self.id = cfg["id"]
         self.name = cfg["name"]
@@ -149,12 +156,14 @@ class Flag:
             if self._patterns else None
 
     def __getattr__(self, key: str) -> Any:
+        """Read config keys as attributes (``flag.every_time``, ``flag.cooldown_sec`` ...)."""
         try:
             return self.cfg[key]
         except KeyError:
             raise AttributeError(key) from None
 
     def match(self, text: str, norm: Optional[str] = None) -> Optional[str]:
+        """The first phrase found in ``text``, or None. ``norm`` is ``normalize(text)`` when the caller has it."""
         if self._any is None or not text:
             return None
         norm = normalize(text) if norm is None else norm
@@ -167,10 +176,16 @@ class Flag:
 
     @property
     def matches_anything(self) -> bool:
+        """False when the flag has no usable phrases (then it never fires from chat)."""
         return self._any is not None
 
 
 class ChatFlags:
+    """The custom flags and who is on each one. One per Core (main.py), next to RedFlags.
+
+    The lists live in SQLite (``store``, table chat_flagged); this class keeps an in-memory copy
+    (``_ids`` / ``_names``) so checking a chat line never touches the database.
+    """
     def __init__(self, store, red_flags, custom: Any = None):
         self.store = store
         self.red_flags = red_flags        # its mod / staff exemption is shared
@@ -195,9 +210,11 @@ class ChatFlags:
         self.flags = [Flag(c) for c in normalize_custom(custom)]
 
     def get(self, flag_id: str) -> Optional[Flag]:
+        """The flag with this id, or None."""
         return next((f for f in self.flags if f.id == flag_id), None)
 
     def info(self) -> list[dict]:
+        """Every flag's settings (copies), for the dashboard."""
         return [dict(f.cfg) for f in self.flags]
 
     # ------------------------------------------------------------------
@@ -205,6 +222,7 @@ class ChatFlags:
     # ------------------------------------------------------------------
 
     def reload(self) -> None:
+        """Rebuild the in-memory lists from the database (blocking; run it through ``store._run``)."""
         ids: dict[str, set] = {}
         names: dict[str, set] = {}
         for row in self.store.list_chat_flagged_sync():
@@ -218,6 +236,7 @@ class ChatFlags:
         self._ids, self._names = ids, names
 
     def on_list(self, flag_id: str, platform: str, user_id: str = "", *names: str) -> bool:
+        """True when this chatter is on the flag's list, by platform user id or by name."""
         platform = str(platform or "")
         if user_id and (platform, str(user_id)) in self._ids.get(flag_id, ()):
             return True
@@ -265,10 +284,13 @@ class ChatFlags:
             row = await self.flag(flag.id, plat, uid, user.username, user.display_name,
                                   phrase=phrase, message=text, source="phrase")
             key = (flag.id, f"{plat}:{uid or normalize(user.username)}")
+            # The chatter's row gets a hit every time, but actions only run again for
+            # every_time flags once the cooldown has passed.
             if not first:
                 if not flag.every_time or now - self._last.get(key, 0) < flag.cooldown_sec:
                     continue
             self._last[key] = now
+            # Safety valve: never let the cooldown table grow without limit on a huge chat.
             if len(self._last) > 50_000:
                 self._last.clear()
             log.info("Flag %s: [%s] %s said %r", flag.name, plat, user.display_name or user.username, phrase)
@@ -325,6 +347,7 @@ class ChatFlags:
         return {"scanned": scanned, "people": list(people.values()), "more": more}
 
     async def scan_past(self, flag_id: str) -> dict:
+        """``scan_past_sync`` over the whole chat log, on the store's worker thread."""
         def _scan():
             return self.scan_past_sync(flag_id, self.store.iter_chat_sync())
         return await self.store._run(_scan)
@@ -335,6 +358,7 @@ class ChatFlags:
 
     async def flag(self, flag_id: str, platform: str, user_id: str, username: str, display_name: str = "",
                    phrase: str = "", message: str = "", source: str = "manual") -> dict:
+        """Put a chatter on a flag's list (or add a hit to their row). Returns the stored row."""
         row = await self.store.add_chat_flag(
             flag=flag_id, platform=str(platform or ""), platform_user_id=str(user_id or ""),
             username=normalize(username).strip(), display_name=str(display_name or username or "").strip(),
@@ -345,6 +369,7 @@ class ChatFlags:
         return row
 
     async def unflag(self, row_id: int) -> Optional[dict]:
+        """Take one row off a flag's list. Returns the removed row, or None."""
         row = await self.store.remove_chat_flag(int(row_id))
         await self.store._run(self.reload)
         return row
@@ -359,4 +384,5 @@ class ChatFlags:
         return gone
 
     async def list(self) -> list[dict]:
+        """Every row on every custom flag list."""
         return await self.store._run(self.store.list_chat_flagged_sync)

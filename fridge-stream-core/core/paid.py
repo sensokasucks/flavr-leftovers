@@ -24,6 +24,9 @@ from core.csv_safe import SafeWriter
 
 log = logging.getLogger("core.paid")
 
+# Table + indexes, created on first use (``PaidLog.store``). amount is in the row's own unit
+# (money, bits or KICKs); amount_text keeps what the platform showed. The unique message index
+# stops a platform message from being listed twice after a reconnect. done = ticked.
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS paid_events (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +114,7 @@ _CODE_RE = re.compile(r"\b([A-Z]{3})\b")
 
 
 def _parse_number(raw: str) -> Optional[float]:
+    """"1,000.50" / "1.000,50" / "10,00" -> float, guessing which mark is the decimal one; None if junk."""
     s = re.sub(r"[\s\u00a0\u202f']", "", raw).strip(".,")
     if not s:
         return None
@@ -170,6 +174,7 @@ def split_amount_prefix(message: str) -> tuple[str, str]:
 
 
 def group_of(kind: str) -> str:
+    """"money" or "subs" for a kind (unknown kinds count as money)."""
     return (KINDS.get(kind) or {}).get("group", "money")
 
 
@@ -177,6 +182,7 @@ class PaidLog:
     """Rows in ``paid_events`` (the Store's database file)."""
 
     def __init__(self, store, on_change=None):
+        """``store`` is the Store or a function returning it; ``on_change`` gets the new unticked count."""
         # the Store, or a function returning it (Core swaps its Store in tests)
         self._store = store
         self._ready: set[int] = set()
@@ -184,6 +190,7 @@ class PaidLog:
 
     @property
     def store(self):
+        """The Store, making sure the paid_events table exists in its database first (once per Store)."""
         st = self._store() if callable(self._store) else self._store
         if id(st) not in self._ready:
             with st._connect() as conn:
@@ -194,6 +201,7 @@ class PaidLog:
     # ---- adding ------------------------------------------------------
 
     def _add_sync(self, row: dict) -> Optional[int]:
+        """Insert one row (worker thread). Returns its id, or None for a duplicate platform message."""
         cols = ("platform", "kind", "grp", "platform_user_id", "username", "display_name", "message",
                 "amount", "currency", "amount_text", "qty", "months", "item", "image_url", "avatar_url",
                 "message_id", "flagged", "created_at")
@@ -228,6 +236,10 @@ class PaidLog:
         flagged: bool = False,
         when: Optional[float] = None,
     ) -> Optional[int]:
+        """List one paid message, tip or sub (main.py: paid chat and platform alerts). Returns the row id.
+
+        Never raises: a database error is logged and gives None.
+        """
         kind = (kind or "donation").strip().lower()
         row = {
             "platform": (platform or "").lower(), "kind": kind, "grp": group_of(kind),
@@ -251,6 +263,7 @@ class PaidLog:
         return rid
 
     async def _changed(self) -> None:
+        """Tell the dashboard (``on_change``) the new unticked count after a change."""
         if self.on_change is None:
             return
         try:
@@ -310,6 +323,9 @@ class PaidLog:
         return (" WHERE " + " AND ".join(sql)) if sql else "", args
 
     def _list_sync(self, f: dict, limit: int) -> dict:
+        """Rows matching the filters, plus the total count, sums per currency (or counts per kind for
+        unpriced rows) and the unticked count.
+        """
         where, args = self._where(f)
         order = SORTS.get(str(f.get("sort") or "oldest"), SORTS["oldest"])
         with self.store._connect() as conn:
@@ -334,9 +350,11 @@ class PaidLog:
         return {"rows": rows, "total": total, "totals": totals, "unticked": unticked}
 
     async def list(self, filters: Optional[dict] = None, limit: int = 500) -> dict:
+        """``_list_sync`` off the event loop; ``limit`` is clamped to 1..LIMIT_MAX."""
         return await self.store._run(self._list_sync, dict(filters or {}), max(1, min(LIMIT_MAX, int(limit))))
 
     def _unticked_sync(self) -> int:
+        """Count unticked money rows (worker thread)."""
         with self.store._connect() as conn:
             return int(conn.execute("SELECT COUNT(*) FROM paid_events WHERE done=0 AND grp='money'").fetchone()[0])
 
@@ -347,6 +365,7 @@ class PaidLog:
     # ---- ticking / tidying -------------------------------------------
 
     def _tick_sync(self, ids: list[int], done: bool) -> int:
+        """Tick / untick rows by id (worker thread). Returns how many rows changed."""
         if not ids:
             return 0
         with self.store._connect() as conn:
@@ -357,6 +376,7 @@ class PaidLog:
             return cur.rowcount
 
     async def tick(self, ids: list, done: bool = True) -> int:
+        """Tick (or untick with ``done=False``) rows by id. Junk ids are ignored."""
         clean = [int(i) for i in ids if str(i).lstrip("-").isdigit()][:LIMIT_MAX]
         n = await self.store._run(self._tick_sync, clean, bool(done))
         if n:
@@ -364,6 +384,7 @@ class PaidLog:
         return n
 
     def _tick_matching_sync(self, f: dict, done: bool) -> int:
+        """Tick / untick every row the filters match (worker thread)."""
         where, args = self._where(f)
         with self.store._connect() as conn:
             cur = conn.execute(f"UPDATE paid_events SET done=?, done_at=?{where}",
@@ -379,6 +400,7 @@ class PaidLog:
         return n
 
     def _delete_ticked_sync(self, older_than: float) -> int:
+        """Delete ticked rows created before ``older_than`` (epoch seconds)."""
         with self.store._connect() as conn:
             cur = conn.execute("DELETE FROM paid_events WHERE done=1 AND created_at<?", (older_than,))
             conn.commit()
@@ -390,6 +412,7 @@ class PaidLog:
         return await self.store._run(self._delete_ticked_sync, time.time() - days * 86400)
 
     async def export_csv(self, filters: Optional[dict] = None) -> str:
+        """Every matching row (no page limit) as formula-safe CSV text."""
         data = await self.store._run(self._list_sync, dict(filters or {}), 1_000_000)
         buf = io.StringIO()
         w = SafeWriter(buf)
@@ -405,6 +428,7 @@ class PaidLog:
 
 
 def _list(raw: Any) -> list[str]:
+    """A filter value ("a,b" or a list) as clean lower-case entries."""
     if raw in (None, ""):
         return []
     if isinstance(raw, str):
@@ -413,4 +437,5 @@ def _list(raw: Any) -> list[str]:
 
 
 def kind_catalog() -> list[dict[str, str]]:
+    """[{kind, label, group, platform}] for the dashboard's filters."""
     return [{"kind": k, **v} for k, v in KINDS.items()]

@@ -44,6 +44,8 @@ DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "widgets"
 PLATFORMS = ("streamelements", "streamlabs")
 PARTS = ("html", "css", "js", "fields", "data")
 PART_FILES = {"html": "html.txt", "css": "css.txt", "js": "js.txt", "fields": "fields.json", "data": "data.json"}
+# Size limits in bytes (one imported zip, one part), and the most widgets kept.
+# JQUERY: StreamElements widgets expect jQuery, so the frame loads Core's local copy first.
 MAX_ZIP_BYTES = 20 * 1024 * 1024
 MAX_PART_BYTES = 5 * 1024 * 1024
 MAX_WIDGETS = 100
@@ -53,6 +55,7 @@ FRAME_CSP = "sandbox allow-scripts"
 
 
 def _read_json(raw: str, what: str) -> dict[str, Any]:
+    """Parse a fields / data box as a JSON object ({} when empty); ValueError with a readable reason."""
     raw = (raw or "").strip()
     if not raw:
         return {}
@@ -88,6 +91,7 @@ def field_values(fields: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]
 
 
 def _as_text(value: Any) -> str:
+    """A field value as it is written into widget code (true / false, JSON for lists and objects)."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if value is None:
@@ -107,6 +111,7 @@ def fill_fields(text: str, values: dict[str, Any], single: bool) -> str:
         pattern += r"|\{([A-Za-z_][\w-]*)\}"
 
     def sub(m: re.Match) -> str:
+        """The field's value for one match, or the match unchanged when the key is not a field."""
         key = m.group(1) or (m.group(2) if single else None)
         if key is None or key not in values:
             return m.group(0)
@@ -122,6 +127,7 @@ def _script_safe(js: str) -> str:
 
 # ── reading an exported zip ────────────────────────────────────────────
 def _part_for(filename: str) -> Optional[str]:
+    """Which widget part ("html", "css", "js", "fields", "data") a zip entry is, by its name; None to skip."""
     base = filename.replace("\\", "/").rsplit("/", 1)[-1].lower()
     if base.startswith(".") or base.startswith("__macosx"):
         return None
@@ -154,6 +160,7 @@ def read_zip(raw: bytes) -> dict[str, str]:
     by_name = {i.filename.replace("\\", "/"): i for i in infos}
 
     def text(info: zipfile.ZipInfo) -> str:
+        """One zip entry as text (BOM stripped), refusing entries over MAX_PART_BYTES."""
         if info.file_size > MAX_PART_BYTES:
             raise ValueError(f"{info.filename} is bigger than 5 MB.")
         return zf.read(info).decode("utf-8-sig", errors="replace")
@@ -186,11 +193,16 @@ def read_zip(raw: bytes) -> dict[str, str]:
 
 
 class WidgetStore:
+    """The imported widgets in ``root`` (default data/widgets), one folder each.
+
+    Changes run under one lock (admin requests can overlap). Shared instance: ``default_store()``.
+    """
     def __init__(self, root: Optional[Path] = None):
         self.root = Path(root) if root else DATA_DIR
         self._lock = threading.RLock()
 
     def _dir(self, name: str) -> Optional[Path]:
+        """The folder of an existing widget, or None (no folder, or no widget.json in it)."""
         name = clean_name(name)
         if not name:
             return None
@@ -198,6 +210,7 @@ class WidgetStore:
         return d if (d / "widget.json").is_file() else None
 
     def _meta(self, d: Path) -> dict[str, Any]:
+        """widget.json as a dict ({} when missing or broken)."""
         try:
             meta = json.loads((d / "widget.json").read_text(encoding="utf-8") or "{}")
         except (OSError, ValueError):
@@ -205,6 +218,7 @@ class WidgetStore:
         return meta if isinstance(meta, dict) else {}
 
     def _read_part(self, d: Path, part: str) -> str:
+        """One part's saved text ("" when missing)."""
         p = d / PART_FILES[part]
         try:
             return p.read_text(encoding="utf-8") if p.is_file() else ""
@@ -212,11 +226,16 @@ class WidgetStore:
             return ""
 
     def names(self) -> list[str]:
+        """Names of every stored widget, sorted."""
         if not self.root.is_dir():
             return []
         return sorted(p.name for p in self.root.iterdir() if (p / "widget.json").is_file())
 
     def get(self, name: str, with_code: bool = False) -> Optional[dict[str, Any]]:
+        """A widget's info for the dashboard (with its code when ``with_code``), or None.
+
+        ``values`` are the field defaults with the saved values on top.
+        """
         d = self._dir(name)
         if d is None:
             return None
@@ -247,9 +266,11 @@ class WidgetStore:
         return out
 
     def list(self) -> list[dict[str, Any]]:
+        """``get()`` for every widget (without code)."""
         return [w for w in (self.get(n) for n in self.names()) if w]
 
     def _free_name(self, wanted: str) -> str:
+        """``wanted`` cleaned, with -2, -3 ... added while a folder of that name exists (max 40 chars)."""
         base = clean_name(wanted) or "widget"
         name, n = base, 2
         while (self.root / name).exists():
@@ -260,12 +281,14 @@ class WidgetStore:
 
     @staticmethod
     def _check(parts: dict[str, str]) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Size-check every part and parse fields / data. Returns (fields, data) or raises ValueError."""
         for part in PARTS:
             if len((parts.get(part) or "").encode("utf-8")) > MAX_PART_BYTES:
                 raise ValueError(f"The {part.upper()} is bigger than 5 MB.")
         return _read_json(parts.get("fields") or "", "fields"), _read_json(parts.get("data") or "", "saved values")
 
     def _write(self, d: Path, parts: dict[str, str], meta: dict[str, Any]) -> None:
+        """Save the given parts and widget.json; ``version`` always goes up so open frames reload."""
         d.mkdir(parents=True, exist_ok=True)
         for part in PARTS:
             if part in parts:
@@ -294,10 +317,12 @@ class WidgetStore:
             return self.get(d.name) or {}
 
     def add_zip(self, raw: bytes, name: str = "", filename: str = "", platform: str = "") -> dict[str, Any]:
+        """Import a widget from an exported zip (name taken from the file name when none is given)."""
         parts = read_zip(raw)
         return self.add(parts, name=name or name_from_filename(filename), platform=platform)
 
     def add_zip_base64(self, b64: str, name: str = "", filename: str = "", platform: str = "") -> dict[str, Any]:
+        """``add_zip`` for a zip sent as base64 text."""
         return self.add_zip(decode_base64(b64), name=name, filename=filename, platform=platform)
 
     def update(self, name: str, parts: Optional[dict[str, str]] = None, values: Optional[dict[str, Any]] = None,
@@ -320,6 +345,7 @@ class WidgetStore:
             return self.get(d.name) or {}
 
     def rename(self, name: str, new_name: str) -> dict[str, Any]:
+        """Rename a widget's folder (a taken name gets -2 ...). KeyError if it does not exist."""
         with self._lock:
             d = self._dir(name)
             if d is None:
@@ -333,6 +359,7 @@ class WidgetStore:
             return self.get(target) or {}
 
     def delete(self, name: str) -> bool:
+        """Delete a widget and all its files. False when there was none."""
         with self._lock:
             d = self._dir(name)
             if d is None:
@@ -350,6 +377,9 @@ class WidgetStore:
 
 
 def compose_frame(platform: str, code: dict[str, str], values: dict[str, Any]) -> str:
+    """The HTML for the sandboxed frame: settings filled in, CSS placeholders filled, and the code
+    kept from closing its own <style> / <script> tags early.
+    """
     se = platform != "streamlabs"
     html = fill_fields(code.get("html") or "", values, single=se)
     css = fill_fields(code.get("css") or "", values, single=se)
@@ -374,6 +404,7 @@ _default: Optional[WidgetStore] = None
 
 
 def default_store() -> WidgetStore:
+    """The WidgetStore in data/widgets (one per Core)."""
     global _default
     if _default is None:
         _default = WidgetStore()

@@ -7,6 +7,11 @@ stable /api/v2/channels/{slug} endpoint.
 
 Later we can add the official Kick API (OAuth + chat:write + rewards)
 without changing the rest of Core.
+
+Flow: find the channel's chatroom id (config ``kick.chatroom_id``, else a kick.com API
+lookup that is then saved into config.yaml), ask Kick for the current Pusher key, subscribe
+to the chatroom (and channel) Pusher channels, and turn their events into ChatEvents,
+removals and alerts. Settings live in the ``kick:`` block of config.yaml.
 """
 
 from __future__ import annotations
@@ -61,6 +66,7 @@ REALTIME_URL = "https://web.kick.com/api/v1/realtime/connection"
 
 
 def pusher_url(key: str = PUSHER_KEY, cluster: str = PUSHER_CLUSTER) -> str:
+    """WebSocket address of Kick's Pusher app, with the query string Pusher's JS client sends."""
     return (
         f"wss://ws-{cluster}.pusher.com/app/{key}"
         "?protocol=7&client=js&version=8.4.0&flash=false"
@@ -117,6 +123,7 @@ BROWSER_HEADERS = {
 }
 
 
+# Pusher event names Core reacts to (Kick's Laravel class names, backslashes included).
 # mod actions on the chatroom channel (names from Kick's web client; payloads logged once)
 KICK_REMOVE_EVENTS = ("App\\Events\\MessageDeletedEvent", "App\\Events\\UserBannedEvent",
                       "App\\Events\\ChatroomClearEvent")
@@ -156,6 +163,7 @@ KICK_TIP_EVENTS = ("KicksGifted",)
 
 
 def _event_short(event_name: str) -> str:
+    """``App\\Events\\StreamHostEvent`` -> ``StreamHostEvent``."""
     return event_name.rsplit("\\", 1)[-1]
 
 
@@ -234,6 +242,11 @@ def _opt_int(raw: Any, name: str) -> Optional[int]:
 
 
 class KickAdapter(BaseAdapter):
+    """Kick chat (Pusher WebSocket) plus a viewer-count poll every ``kick.poll_viewer_interval_sec``.
+
+    Read-only: there is no ``send_message``, so command replies are not posted into Kick chat.
+    """
+
     platform = Platform.KICK
 
     def __init__(self, config: dict, bus: EventBus, metrics: MetricsAggregator):
@@ -264,6 +277,7 @@ class KickAdapter(BaseAdapter):
         self._seen_subs: deque[str] = deque(maxlen=64)
 
     async def start(self) -> None:
+        """Find the chatroom and start the chat + viewer tasks. Returns quickly; retries run in the background."""
         if not self.slug or self.slug.startswith("YOUR_"):
             log.warning("Kick channel_slug not configured – adapter disabled")
             self._set_stopped("No Kick channel set. Type your channel name under Settings → Core + chat platforms.")
@@ -297,6 +311,7 @@ class KickAdapter(BaseAdapter):
         self._viewer_task = asyncio.create_task(self._viewer_loop(), name="kick-viewers")
 
     def _lookup_message(self) -> str:
+        """Dashboard text while the chatroom id is still unknown."""
         why = self._lookup_error or "the lookup failed"
         return (
             f"Can't find the Kick chat room for '{self.slug}' ({why}). "
@@ -304,6 +319,7 @@ class KickAdapter(BaseAdapter):
         )
 
     async def _lookup_then_connect(self) -> None:
+        """Retry the chatroom lookup (15 s doubling to 120 s), then run the chat loop."""
         delay = LOOKUP_RETRY_FIRST
         while self._running and not self.chatroom_id:
             try:
@@ -325,6 +341,7 @@ class KickAdapter(BaseAdapter):
             await self._ws_loop()
 
     async def stop(self) -> None:
+        """Cancel the chat and viewer tasks and save the picture cache."""
         self._running = False
         self._set_stopped()
         self._stop_event.set()
@@ -480,6 +497,7 @@ class KickAdapter(BaseAdapter):
     # ------------------------------------------------------------------
 
     async def _viewer_loop(self) -> None:
+        """Poll viewers every ``poll_interval`` seconds until stopped."""
         while self._running:
             try:
                 await self._poll_viewers()
@@ -492,6 +510,7 @@ class KickAdapter(BaseAdapter):
                 pass
 
     async def _poll_viewers(self) -> None:
+        """Read the channel API: viewer count, and as a side job the chatroom / channel ids if still missing."""
         url = f"https://kick.com/api/v2/channels/{self.slug}"
         try:
             async with httpx.AsyncClient(timeout=10.0, headers=BROWSER_HEADERS) as client:
@@ -550,6 +569,7 @@ class KickAdapter(BaseAdapter):
             return None
 
     async def _refresh_pusher_key(self) -> None:
+        """Before each connect, take Kick's current key unless kick.pusher_key pins one."""
         if self._pusher_key_pinned:
             return
         found = await self.fetch_pusher_credentials()
@@ -558,6 +578,7 @@ class KickAdapter(BaseAdapter):
             log.info("Kick chat key from Kick: %s (cluster %s)", self.pusher_key, self.pusher_cluster)
 
     async def _ws_loop(self) -> None:
+        """Keep the Pusher connection up; reconnect after 3 s growing to 30 s."""
         backoff = 3.0
         while self._running:
             await self._refresh_pusher_key()
@@ -604,6 +625,7 @@ class KickAdapter(BaseAdapter):
             backoff = min(backoff * 1.5, 30.0)
 
     async def _subscribe(self, ws) -> None:
+        """Join the chatroom's Pusher channels (public, so ``auth`` is empty)."""
         # Primary chatroom channel
         await ws.send(json.dumps({
             "event": "pusher:subscribe",
@@ -624,6 +646,7 @@ class KickAdapter(BaseAdapter):
         self._channel_subscribed = True
 
     async def _handle_raw(self, raw: str | bytes) -> None:
+        """Route one Pusher frame. Pusher sends ``data`` as a JSON string inside the JSON frame."""
         try:
             msg = json.loads(raw if isinstance(raw, str) else raw.decode("utf-8", "ignore"))
         except json.JSONDecodeError:
@@ -700,6 +723,7 @@ class KickAdapter(BaseAdapter):
                 await self._emit_alert(**alert)
 
     async def _on_chat_message(self, data: dict[str, Any]) -> None:
+        """Kick chat message payload -> ChatEvent on the bus (picture looked up if Kick left it out)."""
         sender = data.get("sender") or {}
         username = (
             sender.get("username")

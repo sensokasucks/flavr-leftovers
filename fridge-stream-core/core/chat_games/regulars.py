@@ -10,6 +10,7 @@ from .engine import Feature, name_key, speaker, user_key, user_ref
 
 
 def title_for_streams(titles, streams: int) -> str:
+    """The highest title whose ``streams`` threshold is reached ("" for none). ``titles`` is sorted."""
     best = ""
     for t in titles:
         if streams >= int(t["streams"]):
@@ -23,6 +24,9 @@ class Streaks(Feature):
     KEY = "streak"
 
     def __init__(self, g):
+        """In-memory caches: who was already counted this stream, and each chatter's title (by user
+        key, and by platform + name for the credits roll). The real counts live in the store.
+        """
         super().__init__(g)
         self._seen: Dict[str, int] = {}        # ukey -> stream id already counted
         self._titles: Dict[str, str] = {}      # ukey -> title
@@ -30,12 +34,14 @@ class Streaks(Feature):
         self._info: Dict[str, Dict[str, int]] = {}
 
     def forget(self) -> None:
+        """A new stream started: count everyone again on their next line."""
         self._seen.clear()
 
     def commands(self, c):
         return {c["command"]: self.cmd}
 
     async def observe(self, event: ChatEvent) -> None:
+        """First line of a chatter in this stream: record attendance and refresh their title."""
         uk = user_key(event.user)
         s = await self.g.stream()
         if self._seen.get(uk) == s["id"]:
@@ -49,6 +55,7 @@ class Streaks(Feature):
         self._remember(event, info)
 
     def _remember(self, event: ChatEvent, info: Dict[str, int]) -> None:
+        """Cache a chatter's streak numbers and work out their title."""
         c = self.g.cfg["streak"]
         uk = user_key(event.user)
         self._info[uk] = info
@@ -58,12 +65,15 @@ class Streaks(Feature):
         self._by_name[f"{event.user.platform.value}:{name_key(event.user.username)}"] = title
 
     def cached_title(self, user) -> str:
+        """The chatter's title from the cache ("" when not seen this run of Core)."""
         return self._titles.get(user_key(user), "")
 
     def title_by_name(self, platform: str, username: str) -> str:
+        """The cached title by "platform" + username, for the credits roll."""
         return self._by_name.get(f"{platform}:{name_key(username)}", "")
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!streak: current run, best run, total, title, and the next title to reach."""
         if not self.g.store:
             return
         await self.observe(event)
@@ -85,6 +95,7 @@ class Streaks(Feature):
         await self.g.reply(event, " ".join(bits))
 
     def status(self):
+        """How many chatters were counted this stream."""
         return {"people_seen": len(self._seen)}
 
 
@@ -97,6 +108,7 @@ class Claim(Feature):
         return {c["command"]: self.cmd}
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """!claim: pay ``points`` once per chatter per stream (store.claim_once keeps it to one)."""
         if not await self.g.need_points(event, f"{self.g.prefix()}{c['command']}"):
             return
         uid = await self.g.uid(event.user)
@@ -117,6 +129,7 @@ class Stage(Feature):
     """Mods: !curtain open | close | reveal | (nothing = toggle) for Stream Rooms' stage curtain."""
 
     KEY = "stage"
+    # Words a mod may type after the command -> the curtain value sent to Stream Rooms.
     WORDS = {"open": "open", "up": "open", "close": "close", "shut": "close", "down": "close",
              "reveal": "reveal", "show": "reveal", "toggle": "toggle"}
 
@@ -124,6 +137,7 @@ class Stage(Feature):
         return {c["command"]: self.cmd}
 
     async def cmd(self, event: ChatEvent, args, c) -> None:
+        """Mods only: send the curtain command to the game; others are ignored silently."""
         if not self.g.is_mod(event.user):
             return
         value = self.WORDS.get(args[0].lower() if args else "toggle")
@@ -142,6 +156,7 @@ class Seats(Feature):
     KEY = "seat"
 
     def __init__(self, g):
+        """``offers``: open !swap offers by the target's name key, each with who asked and when it expires."""
         super().__init__(g)
         self.offers: Dict[str, Dict[str, Any]] = {}     # target name key -> offer
 
@@ -149,10 +164,15 @@ class Seats(Feature):
         return {c["command"]: self.seat, c["swap_command"]: self.swap}
 
     def _room_open(self) -> bool:
+        """True when a game (Stream Rooms) is connected, so seats exist."""
         r = self.g.reactions
         return bool(r and r.game_clients)
 
     async def seat(self, event: ChatEvent, args, c) -> None:
+        """!seat front | back: ask the game to move the chatter (front can cost points).
+
+        The charge goes with the effect, so the reaction engine refunds it if the game drops it.
+        """
         who = speaker(event.user)
         where = (args[0].lower() if args else "")
         if where not in ("front", "back"):
@@ -187,6 +207,7 @@ class Seats(Feature):
         await self.g.reply(event, f"@{who} moving you to the {where}{paid}.")
 
     async def swap(self, event: ChatEvent, args, c) -> None:
+        """!swap @name offers a trade; the named person's !swap (or !swap @asker) accepts it."""
         who = speaker(event.user)
         me = name_key(event.user.username)
         mine = self.offers.get(me)
@@ -212,9 +233,11 @@ class Seats(Feature):
                                   f"Type {self.g.prefix()}{c['swap_command']} to accept ({int(c['swap_sec'])}s).")
 
     async def tick(self, now: float) -> None:
+        """Drop expired swap offers."""
         for k, o in list(self.offers.items()):
             if now >= o["expires"]:
                 self.offers.pop(k, None)
 
     def status(self):
+        """Open swap offers, for the admin page."""
         return {"swap_offers": len(self.offers)}

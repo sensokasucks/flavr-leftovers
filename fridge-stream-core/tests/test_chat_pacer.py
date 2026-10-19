@@ -144,6 +144,7 @@ class PacerTests(unittest.TestCase):
 
 class YouTubePollTests(unittest.TestCase):
     def test_setting(self):
+        """youtube.poll_interval_sec: 0 = follow YouTube's suggestion, else clamped to 1..30 seconds."""
         self.assertEqual(poll_interval_setting(None), 0.0)
         self.assertEqual(poll_interval_setting(""), 0.0)
         self.assertEqual(poll_interval_setting(0), 0.0)

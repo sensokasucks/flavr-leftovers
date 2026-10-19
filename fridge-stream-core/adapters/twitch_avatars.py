@@ -29,7 +29,7 @@ log = logging.getLogger("adapters.twitch_avatars")
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "twitch_avatars.json"
 USERS_URL = "https://api.twitch.tv/helix/users"
-RETRY_SEC = 10 * 60
+RETRY_SEC = 10 * 60              # seconds before a failed lookup is tried again
 REFRESH_SEC = 1 * 24 * 3600      # one Helix call covers 100 chatters, so a daily re-check is nearly free
 BATCH_DELAY_SEC = 0.5            # gather ids for this long, then one request
 BATCH_MAX = 100                  # Helix limit per call
@@ -50,6 +50,12 @@ def pictures_from_users(data: dict) -> dict[str, str]:
 
 
 class TwitchAvatars:
+    """Batched cache of Twitch chatter pictures, owned by TwitchAdapter (adapters/twitch.py).
+
+    ``auth`` is the adapter's TwitchAuth (twitch_auth.py); ``fetcher`` / ``path`` /
+    ``batch_delay`` can be swapped in tests.
+    """
+
     def __init__(self, enabled: bool = True, fetcher: Optional[Fetcher] = None,
                  path: Optional[Path] = None, auth=None, batch_delay: float = BATCH_DELAY_SEC):
         self.enabled = enabled
@@ -94,11 +100,13 @@ class TwitchAvatars:
             self._flush_task.add_done_callback(self._tasks.discard)
 
     def stop(self) -> None:
+        """Cancel the pending batch and write the cache (called when the adapter stops)."""
         for t in list(self._tasks):
             t.cancel()
         self.save()
 
     def save(self) -> None:
+        """Write the cache to disk now if it changed (errors are only logged at DEBUG)."""
         if not self._dirty:
             return
         try:
@@ -125,6 +133,7 @@ class TwitchAvatars:
             self._cache = {}
 
     async def _flush_later(self) -> None:
+        """Wait ``batch_delay`` seconds so more ids pile up, then send them in chunks of BATCH_MAX."""
         try:
             await asyncio.sleep(self._delay)
             while self._queue:
@@ -137,6 +146,7 @@ class TwitchAvatars:
             log.debug("Twitch avatar batch failed: %s", e)
 
     async def _lookup(self, ids: list[str], callbacks: dict[str, Found]) -> None:
+        """One Helix call for ``ids``; store the answers and fire callbacks for new pictures."""
         now = time.time()
         try:
             status, found = await self._fetch(ids)
@@ -173,6 +183,7 @@ class TwitchAvatars:
                 self._pending.discard(i)
 
     async def _fetch_http(self, ids: list[str]) -> tuple[int, dict[str, str]]:
+        """Default fetcher: Helix ``GET /users?id=..``. No token -> 401 (signed in but stale) or 0."""
         import httpx
 
         token = await self._auth.token() if self._auth is not None else None

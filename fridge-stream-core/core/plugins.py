@@ -28,12 +28,14 @@ ROOT = Path(__file__).resolve().parent.parent
 
 @dataclass
 class LoadedPlugin:
+    """An installed plugin after its code was imported (``cls``), or the reason it could not be."""
     manifest: Manifest
     cls: Any = None
     error: str = ""          # import / start problem (manifest problems live on manifest.error)
 
     @property
     def id(self) -> str:
+        """The plugin id (same as its folder name)."""
         return self.manifest.id
 
 
@@ -82,6 +84,7 @@ class PluginDirectory:
     """What one plugin can see of the others (``ctx.plugins``)."""
 
     def __init__(self, manager: "PluginManager"):
+        """Wraps the PluginManager so plugins only get the read-only lookups below."""
         self._m = manager
 
     def running(self, plugin_id: str) -> Any:
@@ -89,10 +92,12 @@ class PluginDirectory:
         return self._m.games.get(plugin_id) if plugin_id in self._m.loaded else None
 
     def installed(self, plugin_id: str) -> bool:
+        """True when the plugin is installed and its code loaded."""
         lp = self._m.loaded.get(plugin_id)
         return bool(lp and not lp.error)
 
     def ids(self) -> list[str]:
+        """Ids of every plugin whose code loaded, running or not."""
         return sorted(pid for pid, lp in self._m.loaded.items() if not lp.error)
 
     def service(self, name: str) -> Any:
@@ -123,11 +128,15 @@ class PluginDirectory:
         return fn if callable(fn) else None
 
     def manifest(self, plugin_id: str) -> Optional[dict]:
+        """A copy of the plugin's plugin.json, or None when it is not installed."""
         lp = self._m.loaded.get(plugin_id)
         return dict(lp.manifest.data) if lp else None
 
 
 class PluginManager:
+    """Owns every plugin for one Core (main.py). ``games`` is the dict of running plugin instances
+    that the rest of Core fans commands and metrics out to; this class fills and empties it.
+    """
     def __init__(
         self,
         *,
@@ -155,6 +164,7 @@ class PluginManager:
     # ------------------------------------------------------------------
 
     def load_all(self) -> None:
+        """Import every installed plugin's class (nothing starts). A failed import is kept as ``error``."""
         self.loaded = {}
         self.broken = [m for m in plugin_manifest.discover() if not m.ok]
         for m in plugin_manifest.installed():
@@ -210,6 +220,10 @@ class PluginManager:
     # ------------------------------------------------------------------
 
     async def start_enabled(self) -> None:
+        """Start every plugin with ``<id>.enabled: true``, in dependency order (Core start only).
+
+        A plugin that raises in start() is logged, kept out of ``games`` and shown with its error.
+        """
         cfg = self.get_config() or {}
         # Providers ("provides") and anything named in "after" start first
         for m in plugin_manifest.start_order(lp.manifest for lp in self.loaded.values()):
@@ -230,6 +244,7 @@ class PluginManager:
             self.games[pid] = inst
 
     async def stop_all(self) -> None:
+        """Stop every running plugin (dependents first) and close their own databases."""
         # Reverse start order: a plugin stops before the ones it uses
         order = [m.id for m in plugin_manifest.start_order(lp.manifest for lp in self.loaded.values())]
         for pid in reversed(order):

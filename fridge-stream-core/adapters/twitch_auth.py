@@ -50,13 +50,14 @@ DEVICE_GRANT = "urn:ietf:params:oauth:grant-type:device_code"
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "twitch_token.json"
 REFRESH_MARGIN_SEC = 5 * 60        # refresh when this close to expiry
 VALIDATE_EVERY_SEC = 60 * 60       # Twitch wants tokens validated hourly
-APP_TOKEN_MARGIN_SEC = 10 * 60
+APP_TOKEN_MARGIN_SEC = 10 * 60     # fetch a new app token when this close to expiry
 
 # (method, url, form data, headers) -> (status, json or {})
 Http = Callable[[str, str, Optional[dict], Optional[dict]], Awaitable[tuple[int, Any]]]
 
 
 async def _http_httpx(method: str, url: str, data: Optional[dict], headers: Optional[dict]) -> tuple[int, Any]:
+    """Default ``Http``: one form-encoded request; a body that isn't JSON comes back as {}."""
     import httpx
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -69,7 +70,11 @@ async def _http_httpx(method: str, url: str, data: Optional[dict], headers: Opti
 
 
 class TwitchAuth:
-    """One per Core. The adapter and the dashboard share it (see ``get_auth``)."""
+    """One per Core. The adapter and the dashboard share it (see ``get_auth``).
+
+    ``http`` and ``clock`` can be swapped in tests so no request goes to Twitch.
+    Times stored here (``expires_at``) are ``clock()`` seconds.
+    """
 
     def __init__(self, client_id: str = "", client_secret: str = "", path: Optional[Path] = None,
                  http: Optional[Http] = None, clock: Callable[[], float] = time.time):
@@ -90,6 +95,7 @@ class TwitchAuth:
     # ── configuration ───────────────────────────────────────
     @property
     def client_id(self) -> str:
+        """The streamer's own app id from config.yaml, else Core's built-in one."""
         return self._own_client_id or BUILTIN_CLIENT_ID
 
     @property
@@ -120,6 +126,7 @@ class TwitchAuth:
         return str(self._tok.get("user_id") or "")
 
     def status(self) -> dict[str, Any]:
+        """What the dashboard's Twitch card shows (GET /api/admin/twitch/auth). Never contains tokens."""
         pending = None
         if self._pending and self._pending.get("expires_at", 0) > self._now():
             pending = {
@@ -165,6 +172,7 @@ class TwitchAuth:
         return self.status()
 
     def cancel_login(self) -> None:
+        """Stop waiting for the code typed at twitch.tv/activate."""
         if self._poll_task and not self._poll_task.done():
             self._poll_task.cancel()
         self._poll_task = None
@@ -191,6 +199,7 @@ class TwitchAuth:
         msg = _twitch_message(body)
         if "authorization_pending" in msg:
             return False
+        # Twitch asks us to poll less often: back off by 5 s as the device flow spec says
         if "slow_down" in msg:
             self._pending["interval"] += 5.0
             return False
@@ -200,6 +209,7 @@ class TwitchAuth:
         return True
 
     async def _poll(self) -> None:
+        """Background task from start_login: call poll_once every ``interval`` seconds until done."""
         try:
             while self._pending:
                 await asyncio.sleep(self._pending.get("interval", 5.0))
@@ -213,6 +223,7 @@ class TwitchAuth:
             self._pending = {}
 
     async def _accept_tokens(self, body: dict[str, Any]) -> None:
+        """Store a fresh token answer from Twitch and look up who signed in."""
         self._tok = {
             "access_token": str(body["access_token"]),
             "refresh_token": str(body.get("refresh_token") or self._tok.get("refresh_token") or ""),
@@ -265,10 +276,12 @@ class TwitchAuth:
         log.info("Twitch disconnected")
 
     def stop(self) -> None:
+        """Core is shutting down: stop a sign-in in progress (the saved token stays)."""
         self.cancel_login()
 
     # ── private ─────────────────────────────────────────────
     async def _refresh(self) -> None:
+        """Swap the refresh token for a new access token. Network errors keep the old one for a retry."""
         refresh = self._tok.get("refresh_token")
         if not refresh:
             self._drop("Twitch sign-in expired (no refresh token). Press Connect Twitch again.")
@@ -297,6 +310,7 @@ class TwitchAuth:
             log.warning("Twitch token refresh answered HTTP %s (will retry)", status)
 
     async def _validate(self) -> None:
+        """Hourly check with Twitch; also fills login / user_id / scopes. 401 -> try a refresh."""
         tok = self._tok.get("access_token")
         if not tok:
             return
@@ -318,6 +332,7 @@ class TwitchAuth:
             await self._refresh()
 
     async def _app_token(self) -> Optional[str]:
+        """Client-credentials token (needs ``twitch.client_secret``); kept in memory only."""
         if self._app_tok.get("access_token") and float(self._app_tok.get("expires_at", 0)) - self._now() > APP_TOKEN_MARGIN_SEC:
             return str(self._app_tok["access_token"])
         try:
@@ -336,6 +351,7 @@ class TwitchAuth:
         return None
 
     def _drop(self, why: str) -> None:
+        """Forget the sign-in locally (no revoke) and show ``why`` on the dashboard."""
         self._tok = {}
         self._last_error = why
         self._save()
@@ -350,6 +366,7 @@ class TwitchAuth:
             self._tok = {}
 
     def _save(self) -> None:
+        """Write the token file, or delete it when signed out."""
         try:
             if not self._tok:
                 if self._path.exists():
@@ -362,6 +379,7 @@ class TwitchAuth:
 
 
 def _twitch_message(body: Any) -> str:
+    """The human-readable reason in a Twitch error answer ("" if none)."""
     if isinstance(body, dict):
         return str(body.get("message") or body.get("error") or "")
     return ""

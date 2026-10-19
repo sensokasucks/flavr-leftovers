@@ -62,6 +62,7 @@ _PLACEHOLDER = re.compile(r"\{\{\s*([A-Za-z][\w-]*)\s*\}\}(px)?|\{([A-Za-z][\w-]
 
 
 def _key(name: str) -> str:
+    """Normalise a placeholder name for lookup: drop _ and -, lower-case ("font_size" -> "fontsize")."""
     return re.sub(r"[_-]", "", name).lower()
 
 
@@ -70,6 +71,7 @@ def fill_placeholders(css: str) -> tuple[str, int]:
     count = 0
 
     def sub(m: re.Match) -> str:
+        """Replace one regex match, or return it unchanged when the name is unknown."""
         nonlocal count
         name = m.group(1) or m.group(3)
         px = m.group(2) or m.group(4) or ""

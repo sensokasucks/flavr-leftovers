@@ -42,6 +42,7 @@ PLUGIN_API_VERSION = 2
 # plugin isn't installed (otherwise !spawn would fan out to whatever other game is running).
 LEGACY_GAME_IDS = ("minecraft", "factorio", "granvir", "openttd")
 
+# Rules for what plugin.json may contain (checked by ``validate``).
 ID_RE = re.compile(r"^[a-z][a-z0-9_]{1,31}$")
 FIELD_TYPES = {"text", "url", "number", "password", "checkbox", "list", "lines", "map", "select"}
 KINDS = {"python", "http"}
@@ -50,12 +51,16 @@ CATEGORIES = {"game", "feature"}
 NAV_GROUPS = {"On stream", "Overlays", "Games", "People", "Settings"}
 PAGE_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,31}$")
 
+# discover() result, kept until reset_cache(); _reserved = Core's own config section names.
 _cache: Optional[List["Manifest"]] = None
 _reserved: set[str] = set()
 
 
 @dataclass
 class Manifest:
+    """One plugin folder and its parsed plugin.json. ``error`` is set (and the plugin skipped)
+    when the manifest is broken.
+    """
     id: str
     path: Path
     data: Dict[str, Any] = field(default_factory=dict)
@@ -63,14 +68,17 @@ class Manifest:
 
     @property
     def ok(self) -> bool:
+        """True when the manifest passed ``validate``."""
         return not self.error
 
     @property
     def name(self) -> str:
+        """Display name ("name" in plugin.json, else the id in title case)."""
         return str(self.data.get("name") or self.id.replace("_", " ").title())
 
     @property
     def kind(self) -> str:
+        """"python" (a plugin.py class) or "http" (Core's HttpPlugin talks to the game's bridge)."""
         return str(self.data.get("kind") or "python")
 
     @property
@@ -90,6 +98,7 @@ class Manifest:
 
     @property
     def pages(self) -> List[Dict[str, Any]]:
+        """The plugin's dashboard pages with every field filled in (sidebar group defaults by category)."""
         out = []
         for pg in self.data.get("pages") or []:
             out.append({
@@ -102,6 +111,7 @@ class Manifest:
         return out
 
     def get(self, key: str, default: Any = None) -> Any:
+        """A raw plugin.json value."""
         return self.data.get(key, default)
 
 
@@ -119,11 +129,13 @@ def set_reserved_ids(names: Iterable[str]) -> None:
 
 
 def reset_cache() -> None:
+    """Forget the scanned plugins so the next call reads plugins/ again."""
     global _cache
     _cache = None
 
 
 def _check_fields(fields: Any, where: str) -> str:
+    """"" when a settings / market field list is valid, else the reason."""
     if fields is None:
         return ""
     if not isinstance(fields, list):
@@ -137,6 +149,7 @@ def _check_fields(fields: Any, where: str) -> str:
 
 
 def _check_pages(pages: Any, folder: Path) -> str:
+    """"" when the "pages" list is valid (unique ids, files inside pages/), else the reason."""
     if pages is None:
         return ""
     if not isinstance(pages, list):
@@ -250,10 +263,12 @@ def discover(force: bool = False) -> List[Manifest]:
 
 
 def installed() -> List[Manifest]:
+    """The usable plugins (broken manifests left out)."""
     return [m for m in discover() if m.ok]
 
 
 def find(plugin_id: str) -> Optional[Manifest]:
+    """The installed plugin with this id, or None."""
     for m in installed():
         if m.id == plugin_id:
             return m
@@ -261,6 +276,7 @@ def find(plugin_id: str) -> Optional[Manifest]:
 
 
 def installed_ids() -> List[str]:
+    """Ids of the installed plugins."""
     return [m.id for m in installed()]
 
 
@@ -360,4 +376,5 @@ def start_order(manifests: Iterable[Manifest]) -> List[Manifest]:
 
 
 def overlay_dirs() -> List[Path]:
+    """Each installed plugin's overlay/ folder that exists (api/server.py serves them at /overlay/)."""
     return [m.path / "overlay" for m in installed() if (m.path / "overlay").is_dir()]

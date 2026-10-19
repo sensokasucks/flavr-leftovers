@@ -31,6 +31,7 @@ from core.models import ChatEvent
 
 log = logging.getLogger("core.red_flags")
 
+# Limits on the phrase list (count, characters per phrase).
 MAX_PHRASES = 500
 MAX_PHRASE_LEN = 120
 MAX_PAST_PEOPLE = 500     # "Check past chat" lists at most this many chatters
@@ -80,6 +81,13 @@ def compile_phrase(phrase: str) -> Optional[re.Pattern]:
 
 
 class RedFlags:
+    """The red-flag phrases and the list of flagged chatters. One per Core (main.py).
+
+    main.py calls ``check`` on every chat line and ``hides`` before sending anything to an
+    overlay. The list is stored by ``store`` (core/store.py, table red_flagged) and mirrored in
+    memory (``_ids`` / ``_names``) so those checks never wait on the database.
+    core/chat_flags.py reuses the phrase helpers above and ``is_exempt``.
+    """
     def __init__(self, store, cfg: Optional[dict] = None):
         self.store = store
         self.enabled = True
@@ -185,6 +193,7 @@ class RedFlags:
         return {"new": True, "flag": row}
 
     def _note_mod(self, platform: str, user_id: str, *names: str) -> None:
+        """Remember a mod / the streamer seen in live chat (by id and names) for ``is_exempt``."""
         if user_id:
             self._seen_mods.add((platform, "id:" + user_id))
         for n in names:
@@ -258,6 +267,7 @@ class RedFlags:
 
     async def flag(self, platform: str, user_id: str, username: str, display_name: str = "",
                    phrase: str = "", message: str = "", source: str = "manual") -> dict:
+        """Put a chatter on the list (by hand or from a phrase) and refresh the in-memory copy."""
         row = await self.store.add_red_flag(
             platform=str(platform or ""), platform_user_id=str(user_id or ""),
             username=normalize(username).strip(), display_name=str(display_name or username or "").strip(),
@@ -267,11 +277,13 @@ class RedFlags:
         return row
 
     async def unflag(self, flag_id: int) -> Optional[dict]:
+        """Take one row off the list by its id. Returns the removed row, or None."""
         row = await self.store.remove_red_flag(int(flag_id))
         await self.store._run(self.reload)
         return row
 
     async def list(self) -> list[dict]:
+        """Every row on the red-flag list."""
         return await self.store._run(self.store.list_red_flagged_sync)
 
     async def scan_past(self) -> dict:
@@ -281,6 +293,7 @@ class RedFlags:
         return await self.store._run(_scan)
 
     def info(self) -> dict:
+        """The current settings, for the dashboard."""
         return {"enabled": self.enabled, "skip_mods": self.skip_mods, "phrases": list(self.phrases)}
 
 

@@ -2,6 +2,16 @@
  * Fallback chat reactions overlay. Core sends {type:"reaction", data:{...}}
  * over /ws. We only draw route === "overlay" (or everything with ?any=1).
  * Text from chat is only ever set with textContent.
+ *
+ * Page: /overlay/reactions.html. Core (core/reactions.py) routes a reaction to the game
+ * (Stream Rooms) when one is connected, and to "overlay" when not (or when reactions.send_to
+ * says so) and the effect has an overlay version (EFFECT_CATALOG "overlay"). Effects drawn
+ * here: throw, float_up, fall_down, rain, confetti, big_shout, camera_shake, fireworks; a new
+ * overlay effect in EFFECT_CATALOG needs a case in play().
+ * Packet data: {reaction, effect, params, count, from: {username, display_name, ...},
+ * target: {type: "stage" | "user" | "guest", name} | null, route, message}.
+ * URL: ?any=1 (draw game-routed ones too), ?debug=1 (a log list), ?scale=0.3..4 (size).
+ * Everything moves with the Web Animations API (el.animate), positions in CSS pixels.
  */
 (() => {
   const qs = new URLSearchParams(location.search);
@@ -11,6 +21,8 @@
   const stage = document.getElementById("stage");
   const dbg = document.getElementById("debug");
   document.documentElement.style.setProperty("--rx-scale", String(SCALE));
+  // Most elements on the stage at once; reactions past it are skipped so a spam flood can't
+  // slow OBS down.
   const MAX_LIVE = 250;
 
   function log(msg) {
@@ -36,10 +48,13 @@
     return ((h >>> 0) % 10000) / 10000;
   }
 
+  // Where a chatter "sits": a fixed spot just below the bottom edge, picked from their name.
   function seatOf(user) {
     return { x: W() * (0.08 + 0.84 * hash01("seat:" + user)), y: H() + 40 };
   }
 
+  // Where something aimed at `target` lands: centre screen with no target, a user's seat
+  // (near the bottom), or a named stage target's fixed spot in the middle band.
   function targetPoint(target, from) {
     if (!target) return { x: W() / 2, y: H() * 0.42 };
     if (target.type === "user") {
@@ -87,6 +102,8 @@
       .onfinish = () => n.remove();
   }
 
+  // One thrown object: a curved path (quadratic Bezier, 13 key frames, 0.9 s) from the
+  // thrower's seat to the target, then the impact effect (params.impact).
   function throwOne(d, delay) {
     const p = d.params || {};
     const from = seatOf(d.from.username);
@@ -94,6 +111,7 @@
     to.x += rand(-30, 30);
     to.y += rand(-20, 20);
     const el = obj(p.object || "🍅", p);
+    // params.arc_height: 1 = the top of the curve is 35 % of the screen height above the ends
     const arc = Math.max(0.2, Number(p.arc_height) || 1) * H() * 0.35;
     const mid = { x: (from.x + to.x) / 2, y: Math.min(from.y, to.y) - arc };
     const dur = 900;
@@ -111,6 +129,8 @@
     };
   }
 
+  // What happens on landing: "bounce" (falls off screen), "stick" (stays params.stick_sec
+  // seconds), or "splat" / "shatter" (a blob that slides down). Names a hit user under it.
   function impact(kind, at, p, d) {
     const stickMs = Math.max(0, Number(p.stick_sec) || 0) * 1000;
     if (kind === "bounce") {
@@ -151,6 +171,7 @@
     if (d.target && d.target.type === "user") nameTag(d.target.name, at.x, at.y + 50, 1800);
   }
 
+  // params.count objects (1..40) rise from the sender's seat over params.duration_sec seconds.
   function floatUp(d) {
     const p = d.params || {};
     const from = seatOf(d.from.username);
@@ -171,6 +192,8 @@
     nameTag(d.from.display_name || d.from.username, from.x, H() - 40, dur);
   }
 
+  // fall_down: objects drop around the target (up to 80). rain (wide): across the whole
+  // screen (up to 300).
   function fallDown(d, wide) {
     const p = d.params || {};
     const n = Math.min(wide ? 300 : 80, Math.max(1, Number(p.count) || (wide ? 40 : 12)));
@@ -192,6 +215,8 @@
   }
 
   const RAINBOW = ["#ff3b6b", "#ffb400", "#53fc18", "#28c8ff", "#a55bff", "#ffffff"];
+  // A burst of coloured bits from the target (or d._at, used by fireworks). params.colors is a
+  // comma list of CSS colours; count 5..400.
   function confetti(d) {
     const p = d.params || {};
     const colors = String(p.colors || "").split(",").map((s) => s.trim()).filter(Boolean);
@@ -232,6 +257,8 @@
     }
   }
 
+  // Big centred text. params.text may use {message} and {user}; chat text only goes in as text
+  // nodes. params.color must be a #hex colour.
   function bigShout(d) {
     const p = d.params || {};
     const who = d.from.display_name || d.from.username;
@@ -260,6 +287,7 @@
     ).onfinish = () => el.remove();
   }
 
+  // Shakes the whole page. params.strength 0.05..2 (x 18 px), params.duration_sec.
   function shake(d) {
     const p = d.params || {};
     const s = Math.max(0.05, Math.min(2, Number(p.strength) || 0.5)) * 18;
@@ -270,6 +298,8 @@
     document.body.animate(frames, { duration: dur });
   }
 
+  // One "reaction" packet: skip it unless it's routed here, then run its effect `count` times
+  // (throws) or once with params.count pieces.
   function play(d) {
     if (!d || !d.from) return;
     if (!ANY && d.route !== "overlay") return;

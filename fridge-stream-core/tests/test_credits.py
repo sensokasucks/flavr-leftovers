@@ -111,6 +111,7 @@ class EngineTests(unittest.TestCase):
         self.assertNotIn("persist", eng.theme)
 
     def test_clear_mode(self):
+        """Play mode "clear" is kept, and a restart bumps the play generation."""
         eng = CreditsEngine({"credits": {"enabled": True, "mode": "clear"}}, self.root)
         self.assertEqual(eng.play["mode"], "clear")
         eng.set_play({"mode": "loop"})
@@ -120,6 +121,7 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(eng.public_play()["generation"], 1)
 
     def test_filters(self):
+        """Roster filters: own channel, ignored names and too-short messages don't count."""
         eng = CreditsEngine({
             "twitch": {"channel": "mychan"},
             "credits": {"enabled": True, "min_message_length": 3, "ignore_usernames": ["lurkbot"]},
@@ -194,6 +196,7 @@ class CreditsListTests(unittest.TestCase):
         self.assertEqual(again.checklist(), [])
 
     def test_csv(self):
+        """The credits checklist CSV has a header and one row per chatter."""
         eng = self._eng()
         eng.tick(["twitch:alice"], True)
         rows = list(csv.reader(io.StringIO(eng.checklist_csv({"status": "all"}))))

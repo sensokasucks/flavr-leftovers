@@ -25,9 +25,9 @@ from adapters import avatar_link_file
 log = logging.getLogger("adapters.kick_avatars")
 
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "kick_avatars.json"
-RETRY_SEC = 10 * 60
+RETRY_SEC = 10 * 60              # seconds before a failed lookup (403 / 429 / error) is tried again
 REFRESH_SEC = 3 * 24 * 3600      # one lookup per chatter and Kick sometimes refuses, so re-check less often
-MAX_PARALLEL = 2
+MAX_PARALLEL = 2                 # lookups running at once, to stay under Kick's rate limits
 
 # (slug) -> (status, url): status 200 = found (url may be "" for no picture), other = failed
 Fetcher = Callable[[str], Awaitable[tuple[int, str]]]
@@ -44,6 +44,11 @@ def picture_from_channel(data: dict) -> str:
 
 
 class KickAvatars:
+    """Cache of Kick chatter pictures, owned by KickAdapter (adapters/kick.py).
+
+    ``fetcher`` and ``path`` can be swapped in tests so no network or real file is used.
+    """
+
     def __init__(self, enabled: bool = True, fetcher: Optional[Fetcher] = None,
                  path: Optional[Path] = None):
         self.enabled = enabled
@@ -83,11 +88,13 @@ class KickAvatars:
         task.add_done_callback(self._tasks.discard)
 
     def stop(self) -> None:
+        """Cancel lookups still running and write the cache (called when the adapter stops)."""
         for t in list(self._tasks):
             t.cancel()
         self.save()
 
     def save(self) -> None:
+        """Write the cache to disk now if it changed (errors are only logged at DEBUG)."""
         if not self._dirty:
             return
         try:
@@ -137,6 +144,8 @@ class KickAvatars:
 
     @staticmethod
     async def _fetch_http(slug: str) -> tuple[int, str]:
+        """Default fetcher: ask Kick's public channel API, with browser-like headers for Cloudflare."""
+        # imported here so tests that pass their own fetcher don't need httpx or the Kick adapter
         import httpx
         from adapters.kick import BROWSER_HEADERS
 

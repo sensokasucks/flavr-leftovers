@@ -1,3 +1,17 @@
+/*
+ * Stream alerts overlay: /overlay/alerts.html (OBS / XSplit Webpage source).
+ *
+ * Plays Core's "alert" packets from /ws one at a time (follows, subs, gifts, raids, bits,
+ * Super Chats, KICKs, EventSub extras ...). Alert data is built by core/alerts.py: kind,
+ * platform, headline, title, message, amount / amount_fmt / currency, months, qty, viewers,
+ * level, item, image, falls_back, css_classes, duration_ms, is_test.
+ * Skin, pictures, sounds, volume, tiers and the custom CSS version come from
+ * /api/overlay/alerts-settings, polled every 4 s so dashboard saves apply live.
+ *
+ * Markup uses Streamlabs Alert Box ids and StreamElements class names so existing alert CSS
+ * packs work; every URL switch and selector is documented in overlay/ALERTS.md (keep it, the
+ * address builder in core/overlay_catalog.py and tests/test_overlay_compat.py in step).
+ */
 (() => {
   const params = new URLSearchParams(location.search);
   const preview = params.get("preview") === "1" || params.get("preview") === "true";
@@ -29,6 +43,7 @@
     gifted: "gift", giftsub: "gift", subgift: "gift", cheer: "bits", bit: "bits", tip: "donation",
     tips: "donation", donate: "donation", sticker: "supersticker", jewel: "jewels", kick: "kicks",
   };
+  // ?group=money|subs|community. `money` is also the set ?min= applies to.
   const GROUPS = {
     money: ["superchat", "supersticker", "jewels", "bits", "kicks", "donation", "powerup", "celebration", "charity"],
     subs: ["subscribe", "resub", "gift", "member", "member_milestone", "member_gift"],
@@ -50,6 +65,7 @@
   const durationSec = numParam("duration");
   const muted = offParam("sound");
   const volumeParam = numParam("volume");
+  // ?queue=: most alerts waiting in line (1..200, default 50).
   const queueMax = Math.max(1, Math.min(200, numParam("queue") || 50));
   const layout = ["above", "side", "banner"].includes((params.get("layout") || "").toLowerCase())
     ? params.get("layout").toLowerCase() : "above";
@@ -91,6 +107,8 @@
 
   // tier-1 .. tier-4 like Streamlabs alert variations; bits and KICKs count 100 to the dollar
   let tierCuts = [5, 20, 100];
+  // raw: "5,20,100" (from ?tiers= or the Alerts tab's tiers option): up to 3 amounts where
+  // tier-2, tier-3 and tier-4 start. tierOf() returns 0 for alerts with no amount.
   function setTiers(raw) {
     const cuts = String(raw || "").split(",").map(Number).filter((n) => isFinite(n) && n > 0).sort((a, b) => a - b);
     if (cuts.length) tierCuts = cuts.slice(0, 3);
@@ -115,6 +133,8 @@
   const videoEl = document.getElementById("alert-video");
   const customLink = document.getElementById("alerts-custom-css");
 
+  // Fallback only: Core sends each alert's classes as css_classes (core/alerts.py KIND_CLASSES).
+  // Keep the two lists and the table in ALERTS.md the same.
   const KIND_CLASSES = {
     follow: "follower-alert kind-follow",
     subscribe: "subscriber-alert kind-subscribe",
@@ -137,6 +157,8 @@
     member_gift: "member-alert sub-gift-alert gift-alert kind-member_gift",
   };
 
+  // queue: alerts waiting; busy: one is on screen. mediaMap / soundMap: kind -> file address
+  // from the settings (Stored files). soundVolume: 0..1, ?volume= (0..100) wins over it.
   const queue = [];
   let busy = false;
   let lastCssVer = null;
@@ -154,6 +176,7 @@
   }
 
 
+  // The "waiting for an alert" tile, only ever shown on the dashboard preview (?preview=1).
   function setIdle(on) {
     if (!idle) return;
     if (preview && on) idle.classList.remove("gone");
@@ -173,6 +196,7 @@
   // ?letters=wiggle: every letter of the name / amount gets "animated-letter animated wiggle"
   const letterAnim = (params.get("letters") || "").replace(/[^A-Za-z]/g, "");
   if (letterAnim) document.documentElement.style.setProperty("--letter-anim", letterAnim);
+  // Takes already-escaped text, returns one span per character (escaped again on the way out).
   function letters(escaped) {
     const tmp = document.createElement("span");
     tmp.innerHTML = escaped;
@@ -271,6 +295,7 @@
     } catch (_) {}
   }
 
+  // Entry point for each /ws alert: filter it for this source, queue it, start the queue.
   function show(data) {
     if (!data || !wanted(data)) return;
     if (queue.length >= queueMax) return;     // a flood past ?queue= is dropped, not stacked up
@@ -298,6 +323,8 @@
     box.dataset.tier = tier ? String(tier) : "";
   }
 
+  // Show the next queued alert: fill text, picture, sound, classes; after the duration play the
+  // exit animation, then clear and move on to the next one.
   function pump() {
     if (busy || !queue.length) return;
     busy = true;
@@ -330,9 +357,12 @@
     // "animated fadeIn" / "animated fadeOut" are the animate.css names packs override
     box.className = cls.names.concat(["show", "animated", animIn || "fadeIn"]).join(" ");
 
+    // on-screen time in ms: ?duration= (seconds) or Core's duration_ms, never under 1.5 s
     const ms = durationSec != null && durationSec > 0
       ? Math.max(1500, Math.min(60000, durationSec * 1000))
       : Math.max(1500, Number(data.duration_ms) || 6000);
+    // how long the exit animation gets before the box is cleared: named animate.css exits
+    // (?in= / ?out= or the custom skin) take longer than the built-in fade
     const named = document.body.classList.contains("anim-named") || document.body.classList.contains("skin-custom");
     setTimeout(() => {
       box.className = cls.names.concat(["hide", "animated", animOut || "fadeOut"]).join(" ");
@@ -347,6 +377,7 @@
     }, ms);
   }
 
+  // Dashboard settings (core/alerts.py read_alert_settings). URL switches still win.
   async function loadSettings() {
     try {
       const res = await fetch("/api/overlay/alerts-settings?t=" + Date.now());

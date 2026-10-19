@@ -38,8 +38,9 @@ SUBSCRIPTIONS: list[tuple[str, str, str]] = [
 ]
 
 IDLE_RECHECK_SEC = 30.0            # not signed in yet / wrong account: look again this often
-BACKOFF_MAX = 60.0
+BACKOFF_MAX = 60.0                 # seconds; reconnect waits double from 3 s up to this
 
+# Power-up type from Twitch -> the item name shown on the alert / Paid list
 POWER_UPS = {
     "gigantify_an_emote": "Gigantified emote",
     "message_effect": "Message effect",
@@ -52,6 +53,7 @@ Http = Callable[[str, str, Optional[dict], Optional[dict]], Awaitable[tuple[int,
 
 
 async def _http_httpx(method: str, url: str, body: Optional[dict], headers: Optional[dict]) -> tuple[int, Any]:
+    """Default ``Http``: one JSON request; a body that isn't JSON comes back as {}."""
     import httpx
 
     async with httpx.AsyncClient(timeout=15.0) as client:
@@ -69,6 +71,7 @@ async def _http_httpx(method: str, url: str, body: Optional[dict], headers: Opti
 
 
 def _who(ev: dict, prefix: str = "user") -> dict[str, str]:
+    """``<prefix>_login / _name / _id`` of an event -> username / display_name / user_id."""
     login = str(ev.get(f"{prefix}_login") or "")
     return {"username": login, "display_name": str(ev.get(f"{prefix}_name") or login),
             "user_id": str(ev.get(f"{prefix}_id") or "")}
@@ -127,6 +130,7 @@ def charity_alert(ev: dict) -> Optional[dict[str, Any]]:
 
 
 def _contribution(c: dict) -> str:
+    """One Hype Train top contribution as text, e.g. ``Name (1,000 bits)``."""
     name = str(c.get("user_name") or c.get("user_login") or "someone")
     ctype = str(c.get("type") or "")
     try:
@@ -155,6 +159,7 @@ def hype_train_alert(ev: dict) -> Optional[dict[str, Any]]:
             "level": level, "item": train, "message": message}
 
 
+# EventSub type -> converter. Keep in sync with SUBSCRIPTIONS above.
 HANDLERS: dict[str, Callable[[dict], Optional[dict[str, Any]]]] = {
     "channel.bits.use": bits_use_alert,
     "channel.charity_campaign.donate": charity_alert,
@@ -166,6 +171,7 @@ HANDLERS: dict[str, Callable[[dict], Optional[dict[str, Any]]]] = {
 # The connection
 # ----------------------------------------------------------------------
 
+# The running client (set by start()), so the module-level status() / bits_live() can answer
 _current: Optional["EventSubClient"] = None
 
 
@@ -183,7 +189,11 @@ def bits_live() -> bool:
 
 
 class EventSubClient:
-    """One WebSocket to Twitch EventSub for the channel's paid events."""
+    """One WebSocket to Twitch EventSub for the channel's paid events.
+
+    ``auth`` is the shared TwitchAuth; ``on_alert`` gets the kwargs for the adapter's
+    ``_emit_alert``. ``http`` / ``connect`` can be swapped in tests.
+    """
 
     def __init__(self, auth, channel: str, on_alert: Callable[[dict], Awaitable[None]],
                  http: Optional[Http] = None, connect=None):
@@ -203,9 +213,11 @@ class EventSubClient:
     # ---- status ------------------------------------------------------
 
     def status(self) -> dict[str, Any]:
+        """``state`` off / on / retrying, a plain ``message``, and the subscribed event types."""
         return {"state": self.state, "message": self.message, "events": sorted(self.subscribed)}
 
     def _set(self, state: str, message: str) -> None:
+        """Change the status; logs only when it actually changed."""
         if (state, message) != (self.state, self.message):
             (log.info if state in ("on", "off") else log.warning)("Twitch paid events: %s", message)
         self.state, self.message = state, message
@@ -226,6 +238,7 @@ class EventSubClient:
     # ---- running -----------------------------------------------------
 
     def start(self) -> None:
+        """Run the connection loop in the background (called by the Twitch adapter)."""
         global _current
         _current = self
         self._stop.clear()
@@ -233,6 +246,7 @@ class EventSubClient:
             self._task = asyncio.create_task(self._loop(), name="twitch-eventsub")
 
     async def stop(self) -> None:
+        """Stop the loop and wait for it to finish."""
         global _current
         self._stop.set()
         self.live = False
@@ -255,6 +269,7 @@ class EventSubClient:
             return False
 
     async def _loop(self) -> None:
+        """Wait until the sign-in allows EventSub, then keep one session up, reconnecting with backoff."""
         backoff = 3.0
         url = WS_URL
         while not self._stop.is_set():
@@ -290,11 +305,14 @@ class EventSubClient:
             import websockets
 
             connect = websockets.connect
+        # After a session_reconnect, Twitch carries the subscriptions over to the new address;
+        # only a fresh connection to WS_URL has to subscribe again.
         resubscribe = url == WS_URL
         async with connect(url, max_size=2**20) as ws:
             keepalive = 10.0
             while not self._stop.is_set():
                 try:
+                    # Twitch sends a keepalive every ``keepalive`` seconds; silence beyond that means a dead link
                     raw = await asyncio.wait_for(ws.recv(), timeout=keepalive + 10.0)
                 except asyncio.TimeoutError:
                     raise ConnectionError("Twitch went quiet")
@@ -324,6 +342,7 @@ class EventSubClient:
         return ""
 
     async def _subscribe_all(self, session_id: str) -> None:
+        """Subscribe this session to every event the sign-in has the scope for."""
         self.subscribed = set()
         have = set(self.auth.status().get("scopes") or [])
         skipped = []
@@ -339,6 +358,7 @@ class EventSubClient:
             raise ConnectionError("Twitch refused every paid-event subscription")
 
     async def _subscribe(self, stype: str, version: str, session_id: str) -> bool:
+        """One Helix subscription request; a 401 refreshes the token and tries once more."""
         body = {"type": stype, "version": version,
                 "condition": {"broadcaster_user_id": self.auth.user_id},
                 "transport": {"method": "websocket", "session_id": session_id}}
@@ -361,6 +381,7 @@ class EventSubClient:
         return False
 
     async def _notification(self, message_id: str, payload: dict) -> None:
+        """Turn one event into an alert, skipping duplicates (the last 500 message ids are kept)."""
         if message_id:
             if message_id in self._seen:
                 return              # Twitch may send a message twice

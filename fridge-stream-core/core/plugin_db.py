@@ -16,12 +16,14 @@ from typing import Any, Iterable, Optional, Sequence
 
 
 class PluginDB:
+    """One SQLite file for one plugin. Made on first use of ``ctx.db`` (core/plugin_api.py)."""
     def __init__(self, path: Path | str):
         self.path = Path(path)
         self._conn: Optional[sqlite3.Connection] = None
         self._lock = threading.Lock()
 
     def _connect(self) -> sqlite3.Connection:
+        """Open the file once (autocommit mode, WAL, wait up to 5 s on a busy file) and reuse it."""
         if self._conn is None:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             conn = sqlite3.connect(str(self.path), check_same_thread=False, isolation_level=None)
@@ -32,10 +34,12 @@ class PluginDB:
         return self._conn
 
     def _run(self, fn, *args):
+        """Run ``fn(conn, *args)`` under the lock (on the calling thread)."""
         with self._lock:
             return fn(self._connect(), *args)
 
     async def _call(self, fn, *args):
+        """``_run`` in a worker thread, awaited."""
         return await asyncio.to_thread(self._run, fn, *args)
 
     # ------------------------------------------------------------------
@@ -52,6 +56,7 @@ class PluginDB:
         return await self._call(go)
 
     async def executemany(self, sql: str, rows: Iterable[Sequence[Any]]) -> int:
+        """Run one statement for many rows in a single transaction. Returns the rows changed."""
         rows = [tuple(r) for r in rows]
 
         def go(c: sqlite3.Connection):
@@ -66,9 +71,11 @@ class PluginDB:
         return await self._call(go)
 
     async def fetchall(self, sql: str, params: Sequence[Any] = ()) -> list[dict]:
+        """Every result row as a dict."""
         return await self._call(lambda c: [dict(r) for r in c.execute(sql, tuple(params)).fetchall()])
 
     async def fetchone(self, sql: str, params: Sequence[Any] = ()) -> Optional[dict]:
+        """The first result row as a dict, or None."""
         def go(c: sqlite3.Connection):
             row = c.execute(sql, tuple(params)).fetchone()
             return dict(row) if row is not None else None
@@ -88,6 +95,7 @@ class PluginDB:
         return await self._call(go)
 
     def close(self) -> None:
+        """Close the connection (the next call opens it again)."""
         with self._lock:
             if self._conn is not None:
                 self._conn.close()

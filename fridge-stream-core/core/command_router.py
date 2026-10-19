@@ -24,6 +24,12 @@ log = logging.getLogger("core.commands")
 
 
 class CommandRouter:
+    """Turns chat lines into game commands. One instance, built in main.py.
+
+    Command definitions come from config/commands.json (path from core/config.py
+    ``resolve_commands_path``) plus the installed game plugins' own commands.json
+    (``default_commands``). Flow per chat line: ``parse_message`` -> ``try_execute``.
+    """
     def __init__(
         self,
         commands_path: Path | str,
@@ -55,6 +61,7 @@ class CommandRouter:
         log.info("Command groups active: %s", sorted(self.enabled_groups))
 
     def known_groups(self) -> set:
+        """Every ``group`` used by a loaded command ("core" when a command has none)."""
         return {(c.group or "core").lower() for c in self.definitions.values()}
 
     def reload(
@@ -78,6 +85,10 @@ class CommandRouter:
         }
 
     def _claim_token(self, token: str, cmd: CommandDefinition) -> None:
+        """Point ``token`` (a name or alias) at ``cmd``; on a clash the higher priority wins, else the first.
+
+        Every clash is recorded in ``self.conflicts`` (shown in the dashboard) and logged.
+        """
         token = (token or "").lower().strip()
         if not token:
             return
@@ -111,6 +122,10 @@ class CommandRouter:
         )
 
     def _load(self, path: Path | str) -> None:
+        """Re-read every definition from ``path`` (+ plugin defaults). A bad file leaves the table empty.
+
+        Accepts both camelCase and snake_case keys (defaultQty / default_qty ...).
+        """
         path = Path(path)
         self.commands = {}
         self.definitions = {}
@@ -146,6 +161,7 @@ class CommandRouter:
                 perm_level = PermissionLevel.PUBLIC
 
             def _int(val, default: int) -> int:
+                """int(val), or ``default`` when it is missing or not a number."""
                 try:
                     return int(val)
                 except (TypeError, ValueError):
@@ -223,6 +239,7 @@ class CommandRouter:
         )
 
     def find(self, name: str) -> Optional[CommandDefinition]:
+        """The definition for a name or alias (case-insensitive), or None."""
         return self.commands.get(name.lower())
 
     def parse_message(self, event: ChatEvent) -> bool:
@@ -270,6 +287,7 @@ class CommandRouter:
             return None, "permit handled"  # not forwarded to game
 
         cmd = self.find(event.command_name)
+        # Gates, in order: known + enabled, group active, permission, cost.
         if not cmd or not cmd.enabled:
             return None, "unknown command"
 
@@ -293,7 +311,7 @@ class CommandRouter:
         seconds = cmd.default_seconds
         args = list(event.args)
 
-        # Heuristic: if first arg looks like a number and the command has qty, treat it as qty
+        # Heuristic: if the last arg is a number and the command has qty, treat it as qty
         if args and cmd.args and any("qty" in a for a in cmd.args):
             try:
                 maybe_qty = int(args[-1])
@@ -320,6 +338,8 @@ class CommandRouter:
             args = [args[0].lower()] + list(args[1:])
 
         # Render template
+        # Template placeholders a command can use: {player} is ``default_player`` from config,
+        # {arg1}-{arg3} are what is left of the chatter's words after qty / seconds were taken off.
         ctx = {
             "player": self.player,
             "qty": str(qty),

@@ -15,8 +15,11 @@ from __future__ import annotations
 import os
 from typing import Iterable
 
+# Exit code the START .bat loop watches for: "exited on purpose, start me again".
+# Keep in sync with the .bat launchers (START Stream Core.bat / start.bat) and main.py.
 RESTART_EXIT_CODE = 75
 
+# core: keys whose change needs a restart -> the words the dashboard shows for each.
 CORE_FIELDS = {
     "host": "the address Core listens on (host)",
     "port": "the port (every OBS browser source must use the new address)",

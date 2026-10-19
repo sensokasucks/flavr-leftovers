@@ -10,6 +10,8 @@ Core calls start / stop / execute / on_metrics / health like it always did. Ever
 below "optional hooks" is looked up with hasattr, so a plugin only writes what it needs.
 """
 
+# The public contract for plugins is written up in docs/PLUGINS.md; a new hook added here
+# must be described there too (plugins live in the flavr-game-plugins repo).
 from __future__ import annotations
 
 import abc
@@ -44,6 +46,7 @@ class PluginContext:
 
     @property
     def config(self) -> dict:
+        """Core's live config as a dict (never None)."""
         return self.get_config() or {}
 
     @property
@@ -82,9 +85,11 @@ class PluginContext:
 
     @property
     def section(self) -> dict:
+        """A copy of this plugin's own config block (``config[<id>]``)."""
         return dict(self.config.get(self.id) or {})
 
     def core_url(self) -> str:
+        """Core's own base URL from config (http://127.0.0.1:3850 by default)."""
         core = self.config.get("core") or {}
         return f"http://{core.get('host') or '127.0.0.1'}:{int(core.get('port') or 3850)}"
 
@@ -97,6 +102,7 @@ class PluginContext:
         ))
 
     async def alert(self, payload: dict) -> None:
+        """Show an alert on the alerts overlay; ``payload`` is a core.alerts.build_alert(...) dict."""
         if self.bus is not None:
             await self.bus.publish_alert(payload)
 
@@ -107,6 +113,7 @@ class BasePlugin(abc.ABC):
     name: str = "base"
 
     def __init__(self, config: dict, ctx: Optional[PluginContext] = None):
+        """``config`` is the config at load time; once ``ctx`` is set, ``self.config`` reads the live one."""
         self.ctx = ctx
         self.config = config
         self.enabled = True
@@ -127,10 +134,12 @@ class BasePlugin(abc.ABC):
 
     @abc.abstractmethod
     async def start(self) -> None:
+        """Connect to the game (called when Core starts with the plugin enabled). Must not block for long."""
         ...
 
     @abc.abstractmethod
     async def stop(self) -> None:
+        """Disconnect and free resources (Core shutting down or the plugin switched off)."""
         ...
 
     @abc.abstractmethod
@@ -147,6 +156,7 @@ class BasePlugin(abc.ABC):
         pass
 
     async def health(self) -> bool:
+        """True when the game link is up (shown on the dashboard's Status page)."""
         return True
 
     # ------------------------------------------------------------------
@@ -189,6 +199,7 @@ class HttpPlugin(BasePlugin):
     """
 
     def __init__(self, config: dict, ctx: Optional[PluginContext] = None, manifest: Optional[dict] = None):
+        """The bridge address is read here, from the plugin's settings key (``base_url_key``)."""
         super().__init__(config, ctx)
         self.manifest = manifest or {}
         self.name = str(self.manifest.get("id") or (ctx.id if ctx else "http"))
@@ -202,10 +213,12 @@ class HttpPlugin(BasePlugin):
         self.last_stats: dict = {}
 
     def _url(self, which: str) -> str:
+        """Full bridge URL for one of the manifest's http paths, or "" when the manifest has none."""
         path = str(self.http.get(which) or "")
         return f"{self.bridge_url}/{path.lstrip('/')}" if path else ""
 
     def overlay_catalog(self) -> list[dict]:
+        """The bridge's own overlay pages ("bridge_overlays" in plugin.json) as absolute URLs."""
         return [
             {"name": str(p.get("name") or p.get("path")), "url": urljoin(self.bridge_url + "/", str(p.get("path") or "")),
              "notes": str(p.get("notes") or "")}
@@ -214,6 +227,7 @@ class HttpPlugin(BasePlugin):
         ]
 
     async def start(self) -> None:
+        """Open the HTTP client (only when enabled); requests time out after 4 s."""
         if not self.enabled:
             return
         # X-Fridge-Core: Fridge bridges only accept writes that carry it
@@ -221,11 +235,13 @@ class HttpPlugin(BasePlugin):
         log.info("%s plugin ready (bridge=%s)", self.name, self.bridge_url)
 
     async def stop(self) -> None:
+        """Close the HTTP client."""
         if self._client:
             await self._client.aclose()
             self._client = None
 
     async def execute(self, req: ExecuteRequest) -> dict:
+        """POST the command to the bridge and return its JSON answer (or an error dict). Never raises."""
         if not self.enabled or not self._client:
             return {"success": False, "error": f"{self.name} plugin not running"}
         url = self._url("execute")
@@ -249,6 +265,7 @@ class HttpPlugin(BasePlugin):
         return data if isinstance(data, dict) else {"success": True, "raw": data}
 
     async def on_metrics(self, snap: MetricsSnapshot) -> None:
+        """POST the metrics to the bridge; errors are ignored (it runs every 2 s)."""
         url = self._url("metrics")
         if not url or not self.enabled or not self._client:
             return
@@ -263,6 +280,7 @@ class HttpPlugin(BasePlugin):
             pass
 
     async def fetch_stats(self) -> dict:
+        """GET the bridge's stats JSON (kept in ``last_stats``); {} when unreachable."""
         url = self._url("stats") or self._url("health")
         if not url or not self._client:
             return {}
@@ -278,6 +296,7 @@ class HttpPlugin(BasePlugin):
         return {}
 
     async def health(self) -> bool:
+        """GET the health path: True on HTTP 200 (a JSON body is kept as ``last_stats``)."""
         url = self._url("health")
         if not self.enabled or not self._client or not url:
             return False

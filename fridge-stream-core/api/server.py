@@ -5,6 +5,12 @@ Endpoints used by:
   - XSplit / OBS overlays
   - Game integrations (optional reverse registration)
   - Debugging / status
+
+``create_app`` is called once by main.py with the CoreState that StreamCore fills in. It
+serves the public overlay API (/api/..., /media, /avatars, /widget-frame), the WebSocket
+(/ws and /) every overlay and Stream Rooms connect to, game plugins' routes, the
+dashboard API (api/admin_routes.py) and the static /admin and /overlay folders.
+Security: CORS and LocalGuard (core/local_guard.py) only accept loopback pages / hosts.
 """
 
 from __future__ import annotations
@@ -68,6 +74,7 @@ class ConnectionManager:
         self.dropped_slow = 0               # clients cut off for falling behind (Status / tests)
 
     async def connect(self, ws: WebSocket) -> None:
+        """Accept a new client and give it its own sender; ``?credits=1`` also gets the roster."""
         await ws.accept()
         self.active.add(ws)
         self._senders[ws] = _ClientSender(self, ws)
@@ -75,6 +82,7 @@ class ConnectionManager:
             self.credits_clients.add(ws)
 
     def disconnect(self, ws: WebSocket) -> None:
+        """Forget a client and stop its sender (safe to call twice)."""
         self.active.discard(ws)
         self.credits_clients.discard(ws)
         sender = self._senders.pop(ws, None)
@@ -106,6 +114,7 @@ class ConnectionManager:
             await sender.queue.join()
 
     async def broadcast(self, data: dict) -> None:
+        """Send ``{"type": ..., "data": ...}`` to every client (``credits_roster`` only to credits clients)."""
         if isinstance(data, dict) and data.get("type") == "credits_roster":
             await self._send_all(self.credits_clients, data)
             return
@@ -125,6 +134,7 @@ class ConnectionManager:
             pass                # no event loop (tests calling from sync code)
 
     async def _roster_later(self) -> None:
+        """Wait out ROSTER_MIN_GAP_SEC since the last send, then send the latest roster once."""
         wait = self.ROSTER_MIN_GAP_SEC - (time.monotonic() - self._roster_sent_at)
         if wait > 0:
             await asyncio.sleep(wait)
@@ -163,6 +173,7 @@ class _ClientSender:
         self.task = asyncio.get_running_loop().create_task(self._run(), name="ws-send")
 
     def offer(self, text: str) -> bool:
+        """Queue without waiting; False when the queue is full."""
         try:
             self.queue.put_nowait(text)
             return True
@@ -170,6 +181,7 @@ class _ClientSender:
             return False
 
     def stop(self) -> None:
+        """Cancel the sender task and empty the queue."""
         if not self.task.done():
             self.task.cancel()
         # let flush() waiters go
@@ -181,6 +193,7 @@ class _ClientSender:
                 break
 
     async def _run(self) -> None:
+        """Send queued texts in order; a timeout or a send error ends this client."""
         while True:
             text = await self.queue.get()
             try:
@@ -200,6 +213,7 @@ class _ClientSender:
 
 
 def _wants_credits(ws: WebSocket) -> bool:
+    """Did the client connect with ``?credits=1`` (credits overlay, dashboard Credits tab)?"""
     try:
         return str(ws.query_params.get("credits", "")).lower() in ("1", "true", "yes")
     except Exception:
@@ -258,6 +272,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     @app.get("/api/health")
     async def health():
+        """Public: which chat adapters run / are connected and which games run."""
         adapters = core_state.adapters or {}
         return {
             "ok": True,
@@ -275,6 +290,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     @app.get("/api/commands")
     async def list_commands():
+        """Public: every chat command once (aliases folded in), for help pages / overlays."""
         if not core_state.router:
             return []
         seen = set()
@@ -376,6 +392,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     @app.get("/api/overlay/replies")
     async def overlay_replies():
+        """Public: is the replies overlay switched on (``overlay.replies_enabled``)?"""
         ov = (getattr(core_state, "config", None) or {}).get("overlay") or {}
         return {"enabled": bool(ov.get("replies_enabled"))}
 
@@ -384,6 +401,11 @@ def create_app(core_state: "CoreState") -> FastAPI:
     # ------------------------------------------------------------------
 
     async def _ws_handler(ws: WebSocket):
+        """One WebSocket client: send the catch-up snapshots, then answer pings and game messages.
+
+        Messages Core sends are ``{"type": ...}`` dicts (update, chat, alert, reply, user_update,
+        chat_removed, credits_* ...); the *_history ones are sent only here, on connect.
+        """
         await manager.connect(ws)
         refused_game = False   # warn once per socket, not on every retry
         try:
@@ -440,6 +462,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
                         continue
                 if msg.get("type") == "avatars_hide_import":
                     # Stream Rooms' "hide pictures for these names" list: merged into Core's
+                    # avatars.hide in config.yaml (StreamCore.import_avatar_hide)
                     importer = getattr(core_state, "import_avatar_hide", None)
                     data = msg.get("data") if isinstance(msg.get("data"), dict) else {}
                     if importer is not None:
@@ -459,7 +482,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
         except WebSocketDisconnect:
             pass
         except Exception:
-            pass
+            pass            # a broken client is simply dropped; overlays reconnect by themselves
         finally:
             manager.disconnect(ws)
             reactions = getattr(core_state, "reactions", None)
@@ -490,6 +513,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return CHAT_STYLE.read_settings()
 
     def _credits():
+        """The CreditsEngine, or 503 while Core is still starting."""
         eng = getattr(core_state, "credits", None)
         if not eng:
             raise HTTPException(503, "Credits engine not ready")
@@ -562,6 +586,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     @app.get("/avatars/{platform}/{file_name}")
     async def avatar_file(platform: str, file_name: str):
+        """Public: a chatter picture Core saved itself (``avatar_local`` in chat payloads)."""
         store = getattr(core_state, "avatars", None)
         path = store.file_path(platform, file_name) if store else None
         if path is None:
@@ -602,7 +627,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return {"ok": True, "enabled": eng.enabled, "count": len(eng.chatters)}
 
     # ------------------------------------------------------------------
-    # Static overlay (if present)
+    # Admin API + static folders (/admin dashboard, /overlay pages)
     # ------------------------------------------------------------------
 
     # Admin API + dashboard
@@ -625,6 +650,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
         @app.get("/", response_class=HTMLResponse)
         async def root():
+            """``/``: the old all-in-one overlay (or the dashboard in preview mode)."""
             # Live-preview / STREAM_CORE_PREVIEW: land on the admin hub
             if os.environ.get("STREAM_CORE_PREVIEW", "").strip().lower() in (
                 "1",

@@ -34,12 +34,14 @@ from urllib.parse import urlparse
 log = logging.getLogger("core.avatar_store")
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "avatars"
+# Saved pictures are SIZE x SIZE px; a download bigger than MAX_BYTES is refused.
 SIZE = 128
 MAX_BYTES = 3 * 1024 * 1024
 # Platforms give a new picture a new link, so a link Core already has is not downloaded
 # again; this is only a safety net in case a host ever reuses a link.
 REFRESH_SEC = 30 * 24 * 3600
 RETRY_SEC = 10 * 60              # after a failed download
+# At most this many downloads at once (the rest wait their turn).
 MAX_PARALLEL = 3
 PLATFORMS = ("kick", "twitch", "youtube")
 _ID_RE = re.compile(r"[^A-Za-z0-9_.-]")
@@ -127,6 +129,11 @@ def parse_hide(entries: Iterable[Any]) -> list[tuple[str, str]]:
 
 
 class AvatarStore:
+    """One per Core (main.py, ``state.avatars``); adapters call ``note()``, the /avatars route
+    serves ``file_path()``. ``fetcher`` is only replaced in tests.
+
+    The index lives in memory and is written to data/avatars/index.json by ``save()``.
+    """
     def __init__(self, root: Optional[Path] = None, fetcher: Optional[Fetcher] = None,
                  save_local: bool = True, hide: Iterable[Any] = ()):
         self.root = root or DATA_DIR
@@ -143,15 +150,18 @@ class AvatarStore:
 
     # ── settings ────────────────────────────────────────────
     def configure(self, cfg: dict) -> None:
+        """Apply the ``avatars:`` config block (called at start and when it is saved in the dashboard)."""
         cfg = cfg if isinstance(cfg, dict) else {}
         self.save_local = bool(cfg.get("save_local", True))
         self._hide = parse_hide(cfg.get("hide") or [])
 
     @property
     def hide_list(self) -> list[str]:
+        """The hide list as written in config ("name" or "platform:name")."""
         return [f"{p}:{n}" if p else n for p, n in self._hide]
 
     def is_hidden(self, platform: str, *names: str) -> bool:
+        """True when any of ``names`` is on the hide list for this platform (or for every platform)."""
         plat = str(platform or "").lower()
         wanted = {str(n or "").strip().lstrip("@").lower() for n in names if n}
         wanted.discard("")
@@ -202,6 +212,7 @@ class AvatarStore:
         return dict(self._index.get(f"{platform}:{user_id}") or {})
 
     def known_users(self) -> list[dict]:
+        """Every chatter in the index: [{platform, id, login, name}]."""
         out = []
         for key, entry in self._index.items():
             p, uid = key.split(":", 1)
@@ -255,11 +266,13 @@ class AvatarStore:
             await asyncio.gather(*list(self._tasks), return_exceptions=True)
 
     def stop(self) -> None:
+        """Cancel downloads in flight and save the index (Core shutting down)."""
         for t in list(self._tasks):
             t.cancel()
         self.save()
 
     def save(self) -> None:
+        """Write index.json (through a temp file) when something changed since the last save."""
         if not self._dirty:
             return
         try:
@@ -273,6 +286,7 @@ class AvatarStore:
 
     # ── private ─────────────────────────────────────────────
     def _load(self) -> None:
+        """Read index.json into memory; a missing or broken file starts empty."""
         try:
             data = json.loads((self.root / "index.json").read_text(encoding="utf-8"))
             if isinstance(data, dict):
@@ -282,6 +296,10 @@ class AvatarStore:
 
     async def _download(self, platform: str, user_id: str, url: str, login: str, name: str,
                         on_ready: Optional[Ready]) -> None:
+        """Fetch, check and store one picture, update the index and call ``on_ready``.
+
+        Any failure is remembered so the same chatter is not retried for RETRY_SEC.
+        """
         key = f"{platform}:{user_id}"
         try:
             async with self._sem:
@@ -296,6 +314,8 @@ class AvatarStore:
             self._index[key] = {"url": url, "file": file_name, "ts": time.time(),
                                 "login": login or old.get("login") or "", "name": name or old.get("name") or ""}
             self._dirty = True
+            # Save only when this is the last download in flight, so a raid does not rewrite the index
+            # hundreds of times.
             if len(self._pending) <= 1:
                 self.save()
             if on_ready is not None:
@@ -327,6 +347,7 @@ class AvatarStore:
 
     @staticmethod
     async def _fetch_http(url: str) -> tuple[int, bytes]:
+        """GET a picture with httpx, stopping early (413) once it grows past MAX_BYTES."""
         import httpx
 
         async with httpx.AsyncClient(timeout=10.0, follow_redirects=True,

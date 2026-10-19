@@ -43,6 +43,10 @@ def youtube_video_id(raw: str) -> str:
 
 
 def _channel_name(raw: str, hosts: tuple[str, ...]) -> str:
+    """Shared Kick / Twitch helper: first path part of a link on one of ``hosts``, else the text itself.
+
+    Leading @ / # are stripped; "" when nothing is left.
+    """
     text = str(raw or "").strip()
     if not text:
         return ""

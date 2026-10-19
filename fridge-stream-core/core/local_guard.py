@@ -22,6 +22,8 @@ Also resolves the admin token: a placeholder like ``change-me`` is never
 accepted — Core generates a random one in ``data/admin_token.txt``.
 """
 
+# The standalone Chat Credits app (fridge-chat-credits repo) keeps a copy of this file in its
+# core/local_guard.py; keep the shared parts of the two in sync.
 from __future__ import annotations
 
 import hmac
@@ -37,6 +39,7 @@ log = logging.getLogger("core.local_guard")
 
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1", "[::1]"}
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# Admin tokens that are never accepted (the example config ships with "change-me").
 PLACEHOLDER_TOKENS = {"", "change-me", "changeme", "your_admin_token", "YOUR_ADMIN_TOKEN"}
 
 # CORS: only our own loopback pages (any port — sibling Fridge apps).
@@ -45,6 +48,7 @@ _LOOPBACK_ORIGIN_RE = re.compile(LOOPBACK_ORIGIN_REGEX, re.IGNORECASE)
 
 
 def _host_only(value: str) -> str:
+    """"127.0.0.1:3850" -> "127.0.0.1", "[::1]:3850" -> "[::1]" (lower case, port dropped)."""
     value = (value or "").strip().lower()
     if value.startswith("["):
         end = value.find("]")
@@ -53,6 +57,7 @@ def _host_only(value: str) -> str:
 
 
 def _norm_list(items: Optional[Iterable]) -> list[str]:
+    """A config list (or one string) as trimmed, lower-case entries without a trailing "/"."""
     if not items:
         return []
     if isinstance(items, str):
@@ -61,11 +66,16 @@ def _norm_list(items: Optional[Iterable]) -> list[str]:
 
 
 class LocalGuard:
+    """Decides whether one HTTP / WebSocket request may reach Core, from its headers alone.
+
+    ``section`` is the config block holding host / allowed_hosts / allowed_origins.
+    """
     def __init__(self, config: dict | None = None, section: str = "core"):
         self.section = section
         self.configure(config or {})
 
     def configure(self, config: dict) -> None:
+        """Build the allow-lists from config (api/server.py makes one guard at start)."""
         # Stream Core keeps host / allow-lists under ``core:``; Chat Credits under ``app:``.
         core = (config or {}).get(self.section) or {}
         extra_hosts = {_host_only(h) for h in _norm_list(core.get("allowed_hosts"))}
@@ -80,11 +90,16 @@ class LocalGuard:
 
     # ------------------------------------------------------------------
     def host_ok(self, host_header: Optional[str]) -> bool:
+        """True when the Host header names this machine (or an allowed LAN name)."""
         if not self.check_host:
             return True
         return _host_only(host_header or "") in self.allowed_hosts
 
     def origin_ok(self, origin: Optional[str]) -> bool:
+        """True for no Origin, a loopback origin, an allowed_origins entry, or an allowed host's origin.
+
+        "null" (sandboxed iframes, file:// pages) is always refused.
+        """
         if origin is None:
             return True  # not a browser (or same-origin GET)
         o = origin.strip().lower().rstrip("/")
@@ -106,12 +121,14 @@ class LocalGuard:
         origin = headers.get("origin")
         if origin is not None:
             return None if self.origin_ok(origin) else "cross-origin request blocked"
+        # No Origin: older browsers still send Sec-Fetch-Site on a cross-site form post.
         site = (headers.get("sec-fetch-site") or "").lower()
         if site in ("cross-site", "same-site"):
             return "cross-site request blocked"
         return None
 
     def check_ws(self, headers) -> Optional[str]:
+        """Like ``check`` for a WebSocket upgrade: Host and Origin must both pass."""
         if not self.host_ok(headers.get("host")):
             return "host not allowed"
         if not self.origin_ok(headers.get("origin")):
@@ -127,6 +144,7 @@ class LocalGuardMiddleware:
         self.guard = guard
 
     async def __call__(self, scope, receive, send):
+        """Check every HTTP request / WebSocket upgrade before the app sees it; 403 / close 1008 when refused."""
         if scope.get("type") not in ("http", "websocket"):
             return await self.app(scope, receive, send)
         headers = {
@@ -165,6 +183,7 @@ def is_browser_request(headers) -> bool:
 
 
 def is_loopback_client(host: Optional[str]) -> bool:
+    """True when the connecting client address is this machine (also IPv4-mapped IPv6)."""
     h = str(host or "").strip().lower()
     if h == "localhost":
         return True
@@ -198,11 +217,13 @@ def game_caller_problem(headers, client_host: Optional[str], token: Optional[str
 # ----------------------------------------------------------------------
 
 def is_placeholder_token(token: Optional[str]) -> bool:
+    """True for an empty or example admin token (any case)."""
     t = str(token or "").strip()
     return t in PLACEHOLDER_TOKENS or t.lower() in {p.lower() for p in PLACEHOLDER_TOKENS}
 
 
 def generated_token_path(root: Path) -> Path:
+    """Where Core keeps the admin token it made itself: data/admin_token.txt."""
     return Path(root) / "data" / "admin_token.txt"
 
 
@@ -231,6 +252,7 @@ def resolve_admin_token(config: dict, root: Path, *, create: bool = True) -> str
 
 
 def token_matches(given: Optional[str], expected: str) -> bool:
+    """Constant-time compare of a sent token with the real one; a placeholder never matches."""
     if not given or not expected or is_placeholder_token(expected):
         return False
     return hmac.compare_digest(str(given).encode("utf-8"), expected.encode("utf-8"))

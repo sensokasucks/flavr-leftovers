@@ -35,6 +35,7 @@ log = logging.getLogger("core.media_library")
 DATA_DIR = Path(__file__).resolve().parent.parent / "data" / "media"
 INDEX_FILE = "library.json"
 URL_PREFIX = "/media/"
+# Upload limits in bytes (videos may be bigger) and the most files the library holds.
 MAX_BYTES = 15 * 1024 * 1024
 MAX_VIDEO_BYTES = 50 * 1024 * 1024
 MAX_FILES = 500
@@ -71,6 +72,7 @@ def name_from_filename(filename: str) -> str:
 
 
 def decode_base64(b64: str) -> bytes:
+    """Bytes from a base64 upload (a "data:...;base64," prefix is allowed); ValueError if unreadable."""
     raw = str(b64 or "")
     if raw.startswith("data:") and "," in raw:
         raw = raw.split(",", 1)[1]
@@ -81,15 +83,22 @@ def decode_base64(b64: str) -> bytes:
 
 
 class MediaLibrary:
+    """The stored-files folder (``root``, default data/media) and its index.
+
+    Every change runs under one lock, since admin requests can arrive at the same time.
+    Callers (api/admin_routes.py) tell the places that use a file about renames and deletes.
+    """
     def __init__(self, root: Optional[Path] = None):
         self.root = Path(root) if root else DATA_DIR
         self._lock = threading.RLock()
 
     # ── index ───────────────────────────────────────────────
     def _index_path(self) -> Path:
+        """data/media/library.json."""
         return self.root / INDEX_FILE
 
     def _read_index(self) -> dict[str, dict[str, Any]]:
+        """{name: {"sha256", "added"}} from library.json ({} when missing or broken)."""
         path = self._index_path()
         if not path.is_file():
             return {}
@@ -101,6 +110,7 @@ class MediaLibrary:
         return {str(k): dict(v) for k, v in files.items() if isinstance(v, dict)} if isinstance(files, dict) else {}
 
     def _write_index(self, index: dict[str, dict[str, Any]]) -> None:
+        """Save library.json through a temp file so a crash never leaves it half written."""
         self.root.mkdir(parents=True, exist_ok=True)
         path = self._index_path()
         tmp = path.with_suffix(".json.tmp")
@@ -123,9 +133,13 @@ class MediaLibrary:
         return out
 
     def path(self, name: str) -> Optional[Path]:
+        """The file on disk for a name, or None."""
         return self._files().get(clean_name(name)) if name else None
 
     def _entry(self, name: str, path: Path, index: dict[str, dict[str, Any]]) -> dict[str, Any]:
+        """The dict the API and overlays get for one file: name, file, ext, kind, size, added, version,
+        url (with ?v=<mtime> so browsers fetch a replaced file again) and css_url (no version).
+        """
         ext = path.suffix.lower().lstrip(".")
         try:
             st = path.stat()
@@ -146,15 +160,18 @@ class MediaLibrary:
         }
 
     def get(self, name: str) -> Optional[dict[str, Any]]:
+        """The entry for one name, or None when there is no such file."""
         name = clean_name(name)
         path = self.path(name)
         return self._entry(name, path, self._read_index()) if path else None
 
     def list(self) -> list[dict[str, Any]]:
+        """Entries for every stored file, sorted by name."""
         index = self._read_index()
         return [self._entry(n, p, index) for n, p in self._files().items()]
 
     def url(self, name: str) -> Optional[str]:
+        """The versioned url for a name, or None."""
         e = self.get(name)
         return e["url"] if e else None
 
@@ -185,6 +202,7 @@ class MediaLibrary:
         return ext
 
     def _free_name(self, wanted: str, taken: set[str]) -> str:
+        """``wanted`` cleaned, or with -2, -3 ... added until it is not in ``taken``."""
         base = clean_name(wanted) or "file"
         if base not in taken:
             return base
@@ -253,6 +271,7 @@ class MediaLibrary:
             return self._entry(name, path, index)
 
     def save_base64(self, b64: str, name: str = "") -> tuple[dict[str, Any], bool]:
+        """``save`` for an upload sent as base64 text."""
         return self.save(decode_base64(b64), name)
 
     def replace(self, name: str, data: bytes) -> dict[str, Any]:
@@ -283,6 +302,7 @@ class MediaLibrary:
             return self._entry(name, path, index)
 
     def rename(self, name: str, new_name: str) -> dict[str, Any]:
+        """Give a file a new name (same extension). KeyError if missing, ValueError if the new name is taken."""
         name, new = clean_name(name), clean_name(new_name)
         if not new:
             raise ValueError("Give it a name made of letters, numbers, - or _.")
@@ -303,6 +323,7 @@ class MediaLibrary:
             return self._entry(new, path, index)
 
     def delete(self, name: str) -> bool:
+        """Delete a stored file and its index entry. False when there was no such file."""
         name = clean_name(name)
         with self._lock:
             path = self.path(name)
@@ -316,6 +337,7 @@ class MediaLibrary:
 
     @staticmethod
     def _write_file(path: Path, data: bytes) -> None:
+        """Write through a temp file and swap it in, so a reader never sees half a file."""
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_bytes(data)
         tmp.replace(path)

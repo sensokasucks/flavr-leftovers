@@ -228,6 +228,7 @@ class HttpPluginTests(unittest.TestCase):
         self.assertEqual(plug.last_stats, {"alive": 1})
 
     def test_not_running(self):
+        """A switched-off bridge plugin answers commands with a failure, not an error."""
         from core.models import ExecuteRequest
 
         plug = HttpPlugin({"toy": {"enabled": False}}, None, self.MANIFEST)
@@ -282,6 +283,7 @@ class AdminPluginRouteTests(unittest.TestCase):
         self.addCleanup(p2.stop)
 
     def test_list(self):
+        """/api/admin/plugins lists the installed plugins."""
         res = self.client.get("/api/admin/plugins", headers=self.headers)
         self.assertEqual(res.status_code, 200, res.text)
         ids = [p["id"] for p in res.json()["plugins"]]
@@ -315,6 +317,7 @@ class AdminPluginRouteTests(unittest.TestCase):
 
 class CoerceFieldTests(unittest.TestCase):
     def test_types(self):
+        """Plugin settings typed on the dashboard become the field's type (number, list ...)."""
         from api.admin_routes import _SKIP, coerce_plugin_field
 
         self.assertEqual(coerce_plugin_field({"type": "number"}, "4"), 4)

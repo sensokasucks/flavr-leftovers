@@ -14,6 +14,7 @@ _SLUG = re.compile(r"[^a-z0-9_\-]+")
 
 
 def slug(v: Any) -> str:
+    """A command / id name: lower-case, no leading "!", only a-z 0-9 _ - kept."""
     return _SLUG.sub("", str(v or "").strip().lstrip("!").lower())
 
 
@@ -68,12 +69,16 @@ DEFAULT_MOODS: List[Dict[str, Any]] = [
      "effects": [{"effect": "stadium_wave", "params": {"speed": 1.0}}]},
 ]
 
+# Regular titles by streams attended (streak.title_from picks best run or current run).
 DEFAULT_TITLES: List[Dict[str, Any]] = [
     {"streams": 5, "title": "Regular"},
     {"streams": 10, "title": "Die-hard"},
     {"streams": 25, "title": "Legend"},
 ]
 
+# Every chat-games setting with its default. Times are seconds unless the key says otherwise
+# (gap_hours, auto_every_min); costs, bets and prizes are points. Command names are without "!".
+# New keys need a range in _RANGES (numbers) and a field in FORM (to show in the dashboard).
 DEFAULTS: Dict[str, Any] = {
     "enabled": False,
     "replies": True,            # post answers (reply screen / replies overlay)
@@ -143,6 +148,7 @@ _COMMAND_KEYS = {"command", "cheer_command", "boo_command", "accept_command", "d
 
 
 def _num(v: Any, default: float, lo: float, hi: float) -> float:
+    """float(v) clamped to lo..hi; ``default`` when v is not a number."""
     try:
         f = float(v)
     except (TypeError, ValueError):
@@ -151,6 +157,7 @@ def _num(v: Any, default: float, lo: float, hi: float) -> float:
 
 
 def _effects(raw: Any) -> List[Dict[str, Any]]:
+    """A list of {effect, params} dicts, junk entries dropped."""
     out = []
     for e in raw if isinstance(raw, list) else []:
         if isinstance(e, dict) and str(e.get("effect") or "").strip():
@@ -160,6 +167,7 @@ def _effects(raw: Any) -> List[Dict[str, Any]]:
 
 
 def _as_list(v: Any) -> List[str]:
+    """A list or "a, b" / one-per-line text as trimmed, non-empty strings."""
     if v is None:
         return []
     if isinstance(v, str):
@@ -168,6 +176,7 @@ def _as_list(v: Any) -> List[str]:
 
 
 def normalize_moods(raw: Any) -> List[Dict[str, Any]]:
+    """Clean the combo moods list: unique ids, lists for emotes / emoji, clean effects."""
     moods, seen = [], set()
     for m in raw if isinstance(raw, list) else []:
         if not isinstance(m, dict):
@@ -245,11 +254,14 @@ def normalize_config(raw: Any) -> Dict[str, Any]:
 # ----------------------------------------------------------------------
 
 def _f(key, label, kind="number", hint="", **extra):
+    """One admin form field: {key, label, kind, hint, ...extra (e.g. options)}."""
     d = {"key": key, "label": label, "kind": kind, "hint": hint}
     d.update(extra)
     return d
 
 
+# ``sheet`` names the section of the chat cheat sheets (docs/chat-guide) that explains it;
+# ``needs_points`` marks features that do nothing while chat points are off.
 FORM: List[Dict[str, Any]] = [
     {"id": "combos", "title": "Emote combos", "sheet": "Emote combos",
      "about": "When enough people use emotes from the same mood within a few seconds, the whole room reacts.",

@@ -12,6 +12,7 @@
  * StreamCore.resize()         tell the dashboard the page height changed (also done on its own)
  */
 (function () {
+  // Same localStorage keys as admin.js: keep the two files in step.
   const tokenKey = "stream_core_admin_token";
   const hcKey = "stream_core_high_contrast";
 
@@ -24,6 +25,7 @@
       { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   }
 
+  // Errors come back as Error(detail) from FastAPI's {"detail": ...}, else "HTTP <status>".
   async function api(path, opts = {}) {
     const res = await fetch(path, {
       ...opts,
@@ -40,12 +42,14 @@
 
   const inFrame = window.parent && window.parent !== window;
 
+  // The dashboard sets the frame height from this message (the "message" listener in admin.js).
   function resize() {
     if (!inFrame) return;
     const h = Math.ceil(document.documentElement.scrollHeight);
     window.parent.postMessage({ type: "plugin-page-height", height: h }, location.origin);
   }
 
+  // In a frame the dashboard switches page; opened on its own, it loads the dashboard address.
   function go(tab, sub) {
     if (inFrame) window.parent.postMessage({ type: "plugin-page-go", tab, sub: sub || "" }, location.origin);
     else location.href = "/admin/#" + tab + (sub ? "/" + sub : "");

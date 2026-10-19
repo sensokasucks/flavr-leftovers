@@ -15,9 +15,13 @@ from typing import Any, Optional
 
 log = logging.getLogger("core.cast")
 
+# JOB_MAX: longest job title in characters. STYLE_NAMES: the two layouts the overlay draws.
 JOB_MAX = 50
 STYLE_NAMES = {"names", "movie"}
 
+# Written to config/cast/movie.json on first start; edit that file (or save a style from
+# the dashboard) to change jobs. Department ``pool`` (optional) limits a job to paid / mods /
+# subs / vips / gifted / followers / raiders; group ``source`` lists everyone of one kind.
 DEFAULT_MOVIE: dict[str, Any] = {
     "id": "movie",
     "label": "Movie",
@@ -79,6 +83,7 @@ DEFAULT_MOVIE: dict[str, Any] = {
 
 
 def _person_key(c: dict) -> str:
+    """The on-screen name used to merge one person's rows across platforms (lower case)."""
     return (c.get("display_name") or c.get("username") or "").strip().lower()
 
 
@@ -108,6 +113,7 @@ def _unique_people(chatters: list[dict]) -> list[dict]:
 
 
 def clamp_job(title: str) -> str:
+    """Job title with whitespace squashed and cut to JOB_MAX characters."""
     text = re.sub(r"\s+", " ", str(title or "")).strip()
     if len(text) > JOB_MAX:
         text = text[:JOB_MAX].rstrip()
@@ -198,6 +204,12 @@ def _movie_extras(style: dict, ranked: list[dict], count: int) -> dict:
 
 
 class CastBoard:
+    """Gives each chatter a movie-credits job for the end credits. Owned by CreditsEngine (core/credits.py).
+
+    ``root`` is the Stream Core folder. ``tags`` collects who raided / followed / gifted / paid
+    this session (from alerts) as "platform:username" keys; those groups only show when
+    ``allow_alert_groups`` is on.
+    """
     def __init__(self, root: Path, *, allow_alert_groups: bool = False):
         self.root = root
         self.allow_alert_groups = allow_alert_groups
@@ -215,6 +227,7 @@ class CastBoard:
         self.reload()
 
     def reload(self) -> None:
+        """Re-read every style in config/cast/ (writing movie.json first if it is missing) and the pins."""
         self.styles_dir.mkdir(parents=True, exist_ok=True)
         movie_path = self.styles_dir / "movie.json"
         if not movie_path.exists():
@@ -237,6 +250,7 @@ class CastBoard:
         self.overrides = self._load_overrides()
 
     def _load_overrides(self) -> dict[str, dict]:
+        """Pins from data/cast_overrides.json as {"platform:username": {...}} ({} when missing or broken)."""
         if not self.overrides_path.exists():
             return {}
         try:
@@ -252,12 +266,14 @@ class CastBoard:
         return out
 
     def save_overrides(self) -> None:
+        """Write the pins through a temp file."""
         self.overrides_path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.overrides_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(self.overrides, indent=2), encoding="utf-8")
         tmp.replace(self.overrides_path)
 
     def list_styles(self) -> list[dict]:
+        """[{id, label, style}] for the dashboard's style picker."""
         rows = []
         for sid, data in sorted(self.styles.items()):
             rows.append({
@@ -268,10 +284,12 @@ class CastBoard:
         return rows
 
     def get_style(self, style_id: Optional[str] = None) -> dict:
+        """A style by id (the current one by default), falling back to movie."""
         sid = (style_id or self.style_id or "names").lower()
         return self.styles.get(sid) or self.styles.get("movie") or DEFAULT_MOVIE
 
     def set_style(self, style_id: str) -> str:
+        """Make ``style_id`` current (unknown ids become "names"). Returns the id used."""
         sid = (style_id or "names").lower().strip()
         if sid not in self.styles:
             sid = "names"
@@ -279,6 +297,7 @@ class CastBoard:
         return sid
 
     def save_style(self, data: dict) -> dict:
+        """Clean a style sent from the dashboard and save it as config/cast/<id>.json, then reload."""
         sid = str(data.get("id") or "custom").lower().strip()
         sid = re.sub(r"[^a-z0-9_-]+", "-", sid) or "custom"
         if sid == "names":
@@ -322,6 +341,7 @@ class CastBoard:
         return self.styles.get(sid) or payload
 
     def pin(self, platform: str, username: str, job: str, *, set_by: str = "") -> dict:
+        """Give one chatter a fixed job title ("!credit" / dashboard). Saved, so it survives a reset."""
         title = clamp_job(job)
         if not title:
             raise ValueError("job title required")
@@ -336,6 +356,7 @@ class CastBoard:
         return self.overrides[key]
 
     def unpin(self, platform: str, username: str) -> bool:
+        """Remove a chatter's pin; with no exact match, any pin for that name (on ``platform`` if given)."""
         key = f"{platform}:{username}".lower()
         if key in self.overrides:
             del self.overrides[key]
@@ -352,6 +373,7 @@ class CastBoard:
         return dropped
 
     def find_override(self, platform: str, username: str) -> Optional[dict]:
+        """The pin for this chatter: exact platform:name first, then the same name on any platform."""
         key = f"{platform}:{username}".lower()
         if key in self.overrides:
             return self.overrides[key]
@@ -361,6 +383,7 @@ class CastBoard:
         return None
 
     def tag_alert(self, kind: str, platform: str, username: str) -> None:
+        """Remember a chatter by alert kind (raid -> raiders, follow -> followers, subs -> gifted, paid -> donors)."""
         if not self.allow_alert_groups or not username:
             return
         key = f"{(platform or '').lower()}:{username.lower()}"
@@ -389,6 +412,12 @@ class CastBoard:
             self.tags[bucket].add(key)
 
     def decorate(self, snapshot: dict, started_at: float) -> dict:
+        """Add ``style``, ``style_id``, ``overrides`` and (movie style) ``cast`` to a credits snapshot.
+
+        Pins go first (Special Thanks), then jobs are handed out one pass per pool, then groups,
+        and everyone left goes to the overflow list. The shuffle is seeded with the session start
+        time, so jobs stay the same for the whole session. Changes ``snapshot`` in place.
+        """
         style = self.get_style()
         mode = style.get("style") or "names"
         chatters = _unique_people(list(snapshot.get("chatters") or []))
@@ -417,6 +446,7 @@ class CastBoard:
         overflow: list[dict] = []
 
         def row_for(c: dict, job: str, dept_id: str, dept_title: str, pinned: bool) -> dict:
+            """A copy of a chatter row with its job and department filled in."""
             item = dict(c)
             item["job"] = job
             item["department"] = dept_title
@@ -425,6 +455,7 @@ class CastBoard:
             return item
 
         def matches_pool(c: dict, pool: str) -> bool:
+            """True when the chatter belongs to a job's pool."""
             pool = (pool or "any").lower()
             if pool in ("", "any", "all"):
                 return True
@@ -503,6 +534,7 @@ class CastBoard:
         top_keys = {f"{c.get('platform')}:{c.get('username')}" for c in ranked[: max(0, top_n)]}
 
         def in_source(src: str, c: dict) -> bool:
+            """True when the chatter belongs to a group's ``source``."""
             key = f"{c.get('platform')}:{c.get('username')}"
             if src == "mods":
                 return bool(c.get("is_mod"))

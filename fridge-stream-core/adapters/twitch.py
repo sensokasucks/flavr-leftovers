@@ -4,6 +4,10 @@ Twitch chat adapter (read-only).
 Uses anonymous IRC (justinfanXXXXX) — no OAuth required to listen. With the streamer's
 own Twitch sign-in it also opens EventSub (adapters/twitch_eventsub.py) for the paid events
 IRC doesn't carry: power-ups with their bits, celebrations, charity, Hype Trains.
+
+Settings come from the ``twitch:`` block of config.yaml (``channel``, ``avatars``,
+``third_party_emotes``, ``paid_events``). main.py starts it when ``twitch.enabled`` is true.
+There is no ``send_message`` here, so command replies are not posted into Twitch chat.
 """
 
 from __future__ import annotations
@@ -28,13 +32,14 @@ from core.platform_links import twitch_channel
 log = logging.getLogger("adapters.twitch")
 
 HOST = "irc.chat.twitch.tv"
-PORT = 6667
+PORT = 6667     # plain-text IRC; chat is public, and the anonymous login sends no secret
 # A dead link (Wi-Fi blip, router reset, PC asleep) sends no FIN, so a read with no timeout
 # waits forever. After IDLE_PING seconds of silence we PING Twitch ourselves; no answer
 # within PONG_TIMEOUT means the link is dead and we reconnect.
 IDLE_PING = 60.0
 PONG_TIMEOUT = 20.0
 
+# Regexes for the IRC lines Core reads (tags are the IRCv3 "@k=v;k=v" prefix)
 PRIVMSG_RE = re.compile(
     r"^(?:@(?P<tags>[^ ]+) )?:(?P<nick>[^!]+)![^ ]+ PRIVMSG #(?P<chan>[^ ]+) :(?P<msg>.*)$"
 )
@@ -59,6 +64,7 @@ class IrcLineReader:
         self._buf = ""
 
     def feed(self, data: bytes) -> list[str]:
+        """Add bytes; return the lines completed so far (an unfinished line waits for more)."""
         self._buf += self._decoder.decode(data)
         if "\r\n" not in self._buf:
             return []
@@ -67,6 +73,7 @@ class IrcLineReader:
 
 
 def _parse_tags(raw: str) -> dict[str, str]:
+    """IRCv3 tag string ``a=1;b=x\\sy`` -> {"a": "1", "b": "x y"}."""
     out: dict[str, str] = {}
     if not raw:
         return out
@@ -113,7 +120,8 @@ HIGHLIGHT_KINDS = {
 }
 
 
-# bits power-ups: they go on the Paid list (Twitch's chat doesn't say how many bits)
+# bits power-ups: they go on the Paid list (Twitch's chat doesn't say how many bits).
+# main.py reads this; when EventSub delivers power-ups with bits it skips these chat lines.
 POWERUP_KINDS = {"gigantified", "animated"}
 
 
@@ -149,6 +157,7 @@ def shift_emotes(emotes: list[dict], original: str, stripped: str) -> list[dict]
 
 
 def _int(raw: Any, default: int = 1) -> int:
+    """Tag value as an int of at least 1, or ``default`` when it isn't a number."""
     try:
         return max(1, int(raw))
     except (TypeError, ValueError):
@@ -200,6 +209,8 @@ def cheer_bits(tags: dict[str, str]) -> int:
 
 
 class TwitchAdapter(BaseAdapter):
+    """Listens to one channel's chat over anonymous IRC and turns lines into ChatEvents / alerts."""
+
     platform = Platform.TWITCH
 
     def __init__(self, config: dict, bus: EventBus, metrics: MetricsAggregator):
@@ -219,6 +230,7 @@ class TwitchAdapter(BaseAdapter):
         self.eventsub: Optional[EventSubClient] = None
 
     async def start(self) -> None:
+        """Start the IRC loop (and EventSub) in the background; does nothing without a channel."""
         if not self.channel or self.channel.startswith("your_"):
             log.warning("Twitch channel not set — adapter disabled")
             self._set_stopped("No Twitch channel set. Type your channel name under Settings → Core + chat platforms.")
@@ -232,6 +244,7 @@ class TwitchAdapter(BaseAdapter):
             self.eventsub.start()
 
     async def _on_paid_event(self, alert: dict) -> None:
+        """EventSub callback: kwargs from twitch_eventsub's *_alert functions."""
         await self._emit_alert(**alert)
 
     async def stop(self) -> None:
@@ -258,6 +271,7 @@ class TwitchAdapter(BaseAdapter):
         log.info("Twitch adapter stopped")
 
     async def _loop(self) -> None:
+        """Connect, read until the link drops, wait (3 s growing to 30 s), repeat until stopped."""
         backoff = 3.0
         nick = f"justinfan{random.randint(10000, 99999)}"
         while self._running:
@@ -266,6 +280,7 @@ class TwitchAdapter(BaseAdapter):
                 self._writer = writer
                 writer.write(
                     (
+                        # tags = badges / ids / emotes; commands = CLEARCHAT, USERNOTICE, ROOMSTATE
                         "CAP REQ :twitch.tv/tags twitch.tv/commands\r\n"
                         f"NICK {nick}\r\n"
                         f"JOIN #{self.channel}\r\n"
@@ -323,6 +338,7 @@ class TwitchAdapter(BaseAdapter):
                 await self._on_line(writer, line)
 
     async def _on_line(self, writer: asyncio.StreamWriter, line: str) -> None:
+        """Handle one IRC line: keepalive, room id, mod removals, sub / raid notices, chat."""
         if not line:
             return
         if line.startswith("PING"):

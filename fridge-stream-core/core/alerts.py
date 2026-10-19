@@ -18,6 +18,10 @@ from typing import Any, Optional
 from core.overlay_style import OverlayStyle
 
 # Canonical kinds the overlay knows how to style.
+# Each kind: label (admin UI), title, template (headline; {name} {months} {qty} {viewers}
+# {amount} {amount_fmt} {item} {level}), accent (platform colour), needs (fields the test
+# form asks for), defaults (used when a field is missing). A new kind also needs an entry in
+# KIND_CLASSES below; overlay/alerts.js reads ``falls_back`` from the payload.
 KINDS: dict[str, dict[str, Any]] = {
     "follow": {
         "label": "Follow",
@@ -119,8 +123,6 @@ KINDS: dict[str, dict[str, Any]] = {
         "defaults": {"amount": 100, "currency": "KICKs"},
         "falls_back": "donation",
     },
-    # YouTube memberships: their own kinds, so a membership can look and sound different
-    # from a Twitch / Kick sub. Until they have their own picture they borrow the sub's.
     # Twitch events that only arrive through EventSub (adapters/twitch_eventsub.py)
     "powerup": {
         "label": "Bits power-up",
@@ -158,6 +160,8 @@ KINDS: dict[str, dict[str, Any]] = {
         "defaults": {"level": 3, "item": "Hype Train"},
         "falls_back": "raid",
     },
+    # YouTube memberships: their own kinds, so a membership can look and sound different
+    # from a Twitch / Kick sub. Until they have their own picture they borrow the sub's.
     "member": {
         "label": "YouTube new member",
         "title": "New member",
@@ -250,10 +254,12 @@ def kind_catalog() -> list[dict[str, Any]]:
 
 
 def css_classes_for(kind: str) -> list[str]:
+    """The #alert-box classes for a kind (follow's classes for an unknown kind)."""
     return list(KIND_CLASSES.get((kind or "").strip().lower(), ["kind-follow"]))
 
 
 def _fmt_amount(amount: Optional[float], currency: str) -> str:
+    """Amount as shown in a headline: whole "500 bits" / "100 KICKs", money with 2 decimals ("4.99 USD")."""
     if amount is None:
         return ""
     cur = (currency or "").strip()
@@ -388,12 +394,15 @@ def write_alert_settings(
     overlay_dir: Optional[Path] = None,
     options: Optional[dict[str, Any]] = None,
 ) -> dict[str, Any]:
+    """Save the alert overlay's skin / options (and bump the CSS version so overlays reload it)."""
     return ALERT_STYLE.write_settings(skin=skin, bump_css=bump_css, options=options, overlay_dir=overlay_dir)
 
 
 def read_custom_css(overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> str:
+    """The alert overlay's custom CSS (one saved slot when ``slot`` is given)."""
     return ALERT_STYLE.read_css(overlay_dir, slot=slot)
 
 
 def write_custom_css(css: str, overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> dict[str, Any]:
+    """Save the alert overlay's custom CSS (to ``slot`` when given)."""
     return ALERT_STYLE.write_css(css, overlay_dir, slot=slot)

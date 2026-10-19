@@ -166,6 +166,7 @@ class FeatureTests(TempPluginsDir):
         asyncio.run(mgr.stop_all())
 
     def test_moved_section(self):
+        """Settings in a plugin's old config section are used for its new one; the new one wins."""
         raw = {"oldbank": {"enabled": True, "rate": 5}}
         out = apply_moved_sections(raw)
         self.assertEqual(out["bank"], {"enabled": True, "rate": 5})
@@ -195,6 +196,7 @@ class FeatureTests(TempPluginsDir):
         asyncio.run(mgr.stop_all())
 
     def test_info_rows(self):
+        """The plugin rows the dashboard shows: category and dashboard page links."""
         mgr = self.manager(self.cfg)
         rows = {r["id"]: r for r in mgr.info(self.cfg, "")}
         self.assertEqual(rows["bank"]["category"], "feature")

@@ -34,6 +34,9 @@ class ConfigError(RuntimeError):
     """Invalid or unreadable config file."""
 
 
+# Every setting Core knows, with its default. ``load_config`` lays the user's file on top
+# (deep merge), so a key missing from config.yaml gets the value here. New settings go here
+# first; the dashboard's Config page and config/config.example.yaml should match.
 DEFAULTS: Dict[str, Any] = {
     "core": {
         "host": "127.0.0.1",
@@ -195,6 +198,7 @@ DEFAULTS: Dict[str, Any] = {
         "max_width_px": 920,
         "custom_font_url": "",
     },
+    # Same entries as core/command_groups.py DEFAULT_GROUPS; keep the two in sync.
     "command_groups": {
         "core": {
             "enabled": True,
@@ -243,6 +247,10 @@ for _pid, _group in _plugin_manifest.group_defaults().items():
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
+    """Return ``base`` with ``override`` laid on top; nested dicts are merged key by key, not replaced.
+
+    Neither input is changed (nested dicts that are not merged are shared, not copied).
+    """
     result = dict(base)
     for k, v in override.items():
         if k in result and isinstance(result[k], dict) and isinstance(v, dict):
@@ -293,11 +301,13 @@ def sanitize_yaml_text(text: str) -> Tuple[str, bool]:
 
 
 def _read_text(path: Path) -> str:
+    """Read a config / commands file as text."""
     # utf-8-sig strips a Windows/Notepad BOM if one is present
     return path.read_text(encoding="utf-8-sig")
 
 
 def _parse_yaml(text: str, source: Path | str) -> dict:
+    """Parse YAML text into a dict, raising ConfigError with a plain-language fix when it is broken."""
     cleaned, _ = sanitize_yaml_text(text)
     try:
         data = yaml.safe_load(cleaned) or {}
@@ -380,6 +390,11 @@ def ensure_seed_files() -> None:
 
 
 def load_config(path: Path | str | None = None) -> dict:
+    """Read the config file (creating it from the example on first run) merged over DEFAULTS.
+
+    Tabs in a YAML file are fixed on disk first. Called at start by main.py, after admin
+    saves, before Core writes the file itself, and when the file watcher sees a hand edit.
+    """
     ensure_seed_files()
     data: dict = {}
     found = resolve_config_path(path)
@@ -442,6 +457,9 @@ def save_config(data: dict, path: Path | str | None = None) -> Path:
 
     Returns the path written.
     """
+    # This writes exactly ``data`` (plus DEFAULTS for missing keys), so callers must pass the
+    # whole config, not just one section: the admin routes start from the live config and
+    # change their part, which is what keeps command_groups / plugin blocks from being dropped.
     if path:
         target = Path(path)
     else:
@@ -481,6 +499,7 @@ def save_config(data: dict, path: Path | str | None = None) -> Path:
 
 
 def resolve_commands_path() -> Path:
+    """config/commands.json, or the example file while there is no commands.json yet."""
     p = ROOT / "config" / "commands.json"
     if p.exists():
         return p
@@ -491,6 +510,7 @@ def resolve_commands_path() -> Path:
 
 
 def load_commands(path: Path | str | None = None) -> dict:
+    """The commands file as a dict ({} when missing or invalid; errors are logged, not raised)."""
     target = Path(path) if path else resolve_commands_path()
     if not target.exists():
         return {}

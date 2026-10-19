@@ -50,6 +50,8 @@ from core.models import ChatEvent, ChatUser, PermissionLevel
 
 log = logging.getLogger("core.reactions")
 
+# Version of the WebSocket protocol above; sent in hello_ok. Bump it (and tell Stream Rooms,
+# the stream-rooms repo) when a message changes shape.
 PROTOCOL = 1
 
 # ----------------------------------------------------------------------
@@ -59,6 +61,7 @@ PROTOCOL = 1
 # ----------------------------------------------------------------------
 
 def _p(name, type_, default, label="", **extra):
+    """One effect setting for the admin editor: {name, type, default, label, ...extra (min/max/options)}."""
     d = {"name": name, "type": type_, "default": default, "label": label or name.replace("_", " ").capitalize()}
     d.update(extra)
     return d
@@ -195,6 +198,8 @@ EFFECT_CATALOG: List[Dict[str, Any]] = [
 
 TARGET_TYPES = ("stage", "user", "guest")
 
+# Chat replies; {user} {reaction} {cost} {prefix} ... are filled by ``fmt``. The streamer can
+# override any of them under ``reactions.messages``.
 DEFAULT_MESSAGES: Dict[str, str] = {
     "cooldown": "@{user} {reaction} is cooling down ({seconds}s).",
     "no_points": "@{user} {reaction} costs {cost} points — you have {balance}.",
@@ -211,6 +216,8 @@ DEFAULT_MESSAGES: Dict[str, str] = {
     "need_text": "@{user} what should it say? Try {prefix}{command} GO TEAM",
 }
 
+# The reactions a fresh install starts with. Cooldowns are in seconds; ``cost`` is in points
+# (needs points.enabled); ``max_per_message`` caps how many one line can fire.
 DEFAULT_ENTRIES: List[Dict[str, Any]] = [
     {"id": "tomato", "enabled": True, "label": "Tomato",
      "emoji": ["🍅"], "emotes": [], "commands": ["tomato"],
@@ -326,6 +333,7 @@ DEFAULT_REACTIONS: Dict[str, Any] = {
     "entries": [dict(e) for e in DEFAULT_ENTRIES],
 }
 
+# _KICK_EMOTE: Kick's inline "[emote:123:Name]" tokens. _MENTION: an "@name" in chat.
 _KICK_EMOTE = re.compile(r"\[emote:(\d+):([^\]]+)\]")
 _MENTION = re.compile(r"@([A-Za-z0-9_][A-Za-z0-9_.\-]{0,39})")
 _WORD = re.compile(r"[A-Za-z0-9_]+")
@@ -333,6 +341,7 @@ _SLUG = re.compile(r"[^a-z0-9_\-]+")
 
 
 def _norm_emoji(s: str) -> str:
+    """Drop the emoji variation selector so both spellings of an emoji match."""
     # ❤️ vs ❤ — ignore variation selector 16 when matching
     return (s or "").replace("️", "")
 
@@ -383,10 +392,12 @@ def command_count(entry: Dict[str, Any], typed: Optional[int]) -> int:
 
 
 def _slug(s: Any) -> str:
+    """Lower-case id with only a-z 0-9 _ - kept."""
     return _SLUG.sub("", str(s or "").strip().lower())
 
 
 def _as_list(v: Any) -> List[str]:
+    """A list (or "a, b" / one-per-line text) as unique, trimmed, non-empty strings."""
     if v is None:
         return []
     if isinstance(v, str):
@@ -400,6 +411,7 @@ def _as_list(v: Any) -> List[str]:
 
 
 def _num(v: Any, default: float, lo: float | None = None, hi: float | None = None) -> float:
+    """float(v) clamped to lo..hi; ``default`` when v is not a number."""
     try:
         n = float(v)
     except (TypeError, ValueError):
@@ -412,6 +424,7 @@ def _num(v: Any, default: float, lo: float | None = None, hi: float | None = Non
 
 
 def effect_by_id(effects: Iterable[Dict[str, Any]], eid: str) -> Optional[Dict[str, Any]]:
+    """The effect with this id from a list of effects, or None."""
     for e in effects:
         if e.get("id") == eid:
             return e
@@ -505,11 +518,13 @@ def normalize_config(raw: Dict[str, Any] | None) -> Dict[str, Any]:
 
 
 class _SafeDict(dict):
+    """format_map helper: an unknown {key} stays in the text instead of raising."""
     def __missing__(self, key):
         return "{" + key + "}"
 
 
 def fmt(template: str, **ctx) -> str:
+    """Fill a reply / text template; a broken template is returned as it is."""
     try:
         return str(template or "").format_map(_SafeDict(ctx))
     except (ValueError, IndexError):
@@ -521,6 +536,7 @@ def fmt(template: str, **ctx) -> str:
 # ----------------------------------------------------------------------
 
 class OptBook:
+    """Who said !nothrow / !throwok, by lower-case username (any platform). Saved on every change."""
     def __init__(self, path: Optional[Path]):
         self.path = path
         self.opted_out: set[str] = set()
@@ -528,6 +544,7 @@ class OptBook:
         self._load()
 
     def _load(self) -> None:
+        """Read the saved lists; a broken file starts empty (logged)."""
         if not self.path or not self.path.exists():
             return
         try:
@@ -538,6 +555,7 @@ class OptBook:
             log.warning("Could not read %s — starting empty", self.path)
 
     def _save(self) -> None:
+        """Write the lists through a temp file."""
         if not self.path:
             return
         try:
@@ -552,18 +570,21 @@ class OptBook:
             log.exception("Could not save %s", self.path)
 
     def opt_out(self, name: str) -> None:
+        """``name`` may no longer be targeted."""
         n = name.lstrip("@").lower()
         self.opted_out.add(n)
         self.opted_in.discard(n)
         self._save()
 
     def opt_in(self, name: str) -> None:
+        """``name`` may be targeted again (needed in "opt_in" targeting mode)."""
         n = name.lstrip("@").lower()
         self.opted_in.add(n)
         self.opted_out.discard(n)
         self._save()
 
     def targetable(self, name: str, mode: str) -> bool:
+        """True when reactions may be aimed at ``name`` under this targeting mode."""
         n = name.lstrip("@").lower()
         if n in self.opted_out:
             return False
@@ -586,6 +607,7 @@ class EmoteBook:
         self._by_name: Dict[str, Dict[str, Any]] = {}
 
     def learn(self, event: ChatEvent) -> None:
+        """Remember every emote picture in one chat line (static picture for animated 7TV WebP)."""
         for em in event.emotes or []:
             if not isinstance(em, dict):
                 continue
@@ -600,6 +622,7 @@ class EmoteBook:
             self._put(m.group(2), self.KICK_URL.format(id=m.group(1)), False)
 
     def _put(self, name: str, url: str, animated: bool) -> None:
+        """Store one emote, newest last; the oldest are dropped past MAX."""
         key = name.strip(":").lower()
         if not key:
             return
@@ -609,6 +632,7 @@ class EmoteBook:
             self._by_name.pop(next(iter(self._by_name)))
 
     def get(self, name: Any) -> Optional[Dict[str, Any]]:
+        """The stored emote for a name (case-insensitive, ":" ignored), or None."""
         return self._by_name.get(str(name or "").strip().strip(":").lower())
 
     def picture(self, name: Any) -> Optional[Dict[str, Any]]:
@@ -642,6 +666,7 @@ def args_text(words: Iterable[str], limit: int = 60) -> str:
 
 
 def _uses_args(entry: Dict[str, Any]) -> bool:
+    """True when one of the entry's settings contains {args} (it needs the chatter's words)."""
     return any(isinstance(v, str) and _ARGS_TOKEN in v for v in (entry.get("params") or {}).values())
 
 
@@ -657,6 +682,12 @@ BroadcastFn = Callable[[dict], Awaitable[None]]
 
 
 class ReactionEngine:
+    """All chat reaction rules. One per Core (main.py); it sees every chat line through
+    ``handle_chat`` and every game WebSocket message through ``on_client_message``.
+
+    ``reply`` answers a chatter, ``say`` posts a game's line as Core, ``broadcast`` goes to
+    every overlay socket. Points come from ``store`` (spend_points / adjust_points).
+    """
     def __init__(
         self,
         get_config: Callable[[], dict],
@@ -697,18 +728,22 @@ class ReactionEngine:
 
     @property
     def cfg(self) -> Dict[str, Any]:
+        """The ``reactions:`` block, normalized (read live, so a dashboard save applies at once)."""
         full = self._get_config() or {}
         return normalize_config(full.get("reactions"))
 
     def prefix(self) -> str:
+        """The chat command prefix ("!" by default)."""
         p = self._prefix() if callable(self._prefix) else self._prefix
         return p or "!"
 
     def points_enabled(self) -> bool:
+        """True when Core's chat points are on (``points.enabled``)."""
         full = self._get_config() or {}
         return bool((full.get("points") or {}).get("enabled"))
 
     def active(self) -> bool:
+        """True when reactions are on and their command group is active."""
         if not self.cfg["enabled"]:
             return False
         if self._groups_active is not None:
@@ -719,6 +754,7 @@ class ReactionEngine:
         return True
 
     def entry_usable(self, entry: Dict[str, Any]) -> Tuple[bool, str]:
+        """(usable, why not) for one entry: off, or costs points while points are off."""
         if not entry["enabled"]:
             return False, "disabled"
         if entry["cost"] > 0 and not self.points_enabled():
@@ -762,9 +798,11 @@ class ReactionEngine:
     # ---------------- caps persistence ----------------
 
     def _caps_path(self) -> Optional[Path]:
+        """data/reactions_caps.json: the effect list the game last reported in its hello."""
         return self.data_dir / "reactions_caps.json" if self.data_dir else None
 
     def _load_caps(self) -> List[Dict[str, Any]]:
+        """The saved game effect list, so the admin editor knows it before the game reconnects."""
         p = self._caps_path()
         if not p or not p.exists():
             return []
@@ -775,6 +813,7 @@ class ReactionEngine:
             return []
 
     def _save_caps(self) -> None:
+        """Save the game's effect list (see ``_load_caps``)."""
         p = self._caps_path()
         if not p:
             return
@@ -834,6 +873,10 @@ class ReactionEngine:
         return False
 
     def match_triggers(self, event: ChatEvent, entries: List[Dict[str, Any]]) -> List[Tuple[Dict[str, Any], int]]:
+        """[(entry, count)] for every entry whose emoji / emotes appear in a plain chat line.
+
+        Each count is capped at the entry's ``max_per_message``.
+        """
         text = event.message or ""
         emote_names: List[str] = []
         for em in event.emotes or []:
@@ -865,12 +908,18 @@ class ReactionEngine:
     # ---------------- firing ----------------
 
     def _user_key(self, user: ChatUser) -> str:
+        """"platform:id" (or the name when there is no id), for per-user cooldowns."""
         return f"{user.platform.value}:{(user.id or user.username or '').lower()}"
 
     def _is_admin(self, user: ChatUser) -> bool:
+        """True when the chatter is on Core's admin list."""
         return bool(self.perms and self.perms.has_permission(user, PermissionLevel.ADMIN))
 
     def _permission_ok(self, entry: Dict[str, Any], user: ChatUser) -> Tuple[bool, str]:
+        """(allowed, who it is for) from the entry's permission and sub / VIP requirement.
+
+        Admins pass everything; mods also skip the sub / VIP requirement.
+        """
         perm = entry["permission"]
         admin = self._is_admin(user)
         if perm == "admin" and not admin:
@@ -941,6 +990,7 @@ class ReactionEngine:
         return words[0] if words else ""
 
     def _user_target(self, name: str, allowed, sender: ChatUser, room) -> Tuple[Optional[Dict[str, Any]], Optional[str], Dict[str, Any]]:
+        """Target an audience member by name, checking opt-out and (when known) that they are seated."""
         if not name:
             return None, "bad_target", {"target": "@"}
         if "user" not in allowed:
@@ -955,6 +1005,10 @@ class ReactionEngine:
         return {"type": "user", "name": name}, None, {}
 
     def _route(self, effect_id: str) -> Optional[str]:
+        """"game", "overlay" or None (nothing can play this effect now), from ``send_to``.
+
+        "auto" prefers a connected game; the fallback overlay only plays effects marked overlay=True.
+        """
         mode = self.cfg["send_to"]
         game = bool(self.game_clients)
         overlay_ok = any(e["id"] == effect_id and e.get("overlay") for e in EFFECT_CATALOG)
@@ -987,6 +1041,7 @@ class ReactionEngine:
                 "command": (entry["commands"] or [entry["id"]])[0]}
 
         async def reject(key: str, **extra) -> Dict[str, Any]:
+            """Count a rejection and, for commands, tell the chatter why (``msgs[key]``)."""
             self.stats["rejected"] += 1
             if loud and key in msgs:
                 await self._send_reply(event, msgs[key], {**base, **extra})
@@ -1012,6 +1067,7 @@ class ReactionEngine:
         if route is None:
             return await reject("stage_closed")
 
+        # Cooldown keys: per user, for everyone, and per target (only people / guests have one).
         ukey = f"u|{entry['id']}|{self._user_key(user)}"
         gkey = f"g|{entry['id']}"
         tkey = f"t|{entry['id']}|{(target or {}).get('type', '')}:{(target or {}).get('name', '').lower()}"
@@ -1082,6 +1138,7 @@ class ReactionEngine:
         return {"ok": True, "id": rid, "route": route, "target": target, "count": count, "charged": charged}
 
     def _params_for(self, entry: Dict[str, Any], text: str = "", user: Optional[ChatUser] = None) -> Dict[str, Any]:
+        """The settings sent with one entry's reaction (see ``effect_params``)."""
         return self.effect_params(entry["effect"], entry["params"] or {}, text=text, user=user)
 
     def effect_params(self, effect: str, given: Optional[Dict[str, Any]] = None, text: str = "",
@@ -1162,6 +1219,10 @@ class ReactionEngine:
         return rid
 
     async def _deliver(self, payload: dict, route: str) -> bool:
+        """Send a reaction packet to every hello'd game socket, or broadcast it to the overlays.
+
+        True when at least one receiver got it; a game socket that fails is dropped.
+        """
         if route == "game":
             sent = False
             for ws in list(self.game_clients):
@@ -1181,6 +1242,7 @@ class ReactionEngine:
         return False
 
     async def _refund(self, rid: str, why: str) -> bool:
+        """Give back the points of a pending reaction (not delivered, or dropped by the game)."""
         p = self.pending.pop(rid, None)
         if not p or not self.store or not p.get("uid"):
             return False
@@ -1192,11 +1254,13 @@ class ReactionEngine:
         return True
 
     def _expire_pending(self, max_age: float = 120.0) -> None:
+        """Forget charges older than ``max_age`` seconds: no refund after that."""
         now = time.time()
         for rid in [k for k, v in self.pending.items() if now - v["ts"] > max_age]:
             self.pending.pop(rid, None)
 
     def _targets_text(self) -> str:
+        """The !targets reply: stage spots and guests from the game's room_state."""
         msgs = self.cfg["messages"]
         room = self.room_state
         if not room:
@@ -1206,6 +1270,7 @@ class ReactionEngine:
         return fmt(msgs["targets"], targets=", ".join(names) or "stage")
 
     async def _send_reply(self, event: ChatEvent, template: str, ctx: Dict[str, Any]) -> None:
+        """Answer in chat with a filled template (only when chat_replies is on). Errors are logged."""
         if not self.cfg["chat_replies"] or not template or not self._reply:
             return
         full = {"user": _speaker(event.user), "prefix": self.prefix(),
@@ -1219,6 +1284,7 @@ class ReactionEngine:
     # ---------------- game link (WebSocket messages) ----------------
 
     def detach(self, ws) -> None:
+        """A game socket closed: forget it (and the room, when it was the last one)."""
         if ws in self.game_clients:
             info = self.game_clients.pop(ws)
             log.info("Game client left: %s", info.get("client"))
@@ -1226,6 +1292,12 @@ class ReactionEngine:
                 self.room_state = None
 
     async def on_client_message(self, ws, msg: Dict[str, Any]) -> None:
+        """Handle one JSON message from a socket (protocol in the module docstring).
+
+        A "hello" registers the socket as a game (api/server.py lets only a real game caller,
+        see core/local_guard.game_caller_problem, send one); anything else from a socket that
+        never said hello is ignored, so an overlay page can't refund points or speak as Core.
+        """
         mtype = str(msg.get("type") or "")
         data = msg.get("data") if isinstance(msg.get("data"), dict) else {}
         if mtype == "hello":
@@ -1288,6 +1360,7 @@ class ReactionEngine:
         return sent
 
     async def game_say(self, text: str) -> bool:
+        """The game's "say": post it as Core, at most ``say_per_minute`` times a minute, cut to say_max_chars."""
         cfg = self.cfg
         text = " ".join(text.split())[: cfg["say_max_chars"]]
         if not text or not self._say or cfg["say_per_minute"] <= 0:
@@ -1305,6 +1378,7 @@ class ReactionEngine:
     # ---------------- admin ----------------
 
     def status(self) -> Dict[str, Any]:
+        """Everything the admin Reactions page shows: on / active, game link, room, stats, recent, entries."""
         cfg = self.cfg
         entries = []
         for e in cfg["entries"]:

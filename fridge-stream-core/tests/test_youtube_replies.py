@@ -72,6 +72,7 @@ class Parsing(unittest.TestCase):
         self.assertEqual(reply_thread_id(RANK_CHIP["buttonViewModel"]), "")
 
     def test_chip(self):
+        """The reply chip gives who is answered and the reply-thread id (empty when unreadable)."""
         self.assertEqual(reply_chip({"beforeContentButtons": [RANK_CHIP, REPLY_CHIP]}),
                          {"user": "@postal_otter", "thread": THREAD})
         self.assertIsNone(reply_chip({"beforeContentButtons": [RANK_CHIP]}))

@@ -16,6 +16,8 @@ from .models import ChatEvent, ChatReply, ExecuteRequest, MetricsSnapshot
 
 log = logging.getLogger("core.event_bus")
 
+# Handler signatures: every handler is an async function taking one argument (an event
+# object, or a plain dict for alerts, user updates, removed chat and flags).
 ChatHandler = Callable[[ChatEvent], Awaitable[None]]
 ExecuteHandler = Callable[[ExecuteRequest], Awaitable[None]]
 MetricsHandler = Callable[[MetricsSnapshot], Awaitable[None]]
@@ -27,6 +29,11 @@ FlagHandler = Callable[[dict], Awaitable[None]]
 
 
 class EventBus:
+    """One shared bus per Core process (built in main.py, which registers its handlers in start()).
+
+    on_*() registers a handler, publish_*() awaits every handler in order. A handler that
+    raises is logged and skipped, so one broken subscriber never stops the others.
+    """
     def __init__(self):
         self._chat_handlers: List[ChatHandler] = []
         self._execute_handlers: List[ExecuteHandler] = []
@@ -41,12 +48,15 @@ class EventBus:
         self.pacer = None
 
     def on_chat(self, handler: ChatHandler) -> None:
+        """Every chat line after smoothing (main.py: command router, overlays, store, credits ...)."""
         self._chat_handlers.append(handler)
 
     def on_execute(self, handler: ExecuteHandler) -> None:
+        """A chat command passed the router and should go to the game plugins."""
         self._execute_handlers.append(handler)
 
     def on_metrics(self, handler: MetricsHandler) -> None:
+        """Metrics snapshots (about every 2 s from main.py's metrics loop, plus admin test sends)."""
         self._metrics_handlers.append(handler)
 
     def on_reply(self, handler: ReplyHandler) -> None:
@@ -101,6 +111,7 @@ class EventBus:
             await self.pacer.submit(event)
 
     async def publish_chat(self, event: ChatEvent) -> None:
+        # Handlers are copied first so one may register / unregister while we loop.
         handlers = list(self._chat_handlers)
         for h in handlers:
             try:
@@ -125,6 +136,7 @@ class EventBus:
                 log.exception("metrics handler error")
 
     async def publish_reply(self, reply: ChatReply) -> None:
+        """Send a chat reply to every reply handler; with none registered it is only logged."""
         handlers = list(self._reply_handlers)
         if not handlers:
             log.info("[reply/%s] %s", reply.platform.value, reply.message)
@@ -136,6 +148,7 @@ class EventBus:
                 log.exception("reply handler error")
 
     async def publish_alert(self, payload: dict[str, Any]) -> None:
+        """Send an alert dict (``kind``, ``headline``, ...) to every alert handler; logged when none."""
         handlers = list(self._alert_handlers)
         if not handlers:
             log.info("[alert/%s] %s", payload.get("kind"), payload.get("headline"))

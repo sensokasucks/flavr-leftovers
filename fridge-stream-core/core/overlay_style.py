@@ -1,7 +1,7 @@
 """
 The look of an overlay page, kept next to the page itself (alerts, chat).
 
-Each styled overlay has three things in ``overlay/``:
+Each styled overlay keeps these in ``overlay/``:
   - ``<name>-custom.css``: the streamer's own CSS, pasted in the dashboard (or copied from a
     Streamlabs / StreamElements / OBS "Custom CSS" box; the pages use those tools' ids and
     classes so packs drop in).
@@ -33,9 +33,11 @@ from core.css_templates import fill_placeholders
 log = logging.getLogger("core.overlay_style")
 
 OVERLAY_DIR = Path(__file__).resolve().parent.parent / "overlay"
+# Size limits: custom CSS per sheet, and an uploaded picture / sound (bytes).
 MAX_CUSTOM_CSS_BYTES = 256_000
 MAX_ASSET_BYTES = 15 * 1024 * 1024
 MAX_CSS_SLOTS = 30
+# Custom CSS is rejected when it tries to sneak in a script or old IE CSS expressions.
 _CSS_BLOCK = re.compile(r"<\s*/?\s*script|<\s*/?\s*style|javascript:|expression\s*\(", re.IGNORECASE)
 _SLOT_RE = re.compile(r"[^a-z0-9_-]+")
 
@@ -77,10 +79,18 @@ def sniff(data: bytes) -> Optional[str]:
 
 
 def clean_slot(raw: str) -> str:
+    """Slot / stylesheet name made safe for a file name: lower-case a-z 0-9 _ -, at most 40 characters."""
     return _SLOT_RE.sub("-", str(raw or "").strip().lower()).strip("-_")[:40]
 
 
 class OverlayStyle:
+    """Reads and writes one overlay page's look (``name`` = "alerts" or "chat").
+
+    ``image_slots`` / ``sound_slots`` name what can hold a picture or sound (alert kinds, badge
+    kinds ...); ``options`` are the defaults for the page's small settings, ``ranges`` their
+    (min, max). Shared instances: ``ALERT_STYLE`` (core/alerts.py), ``CHAT_STYLE`` (core/chat_style.py).
+    Every ``overlay_dir`` argument is for tests; None means the real ``overlay/`` folder.
+    """
     def __init__(self, name: str, skins: tuple[str, ...], image_slots: tuple[str, ...] = (),
                  sound_slots: tuple[str, ...] = (), options: Optional[dict[str, Any]] = None,
                  ranges: Optional[dict[str, tuple[float, float]]] = None, overlay_dir: Optional[Path] = None,
@@ -97,22 +107,31 @@ class OverlayStyle:
 
     # ── paths ───────────────────────────────────────────────
     def _root(self, overlay_dir: Optional[Path]) -> Path:
+        """The overlay folder to use: the argument when given, else this style's own."""
         return overlay_dir or self.overlay_dir
 
     def css_path(self, overlay_dir: Optional[Path] = None) -> Path:
+        """overlay/<name>-custom.css, the default custom stylesheet."""
         return self._root(overlay_dir) / f"{self.name}-custom.css"
 
     def settings_path(self, overlay_dir: Optional[Path] = None) -> Path:
+        """overlay/<name>-settings.json (skin, css_version, options, picks)."""
         return self._root(overlay_dir) / f"{self.name}-settings.json"
 
     def css_slots_dir(self, overlay_dir: Optional[Path] = None) -> Path:
+        """overlay/<name>-css/, the extra named stylesheets."""
         return self._root(overlay_dir) / f"{self.name}-css"
 
     def assets_dir(self, overlay_dir: Optional[Path] = None) -> Path:
+        """overlay/assets/<name>/, the old hand-dropped pictures and sounds."""
         return self._root(overlay_dir) / "assets" / self.name
 
     # ── settings ────────────────────────────────────────────
     def read_settings(self, overlay_dir: Optional[Path] = None) -> dict[str, Any]:
+        """What the overlay page polls: skin, css_version, options, media / sounds urls and css_slots.
+
+        A missing or broken settings file gives the defaults.
+        """
         skin = self.skins[0]
         css_version = 0
         options = dict(self.default_options)
@@ -160,6 +179,10 @@ class OverlayStyle:
 
     def write_settings(self, skin: Optional[str] = None, bump_css: bool = False,
                        options: Optional[dict[str, Any]] = None, overlay_dir: Optional[Path] = None) -> dict[str, Any]:
+        """Change the skin and / or options (merged into what is saved), keeping the picks. Returns read_settings().
+
+        ``bump_css`` sets css_version to now (seconds), which makes open pages reload the default CSS.
+        """
         current = self.read_settings(overlay_dir)
         if skin in self.skins:
             current["skin"] = skin
@@ -184,16 +207,22 @@ class OverlayStyle:
         return "" if name in ("", "default") else name
 
     def _css_file(self, slot: Optional[str], overlay_dir: Optional[Path]) -> Path:
+        """The file for a stylesheet slot ("" / "default" = the main custom CSS file)."""
         name = self._slot_name(slot)
         if not name:
             return self.css_path(overlay_dir)
         return self.css_slots_dir(overlay_dir) / f"{name}.css"
 
     def read_css(self, overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> str:
+        """The saved CSS of one stylesheet ("" when there is none)."""
         path = self._css_file(slot, overlay_dir)
         return path.read_text(encoding="utf-8") if path.is_file() else ""
 
     def write_css(self, css: str, overlay_dir: Optional[Path] = None, slot: Optional[str] = None) -> dict[str, Any]:
+        """Check and save one stylesheet (filling template placeholders), then return the settings.
+
+        Raises ValueError with a message for the dashboard when the CSS is refused.
+        """
         if not isinstance(css, str):
             raise ValueError("css must be a string")
         raw = css.replace("\r\n", "\n")
@@ -232,6 +261,7 @@ class OverlayStyle:
         return out
 
     def delete_css_slot(self, slot: str, overlay_dir: Optional[Path] = None) -> bool:
+        """Delete one extra stylesheet; False when there was none (the default sheet can't be deleted)."""
         name = self._slot_name(slot)
         if not name:
             return False
@@ -247,6 +277,7 @@ class OverlayStyle:
     # assets/<name>/ (``follow.gif``); Core copies those into the library at start (import_legacy).
     @property
     def library(self):
+        """The shared MediaLibrary (data/media) unless one was given for tests."""
         if self._library is None:
             from core.media_library import default_library
 
@@ -273,6 +304,7 @@ class OverlayStyle:
         return out
 
     def _write_picks(self, picks: dict[str, dict[str, str]], overlay_dir: Optional[Path]) -> None:
+        """Save the picks into the settings file, leaving the other keys as they are."""
         path = self.settings_path(overlay_dir)
         data: dict[str, Any] = {}
         if path.is_file():
@@ -290,6 +322,7 @@ class OverlayStyle:
         path.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
 
     def _picture_kinds(self) -> tuple[str, ...]:
+        """Library file kinds a picture slot accepts here."""
         return ("image", "video") if self.allow_video else ("image",)
 
     def list_assets(self, overlay_dir: Optional[Path] = None) -> tuple[dict[str, str], dict[str, str]]:
@@ -393,6 +426,7 @@ class OverlayStyle:
         return self.pick(slot, entry["name"], kind, overlay_dir)
 
     def save_asset_base64(self, slot: str, b64: str, overlay_dir: Optional[Path] = None, filename: str = "") -> str:
+        """``save_asset`` for an upload sent as base64 text (the dashboard does this)."""
         from core.media_library import decode_base64
 
         return self.save_asset(slot, decode_base64(b64), overlay_dir, filename)
@@ -416,6 +450,7 @@ class OverlayStyle:
         return self._remove_slot_files(slot, kind, self.assets_dir(overlay_dir)) > 0 or had_pick
 
     def _remove_slot_files(self, slot: str, kind: str, folder: Path) -> int:
+        """Delete a slot's hand-dropped files in ``folder`` (every format). Returns how many went."""
         exts = IMAGE_EXTS if kind == "image" else SOUND_EXTS
         n = 0
         for ext in exts:
@@ -466,6 +501,7 @@ class OverlayStyle:
                 for kind in ("image", "sound") for slot, n in sorted(picks[kind].items())]
 
     def media_renamed(self, old: str, new: str, overlay_dir: Optional[Path] = None) -> int:
+        """Library hook: a stored file was renamed, so repoint the slots that used ``old``. Returns how many."""
         picks = self.read_picks(overlay_dir)
         n = 0
         for kind in ("image", "sound"):
@@ -478,6 +514,7 @@ class OverlayStyle:
         return n
 
     def media_forgotten(self, name: str, overlay_dir: Optional[Path] = None) -> int:
+        """Library hook: a stored file was deleted, so empty the slots that used it. Returns how many."""
         picks = self.read_picks(overlay_dir)
         n = 0
         for kind in ("image", "sound"):

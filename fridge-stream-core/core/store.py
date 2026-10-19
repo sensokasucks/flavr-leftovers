@@ -21,6 +21,10 @@ from core.csv_safe import SafeWriter
 
 log = logging.getLogger("core.store")
 
+# Created on every start (CREATE ... IF NOT EXISTS). A user is one person; identities are their
+# platform accounts (one row per platform + platform user id). Times are epoch seconds.
+# New columns on existing tables need an ALTER TABLE migration, since CREATE IF NOT EXISTS
+# never changes a table that is already there.
 SCHEMA = """
 PRAGMA foreign_keys=ON;
 
@@ -208,6 +212,12 @@ def _chat_row(event: ChatEvent) -> tuple:
 
 
 class Store:
+    """Core's database: data/stream_core.db by default (path chosen by main.py).
+
+    Every blocking sqlite call runs in a worker thread (``_run``) with a short-lived connection,
+    except the chat writer, which keeps one. ``points_cfg`` is the ``points:`` config block,
+    ``chat_log_cfg`` the ``chat_log:`` one. core/paid.py and the flag lists reuse ``_connect`` / ``_run``.
+    """
     def __init__(
         self,
         db_path: Path | str,
@@ -256,6 +266,7 @@ class Store:
             self.log_keep_days = 0.0
 
     def _connect(self) -> sqlite3.Connection:
+        """A new connection (rows as sqlite3.Row, foreign keys on, 30 s busy timeout)."""
         conn = sqlite3.connect(str(self.path), check_same_thread=False, timeout=30)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA foreign_keys=ON")
@@ -265,6 +276,7 @@ class Store:
         return conn
 
     def _init_db(self) -> None:
+        """Create the tables, trying WAL first and the plain journal if the filesystem refuses WAL."""
         self.path.parent.mkdir(parents=True, exist_ok=True)
         last_err: Optional[Exception] = None
         for journal in ("WAL", "DELETE"):
@@ -292,6 +304,7 @@ class Store:
             raise last_err
 
     async def _run(self, fn, *args):
+        """Run a blocking function in a worker thread and await its result."""
         return await asyncio.to_thread(fn, *args)
 
     # ------------------------------------------------------------------
@@ -305,6 +318,7 @@ class Store:
         username: str,
         display_name: str,
     ) -> int:
+        """User id for a platform account, created when new (own connection + commit)."""
         with self._connect() as conn:
             uid = self._get_or_create_in(conn, platform, platform_user_id, username, display_name)
             conn.commit()
@@ -312,6 +326,7 @@ class Store:
 
     def _remember_uid(self, platform: str, platform_user_id: str, uid: int, username: str,
                       display_name: str, now: float) -> None:
+        """Cache an account's user id and names; the cache is emptied when it gets too big."""
         if len(self._uid_cache) >= self._uid_cache_max:
             self._uid_cache.clear()
         self._uid_cache[(platform, platform_user_id)] = [uid, username, display_name, now]
@@ -356,6 +371,7 @@ class Store:
         display_name: str,
         now: float,
     ) -> int:
+        """The database lookup / insert behind ``_get_or_create_in`` (refreshes names and last_seen)."""
         row = conn.execute(
             "SELECT user_id FROM identities WHERE platform=? AND platform_user_id=?",
             (platform, platform_user_id),
@@ -403,6 +419,7 @@ class Store:
     async def get_or_create_user(
         self, platform: str, platform_user_id: str, username: str, display_name: str = ""
     ) -> int:
+        """User id for a platform account (created when new); repeat chatters come from the cache."""
         hit = self._uid_cache.get((platform, platform_user_id))
         if hit is not None and hit[1] == username:
             return int(hit[0])   # a repeat chatter: no database trip
@@ -429,6 +446,7 @@ class Store:
         return self._get_or_create_user_sync(platform, NAME_ID_PREFIX + name, name, display_name)
 
     def _has_ledger_source_sync(self, user_id: int, source: str) -> bool:
+        """True when this user was ever paid points from ``source`` (e.g. "follow")."""
         with self._connect() as conn:
             return conn.execute(
                 "SELECT 1 FROM points_ledger WHERE user_id=? AND source=? LIMIT 1", (user_id, source)
@@ -462,6 +480,7 @@ class Store:
     # ------------------------------------------------------------------
 
     def _log_chat_in(self, conn: sqlite3.Connection, row: tuple, user_id: int) -> None:
+        """Insert one chat_messages row (``row`` from ``_chat_row``). No commit."""
         conn.execute(
             "INSERT INTO chat_messages "
             "(user_id, platform, platform_user_id, username, display_name, message, message_id, is_command, timestamp) "
@@ -470,6 +489,10 @@ class Store:
         )
 
     def _award_in(self, conn: sqlite3.Connection, user_id: int, delta: int, reason: str, source: str) -> int:
+        """Add ``delta`` points (negative = take) and write the ledger row. No commit.
+
+        The balance never goes below 0; the ledger records what was really taken. Returns the new balance.
+        """
         now = time.time()
         row = conn.execute("SELECT points FROM users WHERE id=?", (user_id,)).fetchone()
         if not row:
@@ -490,6 +513,7 @@ class Store:
         return new_bal
 
     def _award_points_sync(self, user_id: int, delta: int, reason: str, source: str) -> int:
+        """``_award_in`` in its own transaction."""
         with self._connect() as conn:
             bal = self._award_in(conn, user_id, delta, reason, source)
             conn.commit()
@@ -553,11 +577,17 @@ class Store:
         return await fut
 
     def _chat_item(self, event: ChatEvent, award: bool, flagged: bool, fut, keep: bool = False) -> tuple:
+        """One queue entry for the chat writer: (platform, platform user id, username, display name,
+        chat row, award, flagged, keep, future or None).
+        """
         # copied now: the event object is shared with the rest of the chat pipeline
         return (event.platform.value, str(event.user.id), event.user.username or "",
                 event.user.display_name or "", _chat_row(event), bool(award), bool(flagged), bool(keep), fut)
 
     def _put(self, item: tuple) -> None:
+        """Queue a chat line; when the queue is full the line is not saved (counted, logged once a minute)
+        and a waiting caller gets an empty result.
+        """
         try:
             self._queue.put_nowait(item)
         except asyncio.QueueFull:
@@ -571,6 +601,9 @@ class Store:
                 fut.set_result({"user_id": None, "awarded": 0, "balance": None, "logged": False})
 
     async def _writer_loop(self) -> None:
+        """The chat writer task: wait for a line, gather what else arrives for CHAT_BATCH_WAIT seconds
+        (up to CHAT_BATCH_MAX), write the batch in one transaction, repeat.
+        """
         while True:
             first = await self._queue.get()
             self._in_hand = [first]
@@ -588,6 +621,7 @@ class Store:
             self._inflight = None
 
     async def _drain(self) -> None:
+        """Write everything still queued, in batches (used when stopping)."""
         if self._queue is None:
             return
         while not self._queue.empty():
@@ -597,6 +631,7 @@ class Store:
             await self._write(batch)
 
     async def _write(self, batch: list) -> None:
+        """Write one batch under the write lock and hand each waiting caller its result. Never raises."""
         try:
             async with self._write_lock:
                 results = await self._run(self._write_batch_sync, batch, True)
@@ -642,6 +677,9 @@ class Store:
 
     def _process_one(self, conn, platform, pid, username, display, row, award, flagged, day,
                      keep: bool = False) -> dict:
+        """One chat line inside the batch transaction: user lookup, chat log row (when the chat_log
+        settings say so), chat points (per_message, at most once per cooldown_sec) and today's day row.
+        """
         uid = self._get_or_create_in(conn, platform, pid, username, display)
         logged = keep or (self.log_chat and (flagged or not self.log_only_flagged))
         if logged:
@@ -665,6 +703,7 @@ class Store:
     _days_table_ready = False
 
     def _ensure_days_table(self, conn: sqlite3.Connection) -> None:
+        """Create chatter_stream_days (user id + UTC day they chatted) the first time it is needed."""
         if self._days_table_ready:
             return
         conn.execute(
@@ -679,6 +718,7 @@ class Store:
         self._days_table_ready = True
 
     def _streak_sync(self, user_id: int) -> int:
+        """Days in a row (UTC) the user has chatted, counting back from today or yesterday."""
         import datetime as _dt
         with self._connect() as conn:
             conn.execute(
@@ -708,6 +748,7 @@ class Store:
         return streak
 
     async def chatter_streak(self, user_id: int) -> int:
+        """Days in a row the user has chatted (see ``_streak_sync``)."""
         return await self._run(self._streak_sync, user_id)
 
     # ------------------------------------------------------------------
@@ -715,6 +756,7 @@ class Store:
     # ------------------------------------------------------------------
 
     def _current_stream_sync(self, gap_sec: float, now: float, force_new: bool) -> dict:
+        """Latest stream row, kept alive when chat is recent; else a new one (also when ``force_new``)."""
         with self._connect() as conn:
             row = conn.execute("SELECT id, started, last_activity FROM streams ORDER BY id DESC LIMIT 1").fetchone()
             if row and not force_new and now - float(row["last_activity"]) <= gap_sec:
@@ -730,6 +772,7 @@ class Store:
         return await self._run(self._current_stream_sync, float(gap_sec), float(now or time.time()), force_new)
 
     def _attend_sync(self, user_id: int, stream_id: int) -> bool:
+        """Add the attendance row; True when it was not there yet."""
         with self._connect() as conn:
             cur = conn.execute(
                 "INSERT OR IGNORE INTO stream_attendance (user_id, stream_id, claimed) VALUES (?,?,0)",
@@ -743,6 +786,7 @@ class Store:
         return await self._run(self._attend_sync, user_id, stream_id)
 
     def _claim_sync(self, user_id: int, stream_id: int) -> bool:
+        """Set ``claimed`` on the user's attendance row; True only the first time per stream."""
         with self._connect() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO stream_attendance (user_id, stream_id, claimed) VALUES (?,?,0)",
@@ -760,6 +804,7 @@ class Store:
         return await self._run(self._claim_sync, user_id, stream_id)
 
     def _streaks_sync(self, user_id: int, stream_id: int) -> dict:
+        """Current run, best run and total streams attended, from the streams / attendance tables."""
         with self._connect() as conn:
             ids = [int(r["id"]) for r in conn.execute(
                 "SELECT id FROM streams WHERE id<=? ORDER BY id DESC", (stream_id,)).fetchall()]
@@ -813,6 +858,7 @@ class Store:
     async def adjust_points(
         self, user_id: int, delta: int, reason: str = "admin adjust", source: str = "admin"
     ) -> dict:
+        """Add or take points by hand (dashboard, commands). Returns {user_id, delta, balance}."""
         balance = await self._run(self._award_points_sync, user_id, delta, reason, source)
         return {"user_id": user_id, "delta": delta, "balance": balance}
 
@@ -875,6 +921,7 @@ class Store:
     async def set_points(
         self, user_id: int, value: int, reason: str = "set", source: str = "system"
     ) -> dict:
+        """Set a user's balance to ``value`` (written to the ledger as the difference)."""
         user = await self.get_user(user_id)
         current = int((user or {}).get("points") or 0)
         delta = int(value) - current
@@ -955,6 +1002,7 @@ class Store:
             return {"ok": True, "merged": False, "user_id": target_user_id}
 
     def _find_identity_by_name_sync(self, platform: str, username: str) -> Optional[dict]:
+        """Newest account on ``platform`` with that login or display name (lower case, "@" ignored)."""
         name = (username or "").strip().lstrip("@").lower()
         if not name:
             return None
@@ -978,6 +1026,7 @@ class Store:
         username: str = "",
         display_name: str = "",
     ) -> dict:
+        """``_link_identity_sync`` under the write lock, with the account cache cleared around it."""
         async with self._write_lock:
             self.forget_identities()
             try:
@@ -993,6 +1042,9 @@ class Store:
                 self.forget_identities()
 
     def _merge_users_sync(self, keep_id: int, absorb_id: int) -> dict:
+        """Move everything of ``absorb_id`` (points, accounts, chat lines, ledger) onto ``keep_id``,
+        then delete ``absorb_id``.
+        """
         if keep_id == absorb_id:
             return {"ok": False, "error": "same user"}
         now = time.time()
@@ -1034,6 +1086,10 @@ class Store:
     # ------------------------------------------------------------------
 
     def _list_users_sync(self, q: str = "", limit: int = 100, offset: int = 0) -> list[dict]:
+        """Users for the People page, richest first, with their accounts as "platform:name, ...".
+
+        ``q`` matches the display name, any account's login / display name, or a platform user id.
+        """
         with self._connect() as conn:
             if q:
                 like = f"%{q.lower()}%"
@@ -1071,9 +1127,11 @@ class Store:
             return [dict(r) for r in rows]
 
     async def list_users(self, q: str = "", limit: int = 100, offset: int = 0) -> list[dict]:
+        """``_list_users_sync`` off the event loop."""
         return await self._run(self._list_users_sync, q, limit, offset)
 
     def _get_user_sync(self, user_id: int) -> Optional[dict]:
+        """One user with their accounts and last 50 ledger rows, or None."""
         with self._connect() as conn:
             u = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
             if not u:
@@ -1093,6 +1151,7 @@ class Store:
             }
 
     async def get_user(self, user_id: int) -> Optional[dict]:
+        """``_get_user_sync`` off the event loop."""
         return await self._run(self._get_user_sync, user_id)
 
     def _search_chat_sync(
@@ -1147,6 +1206,7 @@ class Store:
         flagged_only: bool = False,
         flag: str = "",
     ) -> list[dict]:
+        """Chat history search (newest first), off the event loop; see ``_search_chat_sync``."""
         return await self._run(self._search_chat_sync, user_id, platform, q, limit, offset, flagged_only, flag)
 
     # ------------------------------------------------------------------
@@ -1154,6 +1214,7 @@ class Store:
     # ------------------------------------------------------------------
 
     def _clear_where(self, older_than_days: float, keep_flagged: bool, filters: dict) -> tuple[str, list]:
+        """WHERE clause for clearing: the Chat history filters plus the age limit."""
         before = time.time() - older_than_days * 86400 if older_than_days and older_than_days > 0 else None
         return _chat_where(
             filters.get("user_id"), filters.get("platform", ""), filters.get("q", ""),
@@ -1161,11 +1222,13 @@ class Store:
         )
 
     def _count_clear_sync(self, older_than_days: float, keep_flagged: bool, filters: dict) -> int:
+        """How many lines a clear with these settings would delete."""
         where, args = self._clear_where(older_than_days, keep_flagged, filters)
         with self._connect() as conn:
             return conn.execute(f"SELECT COUNT(*) AS c FROM chat_messages {where}", args).fetchone()["c"]
 
     def _clear_chat_sync(self, older_than_days: float, keep_flagged: bool, filters: dict) -> int:
+        """Delete the matching lines; a big delete also shrinks the file."""
         where, args = self._clear_where(older_than_days, keep_flagged, filters)
         with self._connect() as conn:
             deleted = conn.execute(f"DELETE FROM chat_messages {where}", args).rowcount
@@ -1221,6 +1284,7 @@ class Store:
     # ------------------------------------------------------------------
 
     def list_red_flagged_sync(self) -> list[dict]:
+        """Every red-flag row, newest first, with how many saved chat lines that account has."""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT f.*, (SELECT COUNT(*) FROM chat_messages c WHERE c.platform=f.platform "
@@ -1230,6 +1294,7 @@ class Store:
             return [dict(r) for r in rows]
 
     def _add_red_flag_sync(self, row: dict) -> dict:
+        """Insert a red-flag row, or return the existing one for the same account / name."""
         with self._connect() as conn:
             # one row per person: the same account (or name) again only refreshes nothing
             if row["platform_user_id"]:
@@ -1255,12 +1320,14 @@ class Store:
 
     async def add_red_flag(self, *, platform: str, platform_user_id: str, username: str, display_name: str,
                            phrase: str = "", message: str = "", source: str = "phrase") -> dict:
+        """Add (or find) a red-flag row; long texts are cut to fit."""
         row = {"platform": platform, "platform_user_id": platform_user_id, "username": username,
                "display_name": display_name[:120], "phrase": phrase[:200], "message": message[:500],
                "source": source}
         return await self._run(self._add_red_flag_sync, row)
 
     def _remove_red_flag_sync(self, flag_id: int) -> Optional[dict]:
+        """Delete one red-flag row by id; returns it, or None."""
         with self._connect() as conn:
             found = conn.execute("SELECT * FROM red_flagged WHERE id=?", (flag_id,)).fetchone()
             if not found:
@@ -1270,6 +1337,7 @@ class Store:
             return dict(found)
 
     async def remove_red_flag(self, flag_id: int) -> Optional[dict]:
+        """``_remove_red_flag_sync`` off the event loop."""
         return await self._run(self._remove_red_flag_sync, flag_id)
 
     # ------------------------------------------------------------------
@@ -1277,6 +1345,7 @@ class Store:
     # ------------------------------------------------------------------
 
     def list_chat_flagged_sync(self) -> list[dict]:
+        """Every custom-flag row, newest first, with how many saved chat lines that account has."""
         with self._connect() as conn:
             rows = conn.execute(
                 "SELECT g.*, (SELECT COUNT(*) FROM chat_messages c WHERE c.platform=g.platform "
@@ -1286,6 +1355,7 @@ class Store:
             return [dict(r) for r in rows]
 
     def _add_chat_flag_sync(self, row: dict) -> dict:
+        """Insert a custom-flag row, or count one more hit on the existing one (phrase matches only)."""
         with self._connect() as conn:
             # one row per person per flag; a phrase said again counts a hit
             if row["platform_user_id"]:
@@ -1316,12 +1386,14 @@ class Store:
 
     async def add_chat_flag(self, *, flag: str, platform: str, platform_user_id: str, username: str,
                             display_name: str, phrase: str = "", message: str = "", source: str = "phrase") -> dict:
+        """Add (or update) a custom-flag row; long texts are cut to fit."""
         row = {"flag": flag, "platform": platform, "platform_user_id": platform_user_id, "username": username,
                "display_name": display_name[:120], "phrase": phrase[:200], "message": message[:500],
                "source": source}
         return await self._run(self._add_chat_flag_sync, row)
 
     def _remove_chat_flag_sync(self, row_id: int) -> Optional[dict]:
+        """Delete one custom-flag row by id; returns it, or None."""
         with self._connect() as conn:
             found = conn.execute("SELECT * FROM chat_flagged WHERE id=?", (row_id,)).fetchone()
             if not found:
@@ -1331,20 +1403,24 @@ class Store:
             return dict(found)
 
     async def remove_chat_flag(self, row_id: int) -> Optional[dict]:
+        """``_remove_chat_flag_sync`` off the event loop."""
         return await self._run(self._remove_chat_flag_sync, row_id)
 
     def _clear_chat_flag_sync(self, flag: str) -> int:
+        """Delete every row of one custom flag (the flag itself was deleted). Returns how many."""
         with self._connect() as conn:
             cur = conn.execute("DELETE FROM chat_flagged WHERE flag=?", (flag,))
             conn.commit()
             return cur.rowcount
 
     async def clear_chat_flag(self, flag: str) -> int:
+        """``_clear_chat_flag_sync`` off the event loop."""
         return await self._run(self._clear_chat_flag_sync, flag)
 
     def _export_chat_csv_sync(self, user_id: Optional[int] = None, platform: str = "", q: str = "",
                               flagged_only: bool = False, flag: str = "", older_than_days: float = 0,
                               keep_flagged: bool = False) -> str:
+        """Matching chat lines, oldest first, as formula-safe CSV text."""
         before = time.time() - older_than_days * 86400 if older_than_days and older_than_days > 0 else None
         rows = self._search_chat_sync(user_id=user_id, platform=platform, q=q, limit=1_000_000, offset=0,
                                       flagged_only=flagged_only, flag=flag, before=before,
@@ -1391,6 +1467,7 @@ class Store:
                                older_than_days, keep_flagged)
 
     def _stats_sync(self) -> dict:
+        """Counts for the Status page: users, saved chat lines, points held in total."""
         with self._connect() as conn:
             users = conn.execute("SELECT COUNT(*) AS c FROM users").fetchone()["c"]
             msgs = conn.execute("SELECT COUNT(*) AS c FROM chat_messages").fetchone()["c"]
@@ -1398,9 +1475,11 @@ class Store:
             return {"users": users, "messages": msgs, "total_points": pts}
 
     async def stats(self) -> dict:
+        """``_stats_sync`` off the event loop."""
         return await self._run(self._stats_sync)
 
     async def set_notes(self, user_id: int, notes: str) -> None:
+        """Save the streamer's notes on a user (People page)."""
         def _fn():
             with self._connect() as conn:
                 conn.execute(

@@ -1,4 +1,48 @@
+/*
+ * Stream Core admin dashboard: the page at /admin/ (layout in index.html, look in admin.css).
+ * Plain browser JavaScript with no build step; everything lives inside this one IIFE.
+ * Every call to Core goes through api() below with the admin token in X-Admin-Token; the routes
+ * are /api/admin/... in api/admin_routes.py. Plugin pages shown in a frame use plugin-page.js.
+ *
+ * Pages are <section id="tab-<id>" class="panel"> in index.html. Sidebar buttons carry data-tab
+ * (and data-sub to open one sub-page). activateTab() runs each page's loader when it is opened.
+ *
+ * Map, in file order (search for the section title):
+ *   Helpers                  token, api(), error text, undo toast, high contrast, status lines
+ *   Navigation               sidebar, sub-page pills, #page/sub addresses, phone drawer
+ *   Search                   the sidebar search over pages and settings
+ *   Live controls  (live)    /api/admin/status, /credits; buttons press the real ones elsewhere
+ *   Status page    (status)  /api/admin/status, /platforms/<name>/reconnect, /restart
+ *   Sources & overlays (sources)  "sources" from /api/admin/status, Customise panels
+ *   Alerts page    (alerts)  /api/admin/alerts/kinds, /alerts/test, /alerts/style, /overlay-css/...
+ *   Chat overlay   (chatlook) /api/admin/chat/style
+ *   Pictures and sounds (alerts + chat)  /api/admin/overlays/<name>/assets
+ *   Stored files   (files)   /api/admin/media
+ *   Chat widgets   (widgets) /api/admin/widgets
+ *   Integrations   (integrations)  /api/admin/integrations, /commands/test, /games/<id>/...
+ *   Users & points (users)   /api/admin/users, /users/<id>/points|link|merge|notes
+ *   Chat history   (chat)    /api/admin/chat, /chat/export, /chat/clear
+ *   Red flags + custom flags (redflags)  /api/admin/red-flags/...
+ *   Plugins                  Settings → Plugins cards and plugin pages: /api/admin/plugins
+ *   Config form    (config)  Settings pages for config.yaml: /api/admin/config, /avatars, /twitch/auth
+ *   Command groups (config/groups)     /api/admin/command-groups
+ *   Reactions      (config/reactions)  /api/admin/reactions, /reactions/images, /reactions/test
+ *   Commands editor (config/commands)  /api/admin/commands
+ *   Paid           (paid)    /api/admin/paid/...
+ *   Credits list   (creditslist)  /api/admin/credits/checklist...
+ *   Credits        (credits) /api/admin/credits/..., live updates over /ws?credits=1
+ *   Chat games     (fun)     /api/admin/chat_games/..., /api/admin/stage
+ *   Page save bar            "Save changes" bar, unsaved marks, leave / reload warnings
+ *   Start-up                 the last lines of the file
+ *
+ * Adding a page: its panel and sidebar button in index.html, its loader in activateTab(), and, if
+ * it has settings, a section in setupPageSaver() so the save bar and unsaved warnings know it.
+ * Build HTML from data with escapeHtml() / esc(): chat text and names must never reach innerHTML raw.
+ */
 (() => {
+  // ------------------------------------------------------------------
+  // Helpers: token, api(), error text, undo toast, high contrast, status lines
+  // ------------------------------------------------------------------
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";
   // Plugin pages (#plg-...) are added after the page loads: remember where the address pointed
@@ -6,10 +50,12 @@
   let bootLastTab = "";
   try { bootLastTab = (JSON.parse(localStorage.getItem("stream_core_admin_nav") || "{}") || {}).lastTab || ""; } catch (_) { /* none */ }
 
+  /** The admin token: the one saved in this browser, else what is typed in the box. Sent as X-Admin-Token. */
   function token() {
     return localStorage.getItem(tokenKey) || $("token").value.trim();
   }
 
+  /** Headers for every Core call (JSON body + admin token). */
   function headers() {
     return {
       "Content-Type": "application/json",
@@ -118,6 +164,12 @@
   var apiWrites = 0;
   var apiFails = 0;
 
+  /**
+   * Every call to Core goes through here. Adds the admin token; on an error status it throws an Error
+   * with a readable message (and brings the token box back on 401). Returns parsed JSON, or the raw
+   * Response for anything else (CSV, files) so the caller can read it as a blob.
+   * Counts writes / failures in apiWrites / apiFails for the page save bar.
+   */
   async function api(path, opts = {}) {
     const write = String(opts.method || "GET").toUpperCase() !== "GET";
     let res;
@@ -142,6 +194,7 @@
     return res;
   }
 
+  /** The status line in the top bar (#status): green when ok, red on errors. The two below do the same for the Config and Commands pages. */
   function setStatus(msg, ok = true) {
     const el = $("status");
     el.textContent = msg;
@@ -162,7 +215,7 @@
     el.style.color = ok ? "#53fc18" : "#ff5c5c";
   }
 
-  // Token
+  // Token: the sign-in link and the token box in the top bar.
   // "change-me" is never accepted any more — paste the real token.
   // A sign-in link (…/admin/#token=…, made by Core at start) stores the token and drops it
   // from the address bar, so it doesn't stay on screen or in history.
@@ -202,6 +255,7 @@
   // Config sub-pages that the "Save config.yaml" bar applies to.
   const YAML_SUBS = new Set(["core", "games", "points", "advanced"]);
 
+  /** localStorage JSON helpers: a broken value or blocked storage falls back quietly. */
   function loadJson(key, fallback) {
     try {
       return JSON.parse(localStorage.getItem(key) || "") || fallback;
@@ -216,6 +270,10 @@
     } catch (_) { /* ignore quota */ }
   }
 
+  /**
+   * A page's sub-page stack (.acc-stack[data-acc] in index.html) and its sub-page ids (data-sub on
+   * each .acc). An .acc with data-aside is not a sub-page: it stays visible beside every one.
+   */
   function stackFor(tabId) {
     const panel = $("tab-" + tabId);
     return panel ? panel.querySelector(".acc-stack[data-acc]") : null;
@@ -238,6 +296,11 @@
     });
   });
 
+  /**
+   * Show one sub-page of a page: the one asked for, else the last one used (remembered in
+   * localStorage under navStateKey), else the first. Returns the id shown, or null when the page
+   * has no sub-pages.
+   */
   function showSub(tabId, sub) {
     const stack = stackFor(tabId);
     if (!stack) return null;
@@ -268,6 +331,7 @@
     return pick;
   }
 
+  /** Highlight the sidebar entry for this page (entries with data-sub only match their own sub-page). */
   function markNav(tabId, sub) {
     document.querySelectorAll(".admin-nav .tab").forEach((b) => {
       const hit = b.dataset.tab === tabId && (!b.dataset.sub || b.dataset.sub === sub);
@@ -299,6 +363,12 @@
     h.textContent = el ? (el.dataset.title || el.textContent.trim()) : tabId;
   }
 
+  /**
+   * Show a page and load its data. tabId is the panel id without "tab-" (index.html). The loaders
+   * below run each time the page is switched to (not when only the sub-page changes); a new page in
+   * index.html that needs data gets its loader added here. Uses replaceState: go() is the one that
+   * adds a Back/Forward history entry.
+   */
   function activateTab(tabId, sub) {
     const panel = $("tab-" + tabId);
     if (!panel) return;
@@ -354,6 +424,7 @@
     }
   }
 
+  /** Navigate on a click: asks about unsaved edits first (pageCanLeave), adds a history entry, closes the phone drawer. */
   function go(tabId, sub) {
     if (!pageCanLeave(tabId)) return;
     if (typeof setNavOpen === "function" && narrow) setNavOpen(false);
@@ -368,6 +439,7 @@
     return MOVED_TABS[tabId] || tabId;
   }
 
+  /** Open the page named in the address (#page or #page/sub) on Back / Forward. False when it names no page. */
   function routeFromHash() {
     const raw = decodeURIComponent((location.hash || "").replace(/^#/, ""));
     if (!raw) return false;
@@ -447,12 +519,14 @@
   let searchHits = [];
   let searchSel = 0;
 
+  /** A label's own text without its inputs, help text and options (for the search index). */
   function cleanText(el) {
     const c = el.cloneNode(true);
     c.querySelectorAll("input, select, textarea, button, .field-help, option").forEach((n) => n.remove());
     return c.textContent.replace(/\s+/g, " ").trim();
   }
 
+  /** "Page › Sub-page" name shown under a search hit. */
   function pageTitle(tabId, sub) {
     const exact = document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"][data-sub="' + sub + '"]');
     if (exact) return exact.textContent.trim();
@@ -465,6 +539,11 @@
     return title;
   }
 
+  /**
+   * Rebuilt every time the search box gets focus, so plugin pages and settings drawn after load are
+   * found. Indexes sidebar entries, sub-page pills, and every label / legend / heading on every page
+   * except Live controls.
+   */
   function buildSearchIndex() {
     const out = [];
     const seen = new Set();
@@ -500,6 +579,7 @@
     searchIndex = out;
   }
 
+  /** Every typed word must appear; pages and prefix matches rank first. Shows the best 12. */
   function renderSearch(q) {
     const box = $("nav-results");
     q = q.trim().toLowerCase();
@@ -535,6 +615,7 @@
     box.hidden = false;
   }
 
+  /** Go to a search hit's page, scroll to the setting, flash it and focus its input. */
   function openHit(it) {
     if (!it) return;
     const input = $("nav-search");
@@ -616,7 +697,7 @@
   syncTokenRow();
 
   // ------------------------------------------------------------------
-  // Live controls page
+  // Live controls page (tab live): status chips, quick buttons, the command box
   // ------------------------------------------------------------------
   let liveTimer = 0;
 
@@ -629,6 +710,11 @@
     if (real) real.click();
   });
 
+  /**
+   * Live controls: platform / game chips, a list of problems, viewers, chat per minute and credits.
+   * GET /api/admin/status. Also refreshes the restart banner and the YouTube box. Re-run every 15 s
+   * by loadLive() while the page is open.
+   */
   async function loadLiveStatus() {
     const box = $("live-status");
     if (!box) return;
@@ -670,6 +756,7 @@
     }
   }
 
+  /** Live controls credits card: GET /api/admin/credits, drawn by the Credits page's own render functions. */
   async function loadLiveCredits() {
     try {
       const data = await api("/api/admin/credits");
@@ -683,6 +770,7 @@
     }
   }
 
+  /** Live controls alert buttons: one per alert kind; each presses the matching preset on the Alerts page. */
   async function loadLiveAlerts() {
     const host = $("live-alerts");
     if (!host) return;
@@ -708,6 +796,7 @@
     }
   }
 
+  /** Live controls page opened: load everything, then refresh the status every 15 s (activateTab clears the timer on leaving). */
   function loadLive() {
     loadLiveStatus();
     loadLiveCredits();
@@ -726,6 +815,7 @@
     }).observe($("alert-status"), { childList: true, characterData: true, subtree: true, attributes: true });
   }
 
+  /** Live controls "try a command" box: a dry run through the Integrations command tester (runCommandTest), result copied here. */
   async function liveCommand() {
     const text = ($("live-cmd-input").value || "").trim();
     if (!text || !$("integ-message")) return;
@@ -809,6 +899,10 @@
       : "Close the Stream Core window and double-click START Stream Core.bat again.";
   }
 
+  /**
+   * POST /api/admin/restart, then wait 2.5 s and poll /api/admin/status (up to 40 tries, 1 s apart)
+   * until Core answers again. The button only shows when Core says it can restart itself (can_restart).
+   */
   async function restartCore() {
     const btn = $("restart-now");
     if (!confirm("Restart Stream Core now? Overlays and Stream Rooms reconnect by themselves in a few seconds.")) return;
@@ -854,6 +948,7 @@
       cur.innerHTML = (yt.detail ? `Video <code>${escapeHtml(yt.detail)}</code> · ` : "No video set · ") + line.html.replace(/^<strong>Youtube<\/strong> /, "");
     }
   }
+  /** POST /api/admin/platforms/youtube/video with the pasted link. cleanYouTube() only checks it looks like one; Core reads it. */
   async function connectYouTubeVideo() {
     const input = $("live-yt-video");
     const msg = $("live-yt-msg");
@@ -895,6 +990,7 @@
   }
 
   // Pasted links → what each platform needs (same rules as core/platform_links.py).
+  /** The 11-character video id from a pasted YouTube link (or a bare id), or "" when it isn't one. */
   function cleanYouTube(raw) {
     const text = String(raw || "").trim();
     if (/^[A-Za-z0-9_-]{11}$/.test(text)) return text;
@@ -915,6 +1011,7 @@
     const m = /\/(?:live|shorts|embed|v|video)\/([A-Za-z0-9_-]{11})(?:[/?#]|$)/.exec(url.pathname);
     return m ? m[1] : "";
   }
+  /** The channel name from a pasted kick.com / twitch.tv link (popout links too), without a leading @ or #. */
   function cleanChannel(raw, host) {
     let text = String(raw || "").trim();
     if (text.toLowerCase().includes(host)) {
@@ -938,11 +1035,20 @@
     return msg || "Something went wrong.";
   }
 
+  // ------------------------------------------------------------------
+  // Status page (tab status): what Core is running, refreshed every 10 s while open
+  // ------------------------------------------------------------------
+  /** Small green / grey status badge. label goes in as HTML: escape any data first. */
   function pill(ok, label) {
     const cls = ok ? "pill ok" : "pill off";
     return `<span class="${cls}">${label}</span>`;
   }
 
+  /**
+   * Status page: GET /api/admin/status drawn as Core / chat platforms / plugins / live metrics cards,
+   * with a Reconnect button per platform (POST /api/admin/platforms/<name>/reconnect).
+   * Re-run every 10 s while the page is open and the browser tab is visible.
+   */
   async function loadStatus() {
     const body = $("status-body");
     if (!body) return;
@@ -1018,7 +1124,9 @@
     }
   }
 
-  // ── Sources & overlays: the list, and a Customise panel per overlay ──
+  // ------------------------------------------------------------------
+  // Sources & overlays page (tab sources): the list, and a Customise panel per overlay
+  // ------------------------------------------------------------------
   // Each row's switches come from Core (core/overlay_catalog.py, or a plugin's manifest). The
   // panel draws one control per switch and rewrites the address as you change them; nothing is
   // saved in Core, the address is the setting, so two OBS sources can differ.
@@ -1063,6 +1171,11 @@
     return ok;
   }
 
+  /**
+   * Put values into a Customise panel's controls. params is a source's "params" list from
+   * /api/admin/status; each has key, type (bool / multi / tri / select / number / text), default,
+   * and for bool the on / off words written to the address.
+   */
   function applyParamValues(panel, params, values) {
     for (const p of params) {
       if (!(p.key in values)) continue;
@@ -1080,6 +1193,7 @@
     }
   }
 
+  /** The overlay address with only the switches that differ from their defaults (short URL; commas left unescaped). */
   function buildOverlayUrl(page, params, values) {
     const q = new URLSearchParams();
     for (const p of params) {
@@ -1099,6 +1213,7 @@
     return page + (qs ? "?" + qs : "");
   }
 
+  /** One Customise control, as HTML, for a source param. */
   function paramControl(id, p) {
     const name = `${id}-${p.key}`;
     const help = p.help ? `<span class="field-help">${esc(p.help)}</span>` : "";
@@ -1120,6 +1235,7 @@
     return `<label class="src-param" data-key="${esc(p.key)}">${esc(p.label)}${help}<input type="text" value="${esc(p.default ?? "")}" placeholder="${esc(p.placeholder || "")}" /></label>`;
   }
 
+  /** A Customise panel's controls back to {key: value}. */
   function readParamValues(panel, params) {
     const values = {};
     for (const p of params) {
@@ -1132,12 +1248,14 @@
     return values;
   }
 
+  /** A "Saved settings" control: c.key is a dotted config.yaml key, c.type bool or a number. */
   function configControl(c) {
     if (c.type === "bool") return `<label class="check src-config" data-key="${esc(c.key)}"><input type="checkbox" /> ${esc(c.label)}</label>`;
     const attrs = ["min", "max", "step"].filter((k) => c[k] != null).map((k) => `${k}="${esc(c[k])}"`).join(" ");
     return `<label class="src-config" data-key="${esc(c.key)}">${esc(c.label)}<input type="number" ${attrs} /></label>`;
   }
 
+  /** Read / write a dotted key ("a.b.c") in nested objects; setPath makes missing levels. */
   function getPath(obj, key) {
     return key.split(".").reduce((o, k) => (o && typeof o === "object" ? o[k] : undefined), obj);
   }
@@ -1152,6 +1270,7 @@
     o[parts[parts.length - 1]] = value;
   }
 
+  /** Fill a panel's Saved settings boxes from GET /api/admin/config. */
   async function fillConfigControls(panel, fields) {
     if (!fields.length) return;
     try {
@@ -1167,6 +1286,10 @@
     } catch (_) {}
   }
 
+  /**
+   * Save a panel's Saved settings: read GET /api/admin/config fresh, change only these keys, PUT it
+   * back (Core merges the save into config.yaml).
+   */
   async function saveConfigControls(panel, fields, statusEl) {
     try {
       const data = await api("/api/admin/config");
@@ -1183,6 +1306,10 @@
     }
   }
 
+  /**
+   * HTML of one overlay's Customise panel: its switches, the address with Copy / Preview / Reset, the
+   * optional Saved settings box (src.config) and links to related settings pages (src.settings).
+   */
   function sourcePanel(src, idx) {
     const id = `src${idx}`;
     const params = src.params || [];
@@ -1205,6 +1332,10 @@
     return html;
   }
 
+  /**
+   * Hook up a Customise panel once drawn: every change rewrites the address (and the preview, if open)
+   * and remembers the values in sessionStorage per overlay page.
+   */
   function wireSourcePanel(tr, src) {
     const panel = tr.querySelector(".src-panel");
     const params = src.params || [];
@@ -1254,6 +1385,7 @@
     refresh(false);
   }
 
+  /** Sources & overlays page: the OBS source list ("sources" in GET /api/admin/status), each with a hidden Customise row. */
   async function loadSources() {
     const tb = $("sources-table") && $("sources-table").querySelector("tbody");
     if (!tb) return;
@@ -1302,7 +1434,7 @@
   if ($("sources-refresh")) $("sources-refresh").onclick = () => loadSources();
 
   // ------------------------------------------------------------------
-  // Alert test tab
+  // Alerts page (tab alerts): test alerts, skin and CSS, pictures and sounds
   // ------------------------------------------------------------------
 
   let alertKinds = [];
@@ -1315,6 +1447,7 @@
     el.style.color = ok ? "#53fc18" : "#ff5c5c";
   }
 
+  /** Fill the test form with the sample values Core gives for an alert kind (amount, months ...) and pick its platform. */
   function applyKindDefaults(kind) {
     const meta = alertKinds.find((k) => k.kind === kind);
     if (!meta) return;
@@ -1332,6 +1465,11 @@
     }
   }
 
+  /**
+   * Alerts page: GET /api/admin/alerts/kinds builds the kind list and one preset button per kind
+   * (each fires a test straight away), then loads the look and the pictures. Runs once unless force
+   * (e.g. after a new token is saved).
+   */
   async function initAlertsTab(force) {
     if (alertsReady && !force) return;
     const kindSel = $("alert-kind");
@@ -1375,6 +1513,7 @@
     }
   }
 
+  /** A number box's value, or null when it is empty or not a number. */
   function optNum(id) {
     const el = $(id);
     if (!el) return null;
@@ -1384,6 +1523,7 @@
     return Number.isFinite(n) ? n : null;
   }
 
+  /** POST /api/admin/alerts/test with the form: a made-up alert, sent to the alerts overlay like a real one. */
   async function fireTestAlert() {
     const kind = ($("alert-kind") && $("alert-kind").value) || "follow";
     const body = {
@@ -1426,6 +1566,7 @@
     el.style.color = ok ? "#53fc18" : "#ff5c5c";
   }
 
+  /** The skin picked on the Alerts page ("classic" when none is). */
   function selectedSkin() {
     const el = document.querySelector('input[name="alert-skin"]:checked');
     return (el && el.value) || "classic";
@@ -1493,6 +1634,7 @@
     applyPreviewSkin(selectedSkin());
   }, setCssStatus);
 
+  /** Reload the Alerts preview frame (/overlay/alerts.html?preview=1) with this skin and the picked stylesheet. */
   function applyPreviewSkin(skin) {
     const iframe = $("alert-preview");
     if (!iframe) return;
@@ -1501,6 +1643,7 @@
       (slot ? "&css=" + encodeURIComponent(slot) : "");
   }
 
+  /** GET /api/admin/alerts/style?slot=<name>: skin, that stylesheet's CSS ("" = main), the saved stylesheet names and tier amounts. */
   async function loadAlertStyle(slot) {
     if (!$("alert-css")) return;
     const want = slot == null ? alertSlots.get() : slot;
@@ -1519,6 +1662,10 @@
     }
   }
 
+  /**
+   * PUT /api/admin/alerts/style. opts.skinOnly sends just the skin (radio change), opts.cssOnly just
+   * the CSS of the picked stylesheet; no opts sends both.
+   */
   async function saveAlertStyle(opts) {
     const cssOnly = opts && opts.cssOnly;
     const skinOnly = opts && opts.skinOnly;
@@ -1566,7 +1713,9 @@
     $("alert-css-reload").onclick = () => applyPreviewSkin(selectedSkin());
   }
 
-  // ── Chat overlay look (skin, behaviour, custom CSS) ──────────
+  // ------------------------------------------------------------------
+  // Chat overlay page (tab chatlook): skin, behaviour, custom CSS (/api/admin/chat/style)
+  // ------------------------------------------------------------------
   function setChatStatus(id, msg, ok = true) {
     const el = $(id);
     if (!el) return;
@@ -1592,6 +1741,7 @@
       (slot ? "&css=" + encodeURIComponent(slot) : "") + "&t=" + Date.now();
   }
 
+  /** Chat overlay behaviour as Core stores it: seconds, a message count, volume 0..1 (the slider shows 0..100). */
   function chatOptionsFromForm() {
     return {
       hide_after_sec: num($("chat-opt-hide").value, 0),
@@ -1614,6 +1764,7 @@
     $("chat-opt-gap").value = o.sound_min_gap_sec ?? 2;
   }
 
+  /** GET /api/admin/chat/style?slot=<name>: skin, that stylesheet's CSS, stylesheet names and behaviour options. */
   async function loadChatStyle(slot) {
     if (!$("chat-css")) return;
     const want = slot == null ? chatSlots.get() : slot;
@@ -1632,6 +1783,7 @@
     }
   }
 
+  /** PUT /api/admin/chat/style with one part: "skin", "css" (the picked stylesheet) or "options". */
   async function saveChatStyle(part) {
     const body = {};
     if (part === "skin") body.skin = selectedChatSkin();
@@ -1702,6 +1854,7 @@
   const mediaSrc = (url) => (/^\//.test(url) ? url : "/overlay/" + url + "?t=" + Date.now());
   const isVideoUrl = (url) => /\.(webm|mp4)(\?|$)/i.test(url || "");
 
+  /** Thumbnail HTML for a stored picture, video, sound or font. */
   function mediaPreview(url, kind, cls) {
     if (!url) return '<span class="muted">none</span>';
     const src = esc(mediaSrc(url));
@@ -1711,6 +1864,10 @@
     return `<img class="${cls}" src="${src}" alt="" />`;
   }
 
+  /**
+   * One slot row under Pictures and sounds: the current file, a Stored files picker, Upload new and
+   * Clear. picked = the stored file in use; a url without picked is a file dropped into the folder by hand.
+   */
   function assetRow(name, slot, kind, url, files, picked, allowVideo) {
     const label = (ASSET_LABELS[name] || {})[slot] || slot;
     const accept = kind === "sound" ? "audio/*" : "image/png,image/jpeg,image/gif,image/webp" + (allowVideo ? ",video/webm,video/mp4" : "");
@@ -1729,6 +1886,7 @@
     </div>`;
   }
 
+  /** A picked file as a data: URL (uploads go to Core as base64 inside JSON). */
   function readAsDataUrl(f) {
     return new Promise((resolve, reject) => {
       const rd = new FileReader();
@@ -1738,6 +1896,11 @@
     });
   }
 
+  /**
+   * Pictures and sounds of an overlay (name "alerts" or "chat"): GET /api/admin/overlays/<name>/assets
+   * and GET /api/admin/media. Picking or uploading POSTs to .../assets/<slot>; Clear DELETEs it
+   * (the file stays in Stored files).
+   */
   async function loadOverlayAssets(name) {
     const box = $(name + "-assets");
     if (!box) return;
@@ -1799,7 +1962,10 @@
     }
   }
 
-  // ── Stored files: every upload once, used by alerts, chat and custom CSS ──
+  // ------------------------------------------------------------------
+  // Stored files page (tab files): every upload once, used by alerts, chat and custom CSS
+  // ------------------------------------------------------------------
+  /** "Alerts: Follow picture" style text for one entry of a stored file's used_by list. */
   function fileUseLabel(u) {
     if (u.overlay === "reactions") return `Reaction: ${u.slot}`;
     const page = u.overlay === "alerts" ? "Alerts" : u.overlay === "chat" ? "Chat overlay" : u.overlay;
@@ -1813,6 +1979,10 @@
 
   let filesCache = [];
 
+  /**
+   * Stored files page list (from filesCache): Copy CSS, Rename and Replace (PUT /api/admin/media/<name>)
+   * and Delete (DELETE /api/admin/media/<name>). Every call answers with the new file list.
+   */
   function renderFiles() {
     const box = $("files-list");
     if (!box) return;
@@ -1902,6 +2072,7 @@
     });
   }
 
+  /** Stored files page: GET /api/admin/media. */
   async function loadFiles() {
     try {
       const res = await api("/api/admin/media");
@@ -1938,7 +2109,10 @@
     };
   }
 
-  // ── Chat widgets: StreamElements / Streamlabs code widgets (core/widget_store.py) ──
+  // ------------------------------------------------------------------
+  // Chat widgets page (tab widgets): StreamElements / Streamlabs code widgets (core/widget_store.py)
+  // Each widget is shown in OBS at /overlay/widget.html?name=<name>.
+  // ------------------------------------------------------------------
   let widgetsCache = [];
   let widgetOpen = "";          // the widget whose settings / code are open below the list
 
@@ -1950,6 +2124,7 @@
     if (st) st.textContent = t;
   }
 
+  /** Widgets list (from widgetsCache): Copy OBS address, Rename (PUT /api/admin/widgets/<name>), Delete. */
   function renderWidgets() {
     const box = $("widgets-list");
     if (!box) return;
@@ -2046,6 +2221,11 @@
     return `<label class="src-param">${label}<input type="text" data-key="${esc(key)}" data-type="text" value="${esc(v)}" /></label>`;
   }
 
+  /**
+   * The editor under the list for widgetOpen: GET /api/admin/widgets/<name>. Draws the settings by
+   * field group, a preview frame, the widget's test buttons (POST .../<name>/button) and its code;
+   * Save settings / Save code PUT /api/admin/widgets/<name>. Closed when widgetOpen is "".
+   */
   async function openWidgetEditor() {
     const box = $("widget-editor");
     if (!box) return;
@@ -2148,6 +2328,7 @@
     };
   }
 
+  /** Widgets page: GET /api/admin/widgets. */
   async function loadWidgets() {
     try {
       const res = await api("/api/admin/widgets");
@@ -2193,6 +2374,7 @@
     };
   }
 
+  /** Alerts page Pictures and sounds, plus the alert sound volume (stored 0..1, slider 0..100). */
   async function loadAlertAssets() {
     await loadOverlayAssets("alerts");
     try {
@@ -2204,7 +2386,7 @@
     } catch (_) {}
   }
 
-  // Stats
+  // Top-bar stats
   async function refreshStats() {
     try {
       const s = await api("/api/admin/stats");
@@ -2219,7 +2401,7 @@
   }
 
   // ------------------------------------------------------------------
-  // Integrations test bench (per-game sub-panels + command tester)
+  // Integrations page (tab integrations): per-game panels + the command tester
   // ------------------------------------------------------------------
   let integReady = false;
   let integData = null;
@@ -2231,6 +2413,7 @@
     el.style.color = ok ? "#53fc18" : "#ff5c5c";
   }
 
+  /** Show a tester result (JSON or text) in the box under the command tester. */
   function showIntegResult(data, ok) {
     const pre = $("integ-cmd-result");
     if (!pre) return;
@@ -2240,6 +2423,11 @@
     pre.textContent = typeof data === "string" ? data : JSON.stringify(data, null, 2);
   }
 
+  /**
+   * Command tester: POST /api/admin/commands/test with the message and a pretend chatter (name,
+   * platform, admin / mod / sub). dryRun only renders the reply; false really runs the command,
+   * game calls included.
+   */
   async function runCommandTest(dryRun) {
     const message = ($("integ-message") && $("integ-message").value.trim()) || "";
     if (!message) {
@@ -2274,6 +2462,7 @@
     }
   }
 
+  /** A sample chat line for a command: its first example, else its name plus sample values guessed from the arg names. */
   function exampleForCommand(cmd, prefix) {
     if (cmd.examples && cmd.examples.length) return cmd.examples[0];
     const p = prefix || "!";
@@ -2299,6 +2488,10 @@
     setIntegCmdStatus("Filled — Dry run or Live execute");
   }
 
+  /**
+   * HTML of one game's panel on Integrations (game = an entry of "games" in /api/admin/integrations):
+   * its commands with Fill / Dry, a metrics test, its overlays and a preview of the first one.
+   */
   function renderGamePanel(game, prefix) {
     const cmds = game.commands || [];
     const cmdList =
@@ -2377,6 +2570,11 @@
     );
   }
 
+  /**
+   * Integrations page: GET /api/admin/integrations, then wires Recheck health
+   * (GET /api/admin/games/<id>/health) and Push metrics (POST /api/admin/games/<id>/metrics-test).
+   * Loads once unless force.
+   */
   async function initIntegrationsTab(force) {
     if (integReady && !force) return;
     const host = $("integ-games");
@@ -2501,9 +2699,12 @@
     });
   }
 
-  // Users
+  // ------------------------------------------------------------------
+  // Users & points page (tab users): find a person, points, link / merge accounts, notes
+  // ------------------------------------------------------------------
   let selectedId = null;
 
+  /** The people list: GET /api/admin/users?q=<search>. Clicking a row opens selectUser(). */
   async function loadUsers() {
     try {
       const q = $("user-q").value.trim();
@@ -2526,6 +2727,12 @@
     }
   }
 
+  /**
+   * A person's panel: GET /api/admin/users/<id> (accounts, points, ledger, notes). Its buttons POST to
+   * /api/admin/users/<id>/points, /link, /merge (people found with /api/admin/users?q=) and /notes;
+   * Red-flag POSTs each account to /api/admin/red-flags/flag. Every action answers on the line under
+   * the name, also after the panel redraws.
+   */
   async function selectUser(id) {
     selectedId = id;
     loadUsers();
@@ -2755,7 +2962,11 @@
     if (e.key === "Enter") loadUsers();
   });
 
-  // Chat
+  // ------------------------------------------------------------------
+  // Chat history page (tab chat): the saved chat log, filters, CSV export, Clear history.
+  // Lines are only saved while chat_log.enabled is on (Settings → Points, permissions + chat).
+  // ------------------------------------------------------------------
+  /** The "chat history is off" banner and the "only red-flagged chatters are saved" note, from GET /api/admin/status. */
   async function refreshChatLogBanner() {
     const banner = $("chat-log-banner");
     if (!banner) return;
@@ -2791,6 +3002,7 @@
     chip.append(label, clear);
   }
 
+  /** The Chat history filters as query values (also used by Download CSV and Clear history). */
   function chatFilters() {
     const params = new URLSearchParams();
     const uid = $("chat-user-id").value.trim();
@@ -2805,6 +3017,7 @@
   }
 
   const CHAT_ROWS = 200;
+  /** Chat history table: GET /api/admin/chat?<filters>&limit=200. A name opens that person's page. */
   async function loadChat() {
     try {
       const params = chatFilters();
@@ -2857,6 +3070,7 @@
       .map((id) => `<span class="cf-badge" title="On your custom flag ${escapeHtml(cfNames[id])}">🏷️ ${escapeHtml(cfNames[id])}</span> `)
       .join("");
   }
+  /** The custom flag pickers: Chat history's flag filter and the Red flags page's "which flag" list. Hidden while there are none. */
   function fillFlagPickers(custom) {
     cfNames = {};
     for (const f of custom || []) cfNames[f.id] = f.name;
@@ -2878,8 +3092,17 @@
     }
   }
 
-  // ── Red flags (phrases + flagged chatters): own endpoint, Save button + page save bar ──
+  // ------------------------------------------------------------------
+  // Red flags page (tab redflags): phrases + flagged chatters. Own endpoint (/api/admin/red-flags),
+  // its own Save button + the page save bar. Custom flags further down share the same endpoint.
+  // ------------------------------------------------------------------
   let rfLoaded = false;
+  /**
+   * Draw the Red flags page from a /api/admin/red-flags answer (every red flag call answers with the
+   * same shape): switches, phrases, the flagged list with Messages and Unflag
+   * (DELETE /api/admin/red-flags/<id>, Undo = POST /api/admin/red-flags/restore), and the custom flags.
+   * Custom flags with unsaved edits are not redrawn, only their chatter lists.
+   */
   function fillRedFlags(d) {
     if (!$("rf-card") || !d) return;
     fillFlagPickers(d.custom);
@@ -2946,6 +3169,7 @@
     rfLoaded = true;
   }
 
+  /** Red flags page: GET /api/admin/red-flags. */
   async function loadRedFlags() {
     if (!$("rf-card")) return;
     try {
@@ -2955,6 +3179,10 @@
     }
   }
 
+  /**
+   * PUT /api/admin/red-flags with the switches and phrases. Does nothing before the page has loaded,
+   * so an empty form never wipes the phrases. Re-throws so the page save bar knows it failed.
+   */
   async function saveRedFlags() {
     if (!rfLoaded || !$("rf-card")) return;
     try {
@@ -3083,6 +3311,10 @@
   let cfNew = 0;
   const cfOpen = new Set();
 
+  /**
+   * Inner HTML of one custom flag's box. f is a flag from "custom" in /api/admin/red-flags; each
+   * control's class cf-<key> matches the key readCustomFlags() sends back.
+   */
   function cfFlagHtml(f) {
     const rx = ['<option value="">(none)</option>'].concat(cfReactions.map((r) =>
       `<option value="${escapeHtml(r.id)}"${r.id === f.reaction ? " selected" : ""}>${escapeHtml(r.label)}</option>`));
@@ -3122,6 +3354,7 @@
     );
   }
 
+  /** The one-line summary beside a flag's name: phrase count, what it does, how many chatters have it. */
   function cfSummary(box) {
     const name = box.querySelector(".cf-name").value.trim() || "New flag";
     box.querySelector(".cf-title").textContent = name;
@@ -3140,6 +3373,7 @@
       (does.length ? " · " + does.join(", ") : "") + (people ? ` · ${people} chatter${people === 1 ? "" : "s"}` : "");
   }
 
+  /** Add one flag's box to the list. Delete only removes the box; the flag is gone from Core on Save. */
   function cfAddBox(f, open) {
     const box = document.createElement("details");
     box.className = "cf-flag";
@@ -3165,6 +3399,7 @@
     return box;
   }
 
+  /** Redraw every custom flag box (the ones that were open stay open, by id). */
   function fillCustomFlags(custom) {
     if (!$("cf-list")) return;
     $("cf-list").innerHTML = "";
@@ -3173,6 +3408,10 @@
     drawCustomPeople();
   }
 
+  /**
+   * Each flag's chatter table from cfPeople. Unflag = DELETE /api/admin/red-flags/custom/<id>,
+   * Undo = POST /api/admin/red-flags/custom/restore.
+   */
   function drawCustomPeople() {
     for (const box of document.querySelectorAll("#cf-list .cf-flag")) {
       const id = box.dataset.id;
@@ -3231,6 +3470,7 @@
     }
   }
 
+  /** The flag boxes back to the list sent as {custom}. Same order as the boxes: saveCustomFlags() relies on it. */
   function readCustomFlags() {
     return [...document.querySelectorAll("#cf-list .cf-flag")].map((box) => {
       const v = (cls) => box.querySelector(".cf-" + cls);
@@ -3255,6 +3495,10 @@
     });
   }
 
+  /**
+   * PUT /api/admin/red-flags {custom}. Throws Error("unnamed flag") when a flag has no name.
+   * Returns Core's answer, where new flags now have their ids.
+   */
   async function saveCustomFlags() {
     if (!rfLoaded || !$("cf-card")) return;
     const custom = readCustomFlags();
@@ -3286,6 +3530,7 @@
   // Check past chat for one custom flag (same list + tick boxes as the red flag's)
   let cfPast = [];
   let cfPastFlag = "";
+  /** Saves first (a new flag needs its id), then POST /api/admin/red-flags/check-past {flag}. */
   async function cfCheckPast(box) {
     const btn = box.querySelector(".cf-past");
     btn.disabled = true;
@@ -3354,6 +3599,7 @@
     return { filtered, days, keep, f };
   }
 
+  /** Body for POST /api/admin/chat/clear. dryRun true only counts the lines that would go. */
   function chatClearBody(dryRun) {
     const { filtered, days, keep, f } = chatClearParams();
     return {
@@ -3383,6 +3629,10 @@
   }
 
   let chatClearSeq = 0;
+  /**
+   * Live count of what Clear history would delete (a dry run), redone as the choices change.
+   * chatClearSeq drops an answer when a newer count has started.
+   */
   async function countChatClear() {
     const panel = $("chat-clear");
     if (!panel || panel.hidden) return;
@@ -3496,6 +3746,7 @@
   // ------------------------------------------------------------------
   let pluginsInfo = [];
 
+  /** GET /api/admin/plugins: installed plugins (manifest settings, pages, links, running, error). Kept in pluginsInfo; [] on error. */
   async function loadPlugins() {
     try {
       const data = await api("/api/admin/plugins");
@@ -3507,6 +3758,7 @@
     return pluginsInfo;
   }
 
+  /** Dotted-key read / write ("a.b.c") for plugin settings, like getPath / setPath above. */
   function pathGet(obj, key) {
     return String(key).split(".").reduce((cur, part) => (cur && typeof cur === "object" ? cur[part] : undefined), obj);
   }
@@ -3521,6 +3773,7 @@
     cur[parts[parts.length - 1]] = value;
   }
 
+  /** Text safe for an element id: anything but letters, digits and _ becomes "-". */
   function slug(text) {
     return String(text).replace(/[^a-z0-9_]+/gi, "-");
   }
@@ -3584,6 +3837,7 @@
     return type === "password" ? el.value : upper(el.value.trim());
   }
 
+  /** A plugin manifest's "links" as a "Needs: ..." line. */
   function pluginLinks(p) {
     const links = (p.links || []).filter((l) => l && l.url);
     if (!links.length) return "";
@@ -3591,6 +3845,11 @@
       `<a href="${escapeHtml(l.url)}" target="_blank" rel="noopener">${escapeHtml(l.name || l.url)}</a>`).join(" · ")}</p>`;
   }
 
+  /**
+   * Settings → Plugins: one card per installed plugin, with an Enabled box plus its manifest settings
+   * (values from cfg[<plugin id>]). Features first, then games. collectPluginSections() reads them
+   * back for the config.yaml save.
+   */
   function renderPluginCards(cfg) {
     const host = $("plugin-cards");
     if (!host) return;
@@ -3637,6 +3896,12 @@
   // (/plugin-pages/<id>/...) in a frame. Only for running plugins. The frame uses
   // /admin/plugin-page.js to call the API with this browser's admin token.
   // ------------------------------------------------------------------
+  /**
+   * A menu entry and a framed page (tab id plg-<plugin>-<page>) for each page of each running plugin,
+   * under the sidebar heading named by the page's "nav". Runs at start and after a token is saved.
+   * These pages did not exist when the address was first read, so this opens one if the address
+   * (bootHash) or the last visit (bootLastTab) pointed at it.
+   */
   async function addPluginPages() {
     if (!token()) return;
     let list = [];
@@ -3680,6 +3945,8 @@
     else if (!bootHash && movedTab(bootLastTab).startsWith("plg-") && $("tab-" + movedTab(bootLastTab))) activateTab(movedTab(bootLastTab));
   }
 
+  // Messages from plugin page frames (plugin-page.js): the page's height, and "open another
+  // dashboard page". Only from this origin and from one of our own frames.
   window.addEventListener("message", (ev) => {
     if (ev.origin !== location.origin || !ev.data || typeof ev.data !== "object") return;
     const frame = Array.from(document.querySelectorAll(".plugin-page-frame")).find((f) => f.contentWindow === ev.source);
@@ -3707,7 +3974,10 @@
   }
 
   // ------------------------------------------------------------------
-  // Config form
+  // Config form: the Settings pages (tab config) backed by config.yaml.
+  // GET /api/admin/config fills the form; Save sends the WHOLE config back with PUT. Core writes what
+  // it gets (plus defaults), only keeping blocks other pages own (reactions, chat games, red flags,
+  // avatars, credits on/off, plugin market fields), so the form starts from the loaded config.
   // ------------------------------------------------------------------
 
   let lastDefaults = null;
@@ -3717,6 +3987,7 @@
   let groupsState = []; // catalog rows from API
   let groupConflicts = [];
 
+  /** Textarea with one entry per line <-> list. */
   function linesToList(text) {
     return String(text || "")
       .split(/\r?\n/)
@@ -3728,6 +3999,11 @@
     return (arr || []).join("\n");
   }
 
+  /**
+   * Put a config (and the defaults from /api/admin/config) into the Settings form. The value after ??
+   * is what shows when the key is missing. Field ids are in index.html; collectConfigFromForm()
+   * reads the same ids back, so keep the two in step.
+   */
   function fillConfigForm(cfg, defaults) {
     lastDefaults = defaults || lastDefaults;
     lastLoadedConfig = cfg || lastLoadedConfig;
@@ -3832,6 +4108,7 @@
   // waiting, the state is re-read every few seconds so the page flips to "Connected" by itself.
   let twAuthTimer = null;
 
+  /** Draw the Twitch sign-in state. s.pending holds the code to type at twitch.tv/activate; re-read every 3 s while it waits. */
   function showTwitchAuth(s) {
     const state = $("tw-auth-state");
     const codeBox = $("tw-auth-code");
@@ -3877,6 +4154,7 @@
     avLoaded = true;
   }
 
+  /** GET /api/admin/avatars, and whether the chat overlay shows pictures (GET /api/admin/chat/style). */
   async function loadAvatarSettings() {
     if (!$("cfg-av-save-local")) return;
     try {
@@ -3895,6 +4173,7 @@
     }
   }
 
+  /** PUT /api/admin/avatars; run by the Settings Save after config.yaml. Skipped until loaded so an empty form never wipes the hide list. */
   async function saveAvatarSettings() {
     if (!avLoaded || !$("cfg-av-save-local")) return;
     fillAvatarSettings(await api("/api/admin/avatars", {
@@ -3903,6 +4182,7 @@
     }));
   }
 
+  /** GET /api/admin/twitch/auth. */
   async function loadTwitchAuth() {
     if (!$("tw-auth-state")) return;
     try {
@@ -3912,6 +4192,7 @@
     }
   }
 
+  /** POST /api/admin/twitch/auth/<start | cancel | disconnect>. */
   async function twitchAuthAction(action) {
     try {
       showTwitchAuth(await api(`/api/admin/twitch/auth/${action}`, { method: "POST" }));
@@ -3930,6 +4211,11 @@
     };
   }
 
+  /**
+   * The Settings form back to a whole config for PUT /api/admin/config. Starts from the last loaded
+   * config so sections the form doesn't show (command_groups, plugin blocks ...) travel along; Core
+   * writes what it is sent. Field ids: keep in step with fillConfigForm().
+   */
   function collectConfigFromForm() {
     const chatroomRaw = $("cfg-kick-chatroom").value.trim();
     const kick = {
@@ -4038,11 +4324,13 @@
     return block;
   }
 
+  /** A number from a box, or fallback when it isn't one. Note: an empty box gives 0 (Number("") is 0), not fallback. */
   function num(v, fallback) {
     const n = Number(v);
     return Number.isFinite(n) ? n : fallback;
   }
 
+  /** Settings pages: the plugin list (for the cards), then GET /api/admin/config → {config, defaults, config_path, commands_path}. */
   async function loadConfigForm() {
     try {
       await loadPlugins();
@@ -4083,6 +4371,8 @@
     });
   };
 
+  // Save: PUT /api/admin/config {config}, then the avatar settings (their own endpoint). Core answers
+  // restart_needed for settings that only apply after a restart (the port, a game on or off).
   $("cfg-save").onclick = async () => {
     try {
       const config = collectConfigFromForm();
@@ -4157,7 +4447,10 @@
   });
 
   // ------------------------------------------------------------------
-  // Command groups
+  // Command groups (Settings → Command groups): GET / PUT /api/admin/command-groups.
+  // A group switches a set of commands on or off; "bind" ties it to a game plugin or a config
+  // section (points, credits ...) so it is only active while that is on (core/command_groups.py).
+  // "core" is always on.
   // ------------------------------------------------------------------
 
   function setGrpStatus(msg, ok) {
@@ -4167,6 +4460,7 @@
     el.style.color = ok === false ? "var(--danger)" : "";
   }
 
+  /** Command name / alias clashes: [{token, winner, loser, reason}] from Core or localConflicts(). */
   function showConflicts(list) {
     const box = $("grp-conflicts");
     if (!box) return;
@@ -4191,6 +4485,7 @@
       `<p style="margin:6px 0 0">Raise <code>priority</code> on the command you want, or rename the alias.</p>`;
   }
 
+  /** The groups table back to {group id: {enabled, always, bind, description}} for PUT. */
   function collectGroupsFromTable() {
     const out = {};
     document.querySelectorAll("#grp-table tbody tr").forEach((tr) => {
@@ -4207,6 +4502,7 @@
     return out;
   }
 
+  /** Draw groupsState (rows from /api/admin/command-groups). "core" and always-on groups are locked. */
   function renderGroupsTable() {
     const tb = $("grp-table") && $("grp-table").querySelector("tbody");
     if (!tb) return;
@@ -4241,6 +4537,7 @@
     });
   }
 
+  /** GET /api/admin/command-groups → {groups, conflicts, active}. */
   async function loadGroups() {
     try {
       const data = await api("/api/admin/command-groups");
@@ -4303,6 +4600,9 @@
 
   // ------------------------------------------------------------------
   // Config → Reactions (chat emoji / commands → Stream Rooms effects)
+  // GET / PUT /api/admin/reactions answer {reactions, effects, status, prefix, conflicts}. rxCfg is the
+  // reactions block being edited (entries changed in place), rxEffects the effect list, rxStatus the
+  // live state; nothing is written until Save.
   // ------------------------------------------------------------------
 
   let rxCfg = null;
@@ -4311,6 +4611,7 @@
   let rxSel = -1;
   let rxPrefix = "!";
 
+  // Chat reply texts the streamer can change (reactions.messages keys) and their form labels.
   const RX_MSG_LABELS = {
     cooldown: "On cooldown",
     no_points: "Not enough points",
@@ -4336,6 +4637,7 @@
     return rxEffects.find((e) => e.id === id) || null;
   }
 
+  /** A trigger box as a list without repeats: emoji split on spaces or commas, the rest on commas or lines. */
   function rxSplitList(text, emoji) {
     const parts = String(text || "").split(emoji ? /[\s,]+/ : /[,\n]+/);
     const out = [];
@@ -4346,6 +4648,7 @@
     return out;
   }
 
+  /** The live line: reactions on / off, Stream Rooms connection and room, counters (from rxStatus). */
   function rxRenderLive() {
     const el = $("rx-live");
     if (!el || !rxStatus) return;
@@ -4385,6 +4688,7 @@
       .join("")}</ul>`;
   }
 
+  /** The recent reactions table (rxStatus.recent). */
   function rxRenderRecent() {
     const tb = $("rx-recent") && $("rx-recent").querySelector("tbody");
     if (!tb || !rxStatus) return;
@@ -4401,6 +4705,7 @@
       : `<tr><td colspan="7" class="muted">Nothing yet</td></tr>`;
   }
 
+  /** General reaction settings <-> form. rxCollectSettings() writes into rxCfg itself and returns it. */
   function rxFillSettings() {
     const c = rxCfg;
     $("rx-enabled").checked = !!c.enabled;
@@ -4444,6 +4749,10 @@
     return w;
   }
 
+  /**
+   * The reactions list from rxCfg.entries. A warning under a name comes from rxStatus.entries (why
+   * it can't run right now). Clicking a row selects it for the detail pane.
+   */
   function rxRenderTable() {
     const tb = $("rx-table") && $("rx-table").querySelector("tbody");
     if (!tb) return;
@@ -4488,6 +4797,10 @@
     return rxImages.find((im) => im.name === String(name || "").toLowerCase());
   }
 
+  /**
+   * Reaction pictures (GET /api/admin/reactions/images). An effect's object "img:<name>" shows that
+   * picture. Only older uploads (source "custom") can be deleted here; stored files live on Stored files.
+   */
   function rxRenderImages() {
     const grid = $("rx-img-grid");
     const list = $("rx-img-list");
@@ -4571,6 +4884,7 @@
     };
   }
 
+  /** One control for an effect setting; the "object" setting also gets the picture picker. */
   function rxParamInput(p, value) {
     const v = value != null ? value : p.default;
     const name = escapeHtml(p.name);
@@ -4602,6 +4916,7 @@
     return `<label>${lab}<input type="${type}" data-rx-p="${name}" value="${escapeHtml(v != null ? v : "")}"${extra} /></label>`;
   }
 
+  /** The Effect settings box of a reaction; edits go straight into e.params. */
   function rxRenderParams(e) {
     const box = $("rx-params");
     if (!box) return;
@@ -4635,6 +4950,11 @@
     });
   }
 
+  /**
+   * Detail pane of the selected reaction (rxCfg.entries[rxSel]); edits go straight into the entry and
+   * nothing is sent until Save. Test (free) = POST /api/admin/reactions/test {id, target}: a new
+   * reaction has to be saved first.
+   */
   function rxRenderDetail() {
     const pane = $("rx-detail");
     const e = (rxCfg.entries || [])[rxSel];
@@ -4789,6 +5109,10 @@
     rxRenderParams(e);
   }
 
+  /**
+   * Take a /api/admin/reactions answer (load or save) and redraw everything. Also updates
+   * lastLoadedConfig.reactions so the config.yaml form carries the new block, not a stale one.
+   */
   function rxApply(data) {
     rxCfg = data.reactions || rxCfg;
     rxEffects = data.effects || rxEffects;
@@ -4804,6 +5128,7 @@
     rxRenderRecent();
   }
 
+  /** GET /api/admin/reactions, plus the picture list. */
   async function loadReactions() {
     if (!$("rx-table")) return;
     try {
@@ -4872,6 +5197,7 @@
     };
   }
 
+  /** Name / alias clashes among the commands being edited (before saving), same shape as Core's list. */
   function localConflicts(map) {
     const owners = {};
     const hits = [];
@@ -4897,9 +5223,12 @@
   }
 
   // ------------------------------------------------------------------
-  // Commands editor
+  // Commands editor (Settings → Chat commands): GET / PUT /api/admin/commands.
+  // commandsState is {name: def} as in the commands file; Apply only changes it here, Save writes
+  // the file and Core hot-reloads it.
   // ------------------------------------------------------------------
 
+  /** Group picker options for a command: every known group plus core and points. */
   function groupOptions(selected) {
     const ids = new Set((groupsState || []).map((g) => g.id));
     ids.add("core");
@@ -4911,6 +5240,7 @@
       .join("");
   }
 
+  /** The commands list from commandsState; clashing names / aliases are marked. */
   function renderCmdTable() {
     const tb = $("cmd-table").querySelector("tbody");
     tb.innerHTML = "";
@@ -4933,6 +5263,10 @@
     }
   }
 
+  /**
+   * The detail form of one command. Apply writes it into commandsState only (a new name replaces the
+   * old one); Save commands sends the whole list.
+   */
   function selectCommand(name) {
     selectedCmd = name;
     renderCmdTable();
@@ -5093,6 +5427,7 @@
     };
   }
 
+  /** GET /api/admin/commands → {commands, conflicts}. */
   async function loadCommands() {
     try {
       const data = await api("/api/admin/commands");
@@ -5143,6 +5478,10 @@
     }
   };
 
+  /**
+   * HTML-escape text for innerHTML and double-quoted attributes (single quotes are not escaped, so
+   * only use it inside "..."). A function declaration, so the code above can use it too.
+   */
   function escapeHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;")
@@ -5151,6 +5490,7 @@
       .replace(/"/g, "&quot;");
   }
 
+  /** Epoch seconds → local date and time. */
   function fmtTime(ts) {
     if (!ts) return "";
     try {
@@ -5161,7 +5501,8 @@
   }
 
   // ------------------------------------------------------------------
-  // Paid tab (core/paid.py): paid messages, tips and subs with a tick box
+  // Paid page (tab paid, core/paid.py): paid messages, tips and subs with a tick box.
+  // GET /api/admin/paid?<filters>; ticks are saved in Core so every browser sees them.
   // ------------------------------------------------------------------
 
   const PAID_FILTERS_KEY = "fridge_paid_filters";
@@ -5169,10 +5510,12 @@
   let paidKinds = [];
   let paidBusyUntil = 0;     // a tick was just clicked: skip the refresh that would redraw under the mouse
 
+  /** The Paid filters remembered in this browser (localStorage). */
   function paidSaved() {
     return loadJson(PAID_FILTERS_KEY, {});
   }
 
+  /** Local midnight of a date, in epoch seconds. */
   function dayStart(d) {
     const x = new Date(d);
     x.setHours(0, 0, 0, 0);
@@ -5206,6 +5549,7 @@
     return f;
   }
 
+  /** A filter object as URLSearchParams, empty values left out. */
   function paidQuery(f) {
     const p = new URLSearchParams();
     for (const [k, v] of Object.entries(f)) {
@@ -5240,6 +5584,7 @@
     $("paid-dates").hidden = $("paid-when").value !== "dates";
   }
 
+  /** The kind tick boxes, built once from the first answer's kinds list. */
   function fillPaidKinds(kinds) {
     if (paidKinds.length || !kinds || !kinds.length) return;
     paidKinds = kinds;
@@ -5262,6 +5607,10 @@
     $("paid-kinds-summary").textContent = on.length ? `(${on.length} picked)` : "(all)";
   }
 
+  /**
+   * A row's amount as text: bits and KICKs as counts, real money in the browser's number format;
+   * gifts and resubs without an amount show their count or months.
+   */
   function fmtPaidAmount(r) {
     if (r.amount == null) {
       if (r.qty) return `${r.qty} ${(r.kind === "gift" || r.kind === "member_gift") ? "gifted" : ""}`.trim();
@@ -5278,6 +5627,7 @@
     return `${r.amount.toFixed(2)} ${r.currency || ""}`.trim();
   }
 
+  /** The totals line: one entry per currency, or a count for kinds without money. */
   function fmtPaidTotals(totals) {
     const parts = [];
     for (const t of totals || []) {
@@ -5289,6 +5639,10 @@
 
   const PLAT_NAMES = { youtube: "YouTube", twitch: "Twitch", kick: "Kick" };
 
+  /**
+   * Paid table: GET /api/admin/paid?<filters> → {rows, total, totals, kinds, unticked}.
+   * A tick POSTs /api/admin/paid/tick {ids, done}; when that fails the box is put back.
+   */
   async function loadPaid() {
     if (!$("paid-table")) return;
     const f = paidFilters();
@@ -5358,6 +5712,7 @@
     }
   }
 
+  /** The unticked count on the Paid menu entry (99+ above 99). */
   function setPaidBadge(n) {
     const b = $("paid-badge");
     if (!b) return;
@@ -5365,6 +5720,7 @@
     b.textContent = n > 99 ? "99+" : String(n || "");
   }
 
+  /** GET /api/admin/paid/count; every 5 s while another page is open and the browser tab is visible. */
   async function refreshPaidBadge() {
     if (!token() || document.visibilityState !== "visible") return;
     try {
@@ -5372,6 +5728,11 @@
     } catch (_) { /* Core restarting: try again next time */ }
   }
 
+  /**
+   * Paid page: wires the filters once (remembered in this browser), Tick all shown
+   * (POST /api/admin/paid/tick {filters}), Download CSV (/api/admin/paid/export) and Delete ticked
+   * (POST /api/admin/paid/delete-ticked {days}); then loads the table.
+   */
   function initPaidTab() {
     if (!paidReady) {
       paidReady = true;
@@ -5432,7 +5793,8 @@
   setTimeout(refreshPaidBadge, 1500);
 
   // ------------------------------------------------------------------
-  // Credits list tab (core/credits.py): everyone in the end credits with a tick box
+  // Credits list page (tab creditslist, core/credits.py): everyone in the end credits with a tick box.
+  // GET /api/admin/credits/checklist?<filters> (same filter style as Paid, so paidQuery() is reused).
   // ------------------------------------------------------------------
 
   const CL_FILTERS_KEY = "fridge_credits_list_filters";
@@ -5443,6 +5805,7 @@
   let clReady = false;
   let clBusyUntil = 0;     // a tick was just clicked: skip the refresh that would redraw under the mouse
 
+  /** The Credits list filters (all platforms ticked = no platform filter). */
   function clFilters() {
     const f = {
       status: $("cl-status").value,
@@ -5474,6 +5837,10 @@
     document.querySelectorAll(".cl-plat").forEach((b) => { b.checked = !off.has(b.value); });
   }
 
+  /**
+   * Credits list table: GET /api/admin/credits/checklist?<filters> → {rows, count, unticked, total,
+   * enabled}. A tick POSTs /api/admin/credits/checklist/tick {keys, done}; rows are keyed by r.key.
+   */
   async function loadCreditsList() {
     if (!$("cl-table")) return;
     const f = clFilters();
@@ -5543,6 +5910,7 @@
     }
   }
 
+  /** Credits list page: wires the filters once, Tick / Untick all shown (.../checklist/tick {filters}) and CSV (.../checklist.csv). */
   function initCreditsListTab() {
     if (!clReady) {
       clReady = true;
@@ -5585,12 +5953,14 @@
   }, 5000);
 
   // ------------------------------------------------------------------
-  // Credits tab
+  // Credits page (tab credits): on/off, play controls, look (CreditsStyleEditor from
+  // /overlay/credits-editor.js), cast pins. /api/admin/credits/..., live roster over /ws?credits=1.
   // ------------------------------------------------------------------
 
   let creditsPlay = { playing: true, mode: "loop" };
   let creditsEditorReady = false;
 
+  /** PUT /api/admin/credits/theme. persist false while editing (shows on the overlays), true on Save. */
   async function pushCreditsTheme(theme, persist) {
     await api("/api/admin/credits/theme", {
       method: "PUT",
@@ -5611,6 +5981,11 @@
     fit();
   }
 
+  /**
+   * Mount the credits look editor (CreditsStyleEditor, /overlay/credits-editor.js) once. It calls back
+   * here: every change, Save, a cast style pick (PUT /api/admin/credits/cast/style), Restart, and
+   * estimate() reads the run time from the preview frame.
+   */
   function mountCreditsEditor() {
     fitCreditsPreview();
     if (creditsEditorReady || !window.CreditsStyleEditor || !$("crd-style-editor")) return;
@@ -5649,6 +6024,7 @@
     if (window.CreditsStyleEditor) CreditsStyleEditor.fill(t || {});
   }
 
+  /** The names collected so far (roster from /api/admin/credits or the credits_roster socket message). */
   function renderCreditsRoster(r) {
     r = r || {};
     if ($("live-crd-count")) $("live-crd-count").textContent = (r.count || 0) + " names";
@@ -5705,6 +6081,7 @@
     }
   });
 
+  /** Play state text and Play / Pause labels on the Credits and Live pages; p is merged into creditsPlay. */
   function renderCreditsPlay(p) {
     creditsPlay = { ...creditsPlay, ...(p || {}) };
     if (p && typeof p.credits_enabled === "boolean" && p.credits_enabled !== creditsEnabled) {
@@ -5751,6 +6128,7 @@
     };
   }
 
+  /** Credits page: GET /api/admin/credits → {enabled, theme, play, roster, cast}. Loads once unless force. */
   async function initCreditsTab(force) {
     if (!$("tab-credits")) return;
     if ($("tab-credits").dataset.ready && !force) return;
@@ -5799,6 +6177,7 @@
   if ($("crd-copy")) {
     $("crd-copy").onclick = () => copyWithFeedback($("crd-copy"), location.origin + "/overlay/credits.html");
   }
+  /** POST /api/admin/credits/play with {playing, mode (loop | once | hold | clear), freeze, restart}. */
   async function crdPlay(body) {
     // also pressed from Live controls mid-stream: never fail silently
     try {
@@ -5900,12 +6279,16 @@
 
 
   // ------------------------------------------------------------------
-  // Chat games (page "Chat games"): run the live ones, settings, moods
+  // Chat games (page "Chat games", tab fun): run the live ones, settings, moods.
+  // GET /api/admin/chat_games answers {chat_games (the config block), form (sections + fields to draw),
+  // status, prefix, conflicts}; Save = PUT. Buttons with data-fun="feature/action" in index.html
+  // POST /api/admin/chat_games/action; the test chat box POSTs .../simulate.
   // ------------------------------------------------------------------
   let funData = null;
   let funTimer = 0;
   let funPrefix = "!";
 
+  /** Status text beside a control; red on errors. */
   function funSay(id, msg, ok = true) {
     const el = $(id);
     if (!el) return;
@@ -5913,10 +6296,12 @@
     el.style.color = ok ? "" : "#ff5c5c";
   }
 
+  /** Options typed one per line or split with |. */
   function funLines(text) {
     return String(text || "").split(/\n|\|/).map((x) => x.trim()).filter(Boolean);
   }
 
+  /** Result bars for a poll / prediction board (pct is 0..1). */
   function funBars(lines) {
     return (lines || []).map((l) =>
       `<div class="fun-bar${l.win ? " win" : ""}"><span class="lab">${escapeHtml(l.label)}</span>` +
@@ -5925,6 +6310,7 @@
     ).join("");
   }
 
+  /** Seconds → m:ss or h:mm:ss (moment times from the stream start). */
   function funClock(sec) {
     sec = Math.max(0, Math.floor(sec || 0));
     const h = Math.floor(sec / 3600);
@@ -5933,6 +6319,10 @@
     return h ? `${h}:${String(m).padStart(2, "0")}:${s2}` : `${m}:${s2}`;
   }
 
+  /**
+   * Draw the live state (status from /api/admin/chat_games): banner, poll, prediction, trivia, rating,
+   * request queue, moments, and the line on Live controls.
+   */
   function renderFunStatus(st) {
     if (!st) return;
     const banner = $("fun-banner");
@@ -6006,6 +6396,10 @@
     }
   }
 
+  /**
+   * One settings control from the form description Core sends (f.kind bool / select / list / number /
+   * command / text). The id fun-f-<section>-<key> is what readFunForm() reads back.
+   */
   function funFieldHtml(sec, f, val) {
     const id = `fun-f-${sec.id}-${f.key}`;
     const help = f.hint ? ` <span class="field-help">${escapeHtml(f.hint)}</span>` : "";
@@ -6024,6 +6418,7 @@
     return `<label>${escapeHtml(f.label)}${help}<input id="${id}" type="${type}" step="any" value="${escapeHtml(String(shown))}" /></label>`;
   }
 
+  /** Draw the settings: one card per section of funData.form, values from funData.chat_games. */
   function renderFunForm() {
     const cfg = funData.chat_games;
     $("fun-enabled").checked = !!cfg.enabled;
@@ -6047,6 +6442,7 @@
     try { buildSearchIndex(); } catch (_) { /* search index is optional */ }
   }
 
+  /** The form back to a chat_games block (a copy of the loaded one, so keys not on the form stay). Commands are kept without the prefix. */
   function readFunForm() {
     const cfg = JSON.parse(JSON.stringify(funData.chat_games));
     cfg.enabled = $("fun-enabled").checked;
@@ -6070,6 +6466,7 @@
     return cfg;
   }
 
+  /** Emote combo moods (chat_games.combos.moods): emotes / emoji that set off effects. readFunMoods() throws on bad effects JSON. */
   function renderFunMoods() {
     const host = $("fun-moods");
     if (!host) return;
@@ -6115,6 +6512,7 @@
     return out;
   }
 
+  /** GET /api/admin/chat_games, then the status again every 3 s while Chat games or Live controls is open. */
   async function loadFun() {
     try {
       funData = await api("/api/admin/chat_games");
@@ -6143,6 +6541,7 @@
     }, 3000);
   }
 
+  /** PUT /api/admin/chat_games {chat_games}. */
   async function saveFun(statusId) {
     try {
       const cfg = readFunForm();
@@ -6157,6 +6556,7 @@
     }
   }
 
+  /** POST /api/admin/chat_games/action {feature, action, ...extra}. */
   async function funAction(feature, action, extra = {}) {
     try {
       const r = await api("/api/admin/chat_games/action", {
@@ -6172,6 +6572,7 @@
     }
   }
 
+  /** The extra fields an action needs, from the inputs beside its button (key = the data-fun value). */
   function funExtra(key) {
     if (key === "poll/open") {
       const sec = $("fun-poll-sec").value;
@@ -6183,6 +6584,9 @@
     return {};
   }
 
+  // One click handler for the Live / Chat games buttons: data-stage = the Stream Rooms curtain
+  // (POST /api/admin/stage), data-fun = a chat game action, data-fun-req = the request queue,
+  // data-fun-crowd = a few test chatters send the same line.
   document.addEventListener("click", async (ev) => {
     const stageBtn = ev.target.closest("[data-stage]");
     if (stageBtn) {
@@ -6218,6 +6622,7 @@
     }
   });
 
+  /** POST /api/admin/chat_games/simulate: a pretend chat line, handled like a real one. */
   async function funSimulate(user, message, mod) {
     try {
       const r = await api("/api/admin/chat_games/simulate", {
@@ -6318,6 +6723,7 @@
     return ok;
   }
 
+  /** Names of the blocks with unsaved edits on a page (for the leave warning). */
   function pageUnsavedNames(page) {
     const out = [];
     if (page === "config" && $("cfg-savebar") && $("cfg-savebar").classList.contains("dirty")) out.push("config.yaml settings");
@@ -6328,6 +6734,7 @@
     return out;
   }
 
+  /** Drop a page's unsaved marks once the person chose to leave without saving. */
   function pageDiscard(page) {
     if (!PAGE_SAVER) return;
     PAGE_SAVER.sections.forEach((s) => {
@@ -6337,6 +6744,10 @@
   }
 
   (function setupPageSaver() {
+    // Each section: key, page (tab id) + sub (sub-page), name (shown in "Unsaved: ..."); what counts
+    // as an edit: fields (input ids) or scope (a container, minus ignore), plus clicks (buttons that
+    // change it); button = its own Save button, or save = a function to call instead; reload = its
+    // Reload button; group = sections one save covers. A section whose page or button is missing is dropped.
     const sections = [
       { key: "fun-settings", page: "fun", sub: "settings", name: "Chat games settings", group: "fun",
         scope: '#tab-fun .acc[data-sub="settings"]', button: "fun-save" },
@@ -6521,6 +6932,8 @@
     };
     PAGE_SAVER.isDirty = (key) => sections.some((s) => s.key === key && s.dirty);
 
+    // The bar's Save changes: runs each unsaved section of the page once (sections sharing a group or
+    // button only once). With nothing unsaved it saves the sub-page on screen.
     async function savePage(page) {
       const panel = $("tab-" + page);
       const sub = panel ? panel.dataset.sub || "" : "";
@@ -6566,6 +6979,7 @@
       bars[page] = bar;
     });
 
+    // "Unsaved: ..." on each bar, and dots on the sidebar entries and sub-page pills.
     function render() {
       Object.entries(bars).forEach(([page, bar]) => {
         const names = sections.filter((s) => s.page === page && s.dirty).map((s) => s.name);
@@ -6615,6 +7029,10 @@
     render();
   })();
 
+  // ------------------------------------------------------------------
+  // Start-up: top-bar stats, the people list, the first page, then the plugin pages (they come
+  // later and may open themselves; see addPluginPages).
+  // ------------------------------------------------------------------
   refreshStats();
   loadUsers();
   // First page: the address (#page/sub), else the last page used, else Live.
