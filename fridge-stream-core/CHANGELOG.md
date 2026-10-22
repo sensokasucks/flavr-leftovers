@@ -9,8 +9,13 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.10.22] — 2026-10-22
+
 ### Added
 - **Credits list** (On stream → Credits list), a tick-box page for the end credits like the Paid page: everyone the credits will show this session, from every platform, with their picture, platform, pinned job and what they are (mod, VIP, sub, paid, raider, follower, gifted, tipped). Tick a name once you've thanked them; filter by not ticked / ticked, who they are, platform, name or job, sort by first to chat, last seen, most messages or A to Z; **Tick all shown**, **Untick all shown** and **Download CSV**. Ticks are saved with the credits session (`data/credits_session.json`), so a restart keeps them and **Reset session** starts fresh. The Credits page links to it. Tests `tests/test_credits.py`.
+
+### Changed
+- **Code comments for people.** Every Core file now says what it is for, and functions say who calls them, which setting drives them, their units and what must stay in sync. Comments and docstrings only: nothing Core does has changed.
 
 ## [2026.10.15] — 2026-10-15
 
