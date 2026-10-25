@@ -37,6 +37,11 @@ kick:
   # pusher_cluster: "us2"
   poll_viewer_interval_sec: 15
   avatars: true                    # chatter profile pictures (one lookup per chatter, cached)
+  # Optional: your own Kick app, for "Connect Kick" (Core posts into your Kick chat). Reading
+  # chat never needs it. Steps: docs/KICK_APP_SETUP.md. Redirect URL in the app:
+  # http://localhost:3850/kick/callback (your core.port if you changed it)
+  client_id: ""
+  client_secret: ""                # never commit or show it on stream
 
 twitch:
   enabled: false

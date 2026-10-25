@@ -187,6 +187,12 @@ A few things worth knowing:
 - The sign-in is kept in `data\twitch_token.json` on your PC and is sent to Twitch only. **Disconnect** tells Twitch to cancel it and deletes the file. You can also revoke it any time on Twitch under Settings → Connections (look for Stream Core).
 - Twitch cancels a sign-in itself after a long stretch without use or when you change your password; the dashboard then says so, and one more **Connect Twitch** fixes it.
 - **Advanced: use your own Twitch app** is for people who registered their own app at dev.twitch.tv. Paste its Client ID (and, for a "Confidential" app, the Client Secret). With a secret Core can fetch pictures even without the sign-in. Leave both empty to use Stream Core's built-in app, which is the normal case.
+### Connecting your Kick account (optional)
+
+Kick chat is read without any sign-in. **Connect Kick** only matters if you want Core to post into your Kick chat. Kick has no app that can be shared without a secret, so you make your own small Kick app once (about five minutes): turn on 2FA on your Kick account, create an app at `kick.com/settings/developer` with the Redirect URL `http://localhost:3850/kick/callback`, and paste its **Client ID** and **Client Secret** into the Kick card. Then press **Save**, **Connect Kick**, and **Allow** in the Kick tab that opens. **Send test message** puts one line in your chat to prove it works.
+
+The Kick card has the full steps under **How to make your Kick app**, and so does `docs/KICK_APP_SETUP.md`, with a table of what to do when something goes wrong. Keep the Client Secret private. The sign-in is kept in `data\kick_token.json` and only sent to Kick; **Disconnect** cancels it.
+
 - **YouTube**: the live video, which changes every stream. Paste its whole link (from the address bar, Share, or YouTube Studio; `watch?v=`, `youtu.be/…` and `/live/…` all work) or just the id. The quickest place is the **YouTube live video** box on **Live controls**: paste, press **Connect**. If you start Core before you go live, YouTube shows **retrying** and connects by itself once the stream is live. Mode **innertube** needs no API key and has no quota, so leave it on that unless you need the official API's Super Chat details. Members and Super Chats become alerts.
 
 ### Chatter profile pictures

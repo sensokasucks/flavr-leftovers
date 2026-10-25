@@ -24,7 +24,7 @@
  *   Chat history   (chat)    /api/admin/chat, /chat/export, /chat/clear
  *   Red flags + custom flags (redflags)  /api/admin/red-flags/...
  *   Plugins                  Settings → Plugins cards and plugin pages: /api/admin/plugins
- *   Config form    (config)  Settings pages for config.yaml: /api/admin/config, /avatars, /twitch/auth
+ *   Config form    (config)  Settings pages for config.yaml: /api/admin/config, /avatars, /twitch/auth, /kick/auth
  *   Command groups (config/groups)     /api/admin/command-groups
  *   Reactions      (config/reactions)  /api/admin/reactions, /reactions/images, /reactions/test
  *   Commands editor (config/commands)  /api/admin/commands
@@ -4027,6 +4027,9 @@
     $("cfg-kick-avatars").checked = k.avatars !== false;
     $("cfg-kick-chatroom").value =
       k.chatroom_id != null && k.chatroom_id !== "" ? String(k.chatroom_id) : "";
+    $("cfg-kick-client-id").value = k.client_id ?? "";
+    $("cfg-kick-client-secret").value = k.client_secret ?? "";
+    loadKickAuth();
 
     $("cfg-tw-enabled").checked = !!tw.enabled;
     $("cfg-tw-channel").value = tw.channel ?? "";
@@ -4211,6 +4214,97 @@
     };
   }
 
+  // ── Kick account (the streamer's own Kick app, sign-in in a new tab) ──────────────
+  // Core does the talking to Kick (adapters/kick_auth.py). Connect Kick asks Core for Kick's
+  // sign-in address and opens it in a new tab; Kick sends that tab back to Core's
+  // /kick/callback. While Core waits, the state is re-read every 3 s so the card flips to
+  // "Connected" by itself.
+  let kickAuthTimer = null;
+
+  /** Draw the Kick sign-in state (GET /api/admin/kick/auth answer). */
+  function showKickAuth(s) {
+    const state = $("kick-auth-state");
+    if (!state) return;
+    const pending = s.pending;
+    $("kick-auth-wait").hidden = !pending;
+    $("kick-auth-connect").hidden = !!pending;
+    $("kick-auth-cancel").hidden = !pending;
+    $("kick-auth-disconnect").hidden = !s.connected || !!pending;
+    $("kick-auth-test").hidden = !s.connected || !!pending;
+    // The Redirect URL follows core.port; the steps show the one this Core needs
+    if (s.redirect_uri) $("kick-redirect-uri").textContent = s.redirect_uri;
+    if (pending) {
+      $("kick-auth-link").href = pending.authorize_url || "#";
+      state.textContent = "Kick account: waiting for you to press Allow in the Kick tab…";
+    } else if (s.connected) {
+      state.textContent = `Kick account: connected as ${s.login || "(name pending)"}`;
+      $("kick-auth-connect").textContent = "Reconnect";
+    } else {
+      state.textContent = s.has_app
+        ? "Kick account: not connected"
+        : "Kick account: not connected (make your Kick app first, steps below)";
+      $("kick-auth-connect").textContent = "Connect Kick";
+    }
+    if (s.error) state.textContent += ` — ${s.error}`;
+    if (s.connected && !pending && (s.missing_scopes || []).length) {
+      state.textContent += " — press Reconnect once so Kick allows everything Core now uses";
+    }
+    // Open the steps for someone who hasn't made their app yet
+    if (!s.has_app && !s.connected) $("kick-app-help").open = true;
+    clearTimeout(kickAuthTimer);
+    if (pending) kickAuthTimer = setTimeout(loadKickAuth, 3000);
+  }
+
+  /** GET /api/admin/kick/auth. */
+  async function loadKickAuth() {
+    if (!$("kick-auth-state")) return;
+    try {
+      showKickAuth(await api("/api/admin/kick/auth"));
+    } catch (e) {
+      $("kick-auth-state").textContent = `Kick account: ${e.message || e}`;
+    }
+  }
+
+  /** POST /api/admin/kick/auth/<start | cancel | disconnect | test>. Start opens Kick's page in a new tab. */
+  async function kickAuthAction(action) {
+    // Open the tab now, inside the click, so the browser doesn't block it as a pop-up;
+    // it gets Kick's address once Core answers
+    const tab = action === "start" ? window.open("about:blank", "_blank") : null;
+    try {
+      const s = await api(`/api/admin/kick/auth/${action}`, { method: "POST" });
+      if (tab) {
+        if (s.pending && s.pending.authorize_url) tab.location.href = s.pending.authorize_url;
+        else tab.close();
+      }
+      if (action === "test") $("kick-test-state").textContent = s.test_message || "";
+      showKickAuth(s);
+    } catch (e) {
+      if (tab) tab.close();
+      setStatus(String(e.message || e), false);
+    }
+  }
+
+  if ($("kick-auth-connect")) {
+    $("kick-auth-connect").onclick = () => {
+      // The Client ID / Secret boxes are read by Core from config.yaml, so unsaved edits don't count yet
+      const cfgKick = (lastLoadedConfig || {}).kick || {};
+      if ($("cfg-kick-client-id").value.trim() !== (cfgKick.client_id || "") ||
+          $("cfg-kick-client-secret").value.trim() !== (cfgKick.client_secret || "")) {
+        setStatus("Press Save first so Core knows your Kick app's Client ID and Secret, then Connect Kick.", false);
+        return;
+      }
+      kickAuthAction("start");
+    };
+    $("kick-auth-cancel").onclick = () => kickAuthAction("cancel");
+    $("kick-auth-test").onclick = () => kickAuthAction("test");
+    $("kick-auth-disconnect").onclick = () => {
+      if (confirm("Disconnect your Kick account from Stream Core? Core stops posting into Kick chat until you connect again. Reading chat is not affected.")) {
+        kickAuthAction("disconnect");
+      }
+    };
+    $("kick-copy-redirect").onclick = (ev) => copyWithFeedback(ev.currentTarget, $("kick-redirect-uri").textContent);
+  }
+
   /**
    * The Settings form back to a whole config for PUT /api/admin/config. Starts from the last loaded
    * config so sections the form doesn't show (command_groups, plugin blocks ...) travel along; Core
@@ -4223,6 +4317,9 @@
       channel_slug: cleanKick($("cfg-kick-slug").value),
       poll_viewer_interval_sec: num($("cfg-kick-poll").value, 15),
       avatars: $("cfg-kick-avatars").checked,
+      // the streamer's own Kick app for Connect Kick (adapters/kick_auth.py)
+      client_id: $("cfg-kick-client-id").value.trim(),
+      client_secret: $("cfg-kick-client-secret").value.trim(),
     };
     if (chatroomRaw !== "") {
       const n = Number(chatroomRaw);

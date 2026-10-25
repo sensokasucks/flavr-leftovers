@@ -5,8 +5,9 @@ Listens to live chat via the public Pusher WebSocket (same approach as the
 original Node bridge). Viewer counts are polled from the unofficial but
 stable /api/v2/channels/{slug} endpoint.
 
-Later we can add the official Kick API (OAuth + chat:write + rewards)
-without changing the rest of Core.
+Posting into Kick chat goes through the official Kick API instead, with the streamer's own
+Kick app and sign-in (adapters/kick_auth.py, Settings → Kick → Connect Kick). Reading chat
+never needs that sign-in.
 
 Flow: find the channel's chatroom id (config ``kick.chatroom_id``, else a kick.com API
 lookup that is then saved into config.yaml), ask Kick for the current Pusher key, subscribe
@@ -27,6 +28,7 @@ import websockets
 from websockets.exceptions import ConnectionClosed
 
 from adapters.base import BaseAdapter
+from adapters.kick_auth import get_auth as get_kick_auth
 from adapters.kick_avatars import KickAvatars
 
 
@@ -244,7 +246,9 @@ def _opt_int(raw: Any, name: str) -> Optional[int]:
 class KickAdapter(BaseAdapter):
     """Kick chat (Pusher WebSocket) plus a viewer-count poll every ``kick.poll_viewer_interval_sec``.
 
-    Read-only: there is no ``send_message``, so command replies are not posted into Kick chat.
+    ``send_message`` posts into the channel through the official API once the streamer has
+    pressed Connect Kick (adapters/kick_auth.py); without that sign-in it returns False.
+    Nothing in Core calls it for command replies yet.
     """
 
     platform = Platform.KICK
@@ -354,6 +358,20 @@ class KickAdapter(BaseAdapter):
                     pass
         self.avatars.stop()
         log.info("Kick adapter stopped")
+
+    async def send_message(self, text: str, reply_to: Optional[ChatEvent] = None) -> bool:
+        """Post ``text`` into the signed-in streamer's Kick chat (as a reply to ``reply_to`` when given).
+
+        Uses the shared KickAuth (``kick.client_id`` / ``client_secret`` + Connect Kick). The Kick
+        sign-in posts into the channel of whoever signed in, which should be this adapter's
+        ``kick.channel_slug``.
+        """
+        auth = get_kick_auth(self.config)
+        reply_id = (reply_to.message_id or "") if reply_to is not None else ""
+        ok, why = await auth.send_chat(text, reply_to_message_id=reply_id)
+        if not ok:
+            log.debug("Kick send_message not sent: %s", why)
+        return ok
 
     # ------------------------------------------------------------------
     # Discovery

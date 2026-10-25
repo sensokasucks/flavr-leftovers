@@ -528,8 +528,11 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
 .tw-auth-digits { font-size: 1.9rem; font-weight: 700; letter-spacing: 0.25em; font-family: ui-monospace, Consolas, monospace; margin: 6px 0 !important; }
 .tw-auth-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0 4px; }
 .tw-auth button.secondary { opacity: 0.85; }
-.tw-advanced { margin-top: 8px; }
-.tw-advanced > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+.tw-advanced, .kick-help { margin-top: 8px; }
+.tw-advanced > summary, .kick-help > summary { cursor: pointer; color: var(--muted); font-size: 0.9rem; }
+/* Kick card: the numbered "make your Kick app" steps */
+.kick-help ol { padding-left: 20px; }
+.kick-help li { margin: 4px 0; }
 .cfg-card label.check {
   display: flex;
   align-items: center;
