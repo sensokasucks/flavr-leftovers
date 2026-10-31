@@ -404,7 +404,7 @@ def create_app(core_state: "CoreState") -> FastAPI:
         """One WebSocket client: send the catch-up snapshots, then answer pings and game messages.
 
         Messages Core sends are ``{"type": ...}`` dicts (update, chat, alert, reply, user_update,
-        chat_removed, credits_* ...); the *_history ones are sent only here, on connect.
+        chat_removed, credits_*, audience_looks ...); the *_history ones are sent only here, on connect.
         """
         await manager.connect(ws)
         refused_game = False   # warn once per socket, not on every retry
@@ -425,6 +425,10 @@ def create_app(core_state: "CoreState") -> FastAPI:
             games = getattr(core_state, "chat_games", None)
             if games is not None and games.boards:
                 await ws.send_json({"type": "board_history", "data": games.board_state()})
+            looks = getattr(core_state, "audience_looks", None)
+            if looks is not None:
+                # Stream Rooms' bubble and silhouette looks (core/audience_looks.py); overlays ignore it
+                await ws.send_json({"type": "audience_looks", "data": looks.payload()})
             credits = getattr(core_state, "credits", None)
             if credits:
                 await ws.send_json({"type": "credits_theme", "data": credits.theme})

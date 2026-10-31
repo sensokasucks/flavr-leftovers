@@ -25,11 +25,13 @@ Home: `fridge-stream-core/core/media_library.py`; slots in `core/overlay_style.p
 - [ ] Reaction pictures: any stored picture is `img:<name>` (see [reactions.md](reactions.md)); reactions show in
       "Used by" (`overlay: "reactions"`), Rename rewrites their `img:` object, Delete resets it (unless a built-in
       has the name). Older `data/reaction_images/` uploads move in at start under the same names.
+- [ ] Audience looks (Stream Rooms silhouettes): `media:<name>` in a style's `file`; shows in "Used by"
+      (`overlay: "audience looks"`), Rename follows, Delete puts the classic shape back (see [audience-looks.md](audience-looks.md)).
 - [ ] Tests write to their own folders (`OverlayStyle(..., library=MediaLibrary(tmp))`), never `data/media`.
 
 ## Not yet (later steps)
 
-- Custom chat flags, command sounds, Stream Rooms and game plugins could point at stored files next.
+- Custom chat flags, command sounds and game plugins could point at stored files next.
 
 ## After-change verify
 
