@@ -9,10 +9,15 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.11.1] — 2026-11-02
+
 ### Added
 - **Connect Kick** (Settings → Core + chat platforms → Kick): sign Stream Core in to your Kick account so it can post into your Kick chat. Kick has no secret-free app like Twitch's, so you make your own Kick app once (about five minutes); the card has the steps under **How to make your Kick app**, with the Redirect URL to paste and a **Copy** button, and `docs/KICK_APP_SETUP.md` has them too, with a troubleshooting table. Paste the app's Client ID and Client Secret (`kick.client_id` / `kick.client_secret`), Save, press **Connect Kick** and **Allow** in the Kick tab. **Send test message** posts one line into your chat. The sign-in is kept in `data/kick_token.json`, renewed in the background and sent only to Kick; **Disconnect** cancels it at Kick. Reading Kick chat still needs no sign-in, and command answers are not posted into chat yet. `adapters/kick_auth.py`, tests `tests/test_kick_auth.py`.
 - **Audience looks** (Overlays → Audience looks): the Stream Rooms style editor moved here from Stream Rooms. Set how Stream Rooms' chat audience looks: bubble colours (Light, Dark or your own style), bubble shape, outline, colours, text and ready-made looks (Comic, Neon, Glass, Paper, Minimal, Thought cloud), silhouettes (seven built-in shapes or your own pictures from Stored files, **Upload a picture…** / **Add many pictures…**), and a bubble and silhouette look per group (mods, VIPs, subs, each platform, everyone else), with a random mix of silhouettes. Live preview; changes save on their own and reach Stream Rooms straight away over `/ws` (`audience_looks`). Pictures show in Stored files "Used by" and follow Rename / Delete. Kept in `data/audience_looks.json`. Needs the matching Stream Rooms update. Tests `tests/test_audience_looks.py`.
 - **Credits list** (On stream → Credits list), a tick-box page for the end credits like the Paid page: everyone the credits will show this session, from every platform, with their picture, platform, pinned job and what they are (mod, VIP, sub, paid, raider, follower, gifted, tipped). Tick a name once you've thanked them; filter by not ticked / ticked, who they are, platform, name or job, sort by first to chat, last seen, most messages or A to Z; **Tick all shown**, **Untick all shown** and **Download CSV**. Ticks are saved with the credits session (`data/credits_session.json`), so a restart keeps them and **Reset session** starts fresh. The Credits page links to it. Tests `tests/test_credits.py`.
+
+### Changed
+- **Code comments for people.** Every Core file now says what it is for, and functions say who calls them, which setting drives them, their units and what must stay in sync. Comments and docstrings only: nothing Core does has changed.
 
 ## [2026.10.15] — 2026-10-15
 
