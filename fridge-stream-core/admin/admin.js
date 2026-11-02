@@ -19,6 +19,7 @@
  *   Pictures and sounds (alerts + chat)  /api/admin/overlays/<name>/assets
  *   Stored files   (files)   /api/admin/media
  *   Chat widgets   (widgets) /api/admin/widgets
+ *   Audience looks (looks)   in admin/audience-looks.js: /api/admin/audience-looks (Stream Rooms' bubbles + silhouettes)
  *   Integrations   (integrations)  /api/admin/integrations, /commands/test, /games/<id>/...
  *   Users & points (users)   /api/admin/users, /users/<id>/points|link|merge|notes
  *   Chat history   (chat)    /api/admin/chat, /chat/export, /chat/clear
@@ -410,6 +411,8 @@
     }
     if (tabId === "files") loadFiles();
     if (tabId === "widgets") loadWidgets();
+    // Audience looks lives in its own file (admin/audience-looks.js, loaded before this one)
+    if (tabId === "looks" && window.AudienceLooksPage) window.AudienceLooksPage.open();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "chat") {

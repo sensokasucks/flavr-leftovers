@@ -2056,7 +2056,7 @@ def create_admin_router(core_state) -> APIRouter:
         from core.alerts import ALERT_STYLE
         from core.chat_style import CHAT_STYLE
 
-        users: list = [ALERT_STYLE, CHAT_STYLE]
+        users: list = [ALERT_STYLE, CHAT_STYLE, _looks()]
         if getattr(core_state, "reactions", None) is not None:
             users.append(_ReactionPictures())
         return users
@@ -2145,6 +2145,31 @@ def create_admin_router(core_state) -> APIRouter:
                 user.write_settings(bump_css=True)
         lib.delete(entry["name"])
         return {"ok": True, "emptied": emptied, **_media_payload()}
+
+    # ------------------------------------------------------------------
+    # Audience looks: Stream Rooms' bubbles and silhouettes (core/audience_looks.py)
+    # ------------------------------------------------------------------
+
+    def _looks():
+        """The audience looks store (data/audience_looks.json); main.py sets it up with on_change."""
+        from core.audience_looks import default_looks
+
+        return getattr(core_state, "audience_looks", None) or default_looks()
+
+    @router.get("/audience-looks")
+    async def get_audience_looks(x_admin_token: Optional[str] = Header(None)):
+        """Audience looks page data: the looks plus each picture's url (AudienceLooks.payload)."""
+        _auth(x_admin_token)
+        return _looks().payload()
+
+    @router.put("/audience-looks")
+    async def put_audience_looks(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Save the whole looks dict (the page sends it after each change); Stream Rooms gets it at once."""
+        _auth(x_admin_token)
+        try:
+            return {"ok": True, **_looks().save(body)}
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
 
     # ------------------------------------------------------------------
     # Chat widgets: StreamElements / Streamlabs code widgets (core/widget_store.py)

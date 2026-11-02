@@ -1334,3 +1334,29 @@ html.plugin-page body > main { padding: 0 2px 16px; }
 .chat-clear input[type="radio"] { width: auto; margin: 0; }
 .cfg-card.chat-clear input.num-sm { display: inline-block; width: 6em; margin: 0 4px; }
 .chat-clear .toolbar { margin-top: 8px; }
+
+/* Audience looks page (admin/audience-looks.js): label left, control right, like Stream Rooms' editor. */
+.looks-row { display: grid; grid-template-columns: minmax(150px, 34%) 1fr; gap: 10px; align-items: center; margin: 6px 0; }
+.looks-row select { max-width: 320px; }
+.looks-color input[type="color"] { width: 48px; height: 32px; padding: 0; border: 1px solid var(--border); border-radius: 6px; background: none; flex: none; }
+.looks-slider { display: flex; gap: 10px; align-items: center; }
+.looks-slider input { flex: 1; max-width: 300px; }
+.looks-val { min-width: 48px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.looks-color { display: flex; gap: 10px; align-items: center; }
+.looks-alpha { width: 140px; }
+.looks-check { margin: 6px 0; }
+.looks-head { margin: 16px 0 4px; font-size: 0.95rem; }
+.looks-presets { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+.looks-presets .looks-row { flex: 1 1 320px; margin: 0; }
+.looks-buttons { margin: 4px 0 10px; }
+.looks-groups { display: grid; grid-template-columns: minmax(110px, auto) 1fr 1fr; gap: 8px 12px; align-items: start; }
+.looks-group-name { padding-top: 6px; }
+.looks-mix { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; padding: 8px; border: 1px solid var(--border); border-radius: 8px; }
+.looks-mix[hidden] { display: none; }
+.looks-mix .hint { flex-basis: 100%; margin: 0 0 4px; }
+#looks-preview { display: block; width: 100%; height: auto; border-radius: 8px; border: 1px solid var(--border); }
+#tab-looks input:disabled, #tab-looks select:disabled { opacity: 0.45; }
+@media (max-width: 700px) {
+  .looks-row { grid-template-columns: 1fr; }
+  .looks-groups { grid-template-columns: 1fr; }
+}
