@@ -68,6 +68,7 @@ try:
     from core.avatar_store import AvatarStore
     from core.media_library import default_library
     from core.widget_store import default_store as default_widgets
+    from core.audience_looks import default_looks as default_audience_looks
     from core.red_flags import RedFlags, matching_recent
     from core.chat_flags import ChatFlags
     from core.paid import ALERT_KINDS as PAID_ALERT_KINDS, PaidLog, PRICED_ALERT_KINDS, split_amount_prefix
@@ -222,6 +223,10 @@ class StreamCore:
         self.state.media = default_library()
         # Chat widgets (StreamElements / Streamlabs code widgets) run by /overlay/widget.html
         self.state.widgets = default_widgets()
+        # Stream Rooms' audience looks (bubbles and silhouettes), edited on the dashboard's Audience
+        # looks page and sent to Stream Rooms over /ws after every save (core/audience_looks.py)
+        self.state.audience_looks = default_audience_looks()
+        self.state.audience_looks.on_change = self._send_audience_looks
         for style in (ALERT_STYLE, CHAT_STYLE, self.reactions.images):
             try:
                 style.import_legacy()
@@ -930,6 +935,15 @@ class StreamCore:
             target_platform=event.platform,
             source="chat_game",
         ))
+
+    def _send_audience_looks(self, payload: dict) -> None:
+        """AudienceLooks.on_change: the looks were saved; send them to every /ws client (Stream Rooms
+        applies them). Called from sync code, so the send is scheduled on the running loop."""
+        try:
+            asyncio.get_running_loop().create_task(self._ws_broadcast({"type": "audience_looks", "data": payload}))
+        except RuntimeError:
+            pass        # no loop (tests calling from sync code): Stream Rooms gets them on its next connect
+
 
     async def _ws_broadcast(self, payload: dict) -> None:
         """Send to every overlay WebSocket (handed to plugins, reactions and chat games)."""

@@ -47,6 +47,7 @@
       <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom" data-tab="chatlook">Chat overlay</button>
       <button class="tab" data-keywords="stored files library upload picture image sound video mp4 webm gif font reuse media replace css url" data-tab="files">Stored files</button>
       <button class="tab" data-keywords="chat widget streamelements streamlabs custom code html css js javascript fields zip import etsy ko-fi skin theme" data-tab="widgets">Chat widgets</button>
+      <button class="tab" data-keywords="stream rooms audience speech bubble bubbles silhouette silhouettes figure style editor look looks group mods vip subs random mix picture" data-tab="looks">Audience looks</button>
     </div>
 
     <div class="nav-group">
@@ -902,6 +903,46 @@
     <div id="files-list" class="asset-list"></div>
   </section>
 
+  <!-- Audience looks: Stream Rooms' speech bubbles and silhouettes (admin/audience-looks.js builds the
+       controls; Core keeps them in data/audience_looks.json and sends them to Stream Rooms over /ws) -->
+  <section id="tab-looks" class="panel">
+    <p class="tab-intro">
+      How the chat audience looks in <strong>Stream Rooms</strong>: the speech bubbles and the silhouettes chatters sit as,
+      and a different look for mods, VIPs, subscribers or one platform. Changes save on their own and show in Stream Rooms
+      straight away while it's connected to Core. Silhouette pictures are kept in <a href="#files">Stored files</a>.
+    </p>
+    <div class="subtabs" data-subtabs="looks">
+      <button type="button" class="subtab active" data-sub="bubbles">Bubbles</button>
+      <button type="button" class="subtab" data-sub="figures">Silhouettes</button>
+      <button type="button" class="subtab" data-sub="groups">Groups</button>
+    </div>
+    <div class="acc-stack" data-acc="looks">
+      <details class="acc" open data-sub="bubbles">
+      <summary>Bubbles</summary>
+      <div class="acc-body"><fieldset class="cfg-card looks-card"><legend>Speech bubbles</legend><div id="looks-bubbles"></div></fieldset></div>
+      </details>
+      <details class="acc" open data-sub="figures">
+      <summary>Silhouettes</summary>
+      <div class="acc-body"><fieldset class="cfg-card looks-card"><legend>Silhouettes</legend><div id="looks-figures"></div></fieldset></div>
+      </details>
+      <details class="acc" open data-sub="groups">
+      <summary>Groups</summary>
+      <div class="acc-body"><fieldset class="cfg-card looks-card"><legend>Looks per group</legend><div id="looks-groups"></div></fieldset></div>
+      </details>
+      <details class="acc" open data-sub="preview" data-aside>
+      <summary>Preview</summary>
+      <div class="acc-body">
+        <fieldset class="cfg-card">
+          <legend>Preview</legend>
+          <canvas id="looks-preview" width="720" height="420" title="How the bubbles and silhouettes look with these settings (the main style). The light circles are where chatters' profile pictures go."></canvas>
+          <p id="looks-preview-note" class="hint"></p>
+          <p id="looks-status" class="muted" role="status"></p>
+        </fieldset>
+      </div>
+      </details>
+    </div>
+  </section>
+
   <!-- Chat widgets: StreamElements / Streamlabs code widgets run by Core (core/widget_store.py) -->
   <section id="tab-widgets" class="panel">
     <p class="tab-intro">
@@ -1706,6 +1747,7 @@
   </div>
 
   <script src="/overlay/credits-editor.js"></script>
+  <script src="/admin/audience-looks.js"></script>
   <script src="/admin/admin.js"></script>
 </body>
 </html>
