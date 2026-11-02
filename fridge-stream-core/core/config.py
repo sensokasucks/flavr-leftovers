@@ -52,6 +52,10 @@ DEFAULTS: Dict[str, Any] = {
         "poll_viewer_interval_sec": 15,
         # look up each chatter's profile picture once (cached in data/kick_avatars.json)
         "avatars": True,
+        # the streamer's own Kick app (kick.com/settings/developer) for "Connect Kick", which
+        # lets Core post into Kick chat (adapters/kick_auth.py). Reading chat never needs it.
+        "client_id": "",
+        "client_secret": "",
     },
     "twitch": {
         "enabled": False,  # opt-in chat platform

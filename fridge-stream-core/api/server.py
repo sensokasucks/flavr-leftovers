@@ -549,6 +549,28 @@ def create_app(core_state: "CoreState") -> FastAPI:
         return FileResponse(path, media_type=CONTENT_TYPES.get(ext),
                             headers={"Cache-Control": "public, max-age=60"})
 
+    # Kick sign-in comes back here (adapters/kick_auth.py). Kick's Allow page sends the browser
+    # to http://localhost:<port>/kick/callback?code=…&state=…, the Redirect URL the streamer put
+    # in their Kick app. No admin token: the browser arrives from id.kick.com, so the one-time
+    # ``state`` from the last Connect Kick press is what proves the request is ours.
+    @app.get("/kick/callback", response_class=HTMLResponse)
+    async def kick_callback(code: str = "", state: str = "", error: str = "", error_description: str = ""):
+        import html as _html
+
+        from adapters.kick_auth import get_auth as get_kick_auth
+
+        auth = get_kick_auth(getattr(core_state, "config", None))
+        ok, msg = await auth.finish_login(code=code, state=state, error=error_description or error)
+        title = "Kick connected" if ok else "Kick sign-in failed"
+        colour = "#53fc18" if ok else "#ff6b6b"
+        page = (
+            "<!doctype html><html><head><meta charset='utf-8'><title>%s</title></head>"
+            "<body style='font-family:system-ui,sans-serif;background:#111;color:#eee;padding:40px'>"
+            "<h1 style='color:%s'>%s</h1><p>%s</p>"
+            "<p>You can close this tab and go back to the Stream Core dashboard.</p></body></html>"
+        ) % (title, colour, title, _html.escape(msg))
+        return HTMLResponse(page, status_code=200 if ok else 400, headers={"Cache-Control": "no-store"})
+
     # Chat widgets (core/widget_store.py): StreamElements / Streamlabs code widgets. The page
     # /overlay/widget.html?name= passes chat in; the widget's own code runs in this frame, which
     # the CSP sandbox puts in a blank origin (no dashboard token, no admin API, no /ws).
