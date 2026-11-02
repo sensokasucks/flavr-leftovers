@@ -1327,6 +1327,44 @@
           <input id="cfg-kick-poll" type="number" min="5" max="300" />
         </label>
         <label class="check"><input id="cfg-kick-avatars" type="checkbox" /> Chatter profile pictures</label>
+        <!-- Kick sign-in (admin.js "Kick account", adapters/kick_auth.py). Only for posting into
+             Kick chat; reading chat above needs no sign-in. Kick has no secret-free app type, so
+             each streamer makes their own Kick app (steps below, also docs/KICK_APP_SETUP.md). -->
+        <div class="tw-auth" id="kick-auth">
+          <p class="tw-auth-state" id="kick-auth-state">Kick account: checking…</p>
+          <p class="hint">Optional. Chat is read without it. Connecting lets Core post into your Kick chat.</p>
+          <details class="kick-help" id="kick-app-help">
+            <summary>How to make your Kick app (about 5 minutes, once)</summary>
+            <ol class="hint">
+              <li>Sign in at <a href="https://kick.com" target="_blank" rel="noopener">kick.com</a> with your streaming account. In your account <strong>Settings</strong>, under security, turn on <strong>Two-Factor Authentication</strong> (Kick only lets you make apps with 2FA on).</li>
+              <li>Go to <a href="https://kick.com/settings/developer" target="_blank" rel="noopener">kick.com/settings/developer</a> and press <strong>Create App</strong>.</li>
+              <li><strong>App name</strong>: anything, for example "My Stream Core". <strong>Description</strong>: anything. <strong>App icon</strong>: optional.</li>
+              <li><strong>Redirect URL</strong>: paste exactly <code id="kick-redirect-uri">http://localhost:3850/kick/callback</code> <button type="button" class="secondary" id="kick-copy-redirect">Copy</button></li>
+              <li>If the form lists scopes (permissions), tick the ones for reading user information (<code>user:read</code>) and writing to chat (<code>chat:write</code>). Leave webhooks off.</li>
+              <li>Press <strong>Create App</strong>, then open the app (Edit / Manage) and copy the <strong>Client ID</strong> and <strong>Client Secret</strong> into the boxes below.</li>
+              <li>Press <strong>Save</strong> at the bottom of this page, then <strong>Connect Kick</strong>. A Kick tab opens: press <strong>Allow</strong>, then close the tab.</li>
+              <li>Press <strong>Send test message</strong>. A line appears in your Kick chat when it works.</li>
+            </ol>
+            <p class="hint">Keep the Client Secret private: don't show it on stream or share it. If it leaks, make a new one in the Kick app and paste it here.</p>
+          </details>
+          <label>Client ID
+            <input id="cfg-kick-client-id" type="text" autocomplete="off" placeholder="from your Kick app" />
+          </label>
+          <label>Client Secret
+            <input id="cfg-kick-client-secret" type="password" autocomplete="off" placeholder="from your Kick app" />
+          </label>
+          <div class="tw-auth-code" id="kick-auth-wait" hidden>
+            <p>A Kick tab opened. Press <strong>Allow</strong> there. If no tab opened, <a id="kick-auth-link" href="#" target="_blank" rel="noopener">open Kick's sign-in page</a>.</p>
+          </div>
+          <div class="tw-auth-buttons">
+            <button type="button" id="kick-auth-connect">Connect Kick</button>
+            <button type="button" id="kick-auth-test" class="secondary" hidden>Send test message</button>
+            <button type="button" id="kick-auth-disconnect" class="secondary" hidden>Disconnect</button>
+            <button type="button" id="kick-auth-cancel" class="secondary" hidden>Cancel</button>
+          </div>
+          <p class="hint" id="kick-test-state"></p>
+          <p class="hint">The sign-in happens between this PC and Kick; the token is kept in <code>data\kick_token.json</code> and sent nowhere else. Core asks only to see who you are and to post in your chat.</p>
+        </div>
       </fieldset>
 
       <fieldset class="cfg-card">

@@ -987,6 +987,54 @@ def create_admin_router(core_state) -> APIRouter:
         await auth.disconnect()
         return auth.status()
 
+    # ------------------------------------------------------------------
+    # Kick sign-in (the streamer's own Kick app, OAuth code + PKCE). Never returns tokens or
+    # the secret. Kick sends the browser back to /kick/callback, served by api/server.py.
+    # ------------------------------------------------------------------
+
+    def _kick_auth():
+        """The shared KickAuth (adapters/kick_auth.py), configured from the live config."""
+        from adapters.kick_auth import get_auth
+
+        return get_auth(getattr(core_state, "config", None) or load_config())
+
+    @router.get("/kick/auth")
+    async def kick_auth_status(x_admin_token: Optional[str] = Header(None)):
+        """Connected? As whom? Is the Kick app filled in, and which Redirect URL must it have?"""
+        _auth(x_admin_token)
+        return _kick_auth().status()
+
+    @router.post("/kick/auth/start")
+    async def kick_auth_start(x_admin_token: Optional[str] = Header(None)):
+        """Start a sign-in: the answer's pending.authorize_url is opened by the dashboard in a new tab."""
+        _auth(x_admin_token)
+        return _kick_auth().start_login()
+
+    @router.post("/kick/auth/cancel")
+    async def kick_auth_cancel(x_admin_token: Optional[str] = Header(None)):
+        """Stop waiting for the Kick tab to come back."""
+        _auth(x_admin_token)
+        auth = _kick_auth()
+        auth.cancel_login()
+        return auth.status()
+
+    @router.post("/kick/auth/disconnect")
+    async def kick_auth_disconnect(x_admin_token: Optional[str] = Header(None)):
+        """Revoke the token at Kick and delete data/kick_token.json."""
+        _auth(x_admin_token)
+        auth = _kick_auth()
+        await auth.disconnect()
+        return auth.status()
+
+    @router.post("/kick/auth/test")
+    async def kick_auth_test(x_admin_token: Optional[str] = Header(None)):
+        """Send test message: post one line into the signed-in streamer's Kick chat."""
+        _auth(x_admin_token)
+        auth = _kick_auth()
+        ok, why = await auth.send_chat("Stream Core is connected to Kick chat.")
+        return {**auth.status(), "test_ok": ok,
+                "test_message": "Sent. Look in your Kick chat." if ok else why}
+
     @router.get("/commands")
     async def get_commands(x_admin_token: Optional[str] = Header(None)):
         """commands.json plus the plugins' default commands, for the Commands editor."""
