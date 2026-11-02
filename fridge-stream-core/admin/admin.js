@@ -3872,12 +3872,17 @@
       if (p.error && !(p.settings || []).length) {
         return `<fieldset class="cfg-card plugin-card" data-plugin="${escapeHtml(p.id)}"><legend>${escapeHtml(p.name)} ${state}</legend>${err}</fieldset>`;
       }
-      const fields = [{ key: "enabled", label: "Enabled (opt-in)", type: "checkbox" }].concat(p.settings || []);
+      // Fields marked "page": true are edited on the plugin's own page (it saves them with
+      // PUT /api/admin/plugins/<id>/settings); the card keeps the rest and points there.
+      const onPage = (p.settings || []).filter((f) => f.page);
+      const fields = [{ key: "enabled", label: "Enabled (opt-in)", type: "checkbox" }]
+        .concat((p.settings || []).filter((f) => !f.page));
       return `<fieldset class="cfg-card plugin-card" data-plugin="${escapeHtml(p.id)}">
         <legend>${escapeHtml(p.name)} ${state}</legend>
         ${p.description ? `<p class="hint">${escapeHtml(p.description)}</p>` : ""}
         ${err}
         ${fields.map((f) => pluginFieldHtml("cfg", p.id, f, pathGet(section, f.key))).join("")}
+        ${onPage.length ? `<p class="hint">More settings (${onPage.length}) are on its own page${(p.pages || []).length ? `: <strong>${escapeHtml(p.pages[0].title)}</strong>` : ""}.</p>` : ""}
         ${p.market && p.id !== "stonks" ? `<p class="hint">Stock / vault rates live on the <strong>Gamer Stonks</strong> page (the Gamer Stonks plugin).</p>` : ""}
         ${(p.pages || []).length && p.running ? `<p class="hint">Its own page${p.pages.length > 1 ? "s" : ""} in the menu: ${p.pages.map((pg) => `<strong>${escapeHtml(pg.title)}</strong>`).join(", ")}.</p>` : ""}
         ${pluginLinks(p)}
