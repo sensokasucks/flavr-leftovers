@@ -103,7 +103,11 @@ name, and not one of Core's own config sections (`core`, `market`, `points` ...)
 `list` (comma separated, `upper: true` to upper-case), `lines` (one per line),
 `map` (`key: value` per line, numbers as values), `select` (`options`).
 Every field has `key` (dotted for nested keys: `market.vault_symbol`), `label`, and optional
-`help` and `placeholder`.
+`help` and `placeholder`. A settings field with `"page": true` is left off the Settings → Plugins
+card (the card says the plugin's own page has it): that page edits it with
+`GET /api/admin/plugins` (fields + current values) and `PUT /api/admin/plugins/<id>/settings`,
+and the plugin sees the new value at once through its live `self.config`.
+Keep connection fields (addresses, tokens) on the card so the plugin can be started from there.
 
 ### http block
 

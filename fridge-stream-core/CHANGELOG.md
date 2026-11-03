@@ -9,6 +9,11 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Changed
+
+- Plugin settings fields can carry `"page": true` to live on the plugin's own page instead of its
+  Settings → Plugins card; the card says where they went (docs/PLUGINS.md, Field types).
+
 ## [2026.11.1] — 2026-11-02
 
 ### Added
