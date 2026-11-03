@@ -1993,6 +1993,27 @@ async def _run() -> None:
             pass
 
     serve_task = asyncio.create_task(server.serve())
+
+    # Phone remote (api/phone_server.py): the paired phones' own door on the home network, port
+    # 3860, only while switched on. With "Turn off when Core closes" (stop_on_exit) it always
+    # starts off; otherwise it opens again if it was on.
+    from api.phone_server import PhoneServer
+    from core.phone_remote import PhoneRemote
+    phone_remote = PhoneRemote(ROOT, config)
+    core.state.phone_remote = phone_remote
+    core.state.phone_server = PhoneServer(core.state, phone_remote, app, ROOT)
+    if phone_remote.settings["enabled"]:
+        if phone_remote.settings["stop_on_exit"]:
+            live = core.state.config or config
+            live["phone_remote"] = {**(live.get("phone_remote") or {}), "enabled": False}
+            phone_remote.configure(live)
+            try:
+                from core.config import save_config
+                save_config(live)
+            except Exception:
+                log.exception("couldn't save phone_remote.enabled = false")
+        else:
+            await core.state.phone_server.start()
     stop_task = asyncio.create_task(stop_event.wait())
     if signin_link and (config.get("core") or {}).get("open_dashboard"):
         asyncio.create_task(_open_when_up(server, signin_link))
@@ -2003,6 +2024,10 @@ async def _run() -> None:
     )
 
     server.should_exit = True
+    try:
+        await core.state.phone_server.stop()   # the phone door closes with Core
+    except Exception:
+        log.exception("phone remote stop failed")
     await core.stop()
     if restart["wanted"]:
         # free the port before the next Core binds it

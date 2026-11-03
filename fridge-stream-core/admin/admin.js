@@ -530,6 +530,7 @@
       loadOverlayAssets("chat");
     }
     if (tabId === "files") loadFiles();
+    if (tabId === "phone") loadPhoneRemote();
     if (tabId === "widgets") loadWidgets();
     // Audience looks lives in its own file (admin/audience-looks.js, loaded before this one)
     if (tabId === "looks" && window.AudienceLooksPage) window.AudienceLooksPage.open();
@@ -1177,6 +1178,130 @@
         $("live-hl-hold").value = res.settings.hold_sec;
       } catch (e) { $("live-hl-msg").textContent = String(e.message || e); }
     };
+  }
+
+  // ------------------------------------------------------------------
+  // Setup → Phone remote (api/phone_admin_routes.py; the door itself is api/phone_server.py).
+  // On/off switch, the PC's home address, paired phones with Remove, and Add a phone: a QR code
+  // (vendor/qrcode-generator, window.qrcode) of http://<PC>:3860/phone/#pair=<one-time token>
+  // plus the 6-digit code, both valid PAIR seconds. While the box is open the list refreshes
+  // every 2 s, so the new phone shows up as soon as it pairs.
+  // ------------------------------------------------------------------
+  let phoneTimer = 0;
+  let phoneLeftTimer = 0;
+  let phoneInfo = null;
+
+  function phoneTime(ts) {
+    if (!ts) return "never";
+    const d = new Date(ts * 1000);
+    return d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderPhoneRemote(info) {
+    phoneInfo = info;
+    const st = info.status || {};
+    if (document.activeElement !== $("phone-on")) $("phone-on").checked = !!st.running;
+    $("phone-stop-on-exit").checked = !!(info.settings || {}).stop_on_exit;
+    if (document.activeElement !== $("phone-host")) $("phone-host").value = (info.settings || {}).host || "";
+    $("phone-state").innerHTML = st.running
+      ? `On. Phones open <code>${escapeHtml(st.url)}</code>`
+      : st.error ? `<span class="bad">Off: ${escapeHtml(st.error)}</span>`
+        : `Off. When on, phones reach it at <code>http://${escapeHtml(info.address_guess || "this PC")}:${info.port}/phone/</code>`;
+    const net = $("phone-net");
+    net.hidden = info.network !== "Public";
+    if (info.network === "Public") {
+      net.innerHTML = '<span class="bad">Windows has this Wi-Fi marked <strong>Public</strong>, so the firewall will keep the phone out.</span> ' +
+        "Open Windows Settings → Network &amp; internet → Wi-Fi (or Ethernet) → your network, and pick <strong>Private network</strong>.";
+    }
+    $("phone-add").disabled = !st.running;
+    $("phone-add").title = st.running ? "" : "Switch the phone remote on first";
+    const phones = info.phones || [];
+    $("phone-list").innerHTML = phones.length ? `<table class="data-table"><thead><tr><th>Phone</th><th>Paired</th><th>Last used</th><th></th></tr></thead><tbody>` +
+      phones.map((p) => `<tr><td>${escapeHtml(p.name)}</td><td>${phoneTime(p.created)}</td><td>${phoneTime(p.last_used)}</td>` +
+        `<td><button type="button" data-phone-remove="${escapeHtml(p.id)}">Remove</button></td></tr>`).join("") + "</tbody></table>"
+      : '<span class="muted">No phones paired yet.</span>';
+    if ($("phone-pair").hidden === false && !info.pairing_open) closePhonePair(phones.length ? "Paired." : "");
+  }
+
+  async function loadPhoneRemote() {
+    try {
+      renderPhoneRemote(await api("/api/admin/phone-remote"));
+    } catch (e) {
+      $("phone-state").textContent = String(e.message || e);
+    }
+  }
+
+  function closePhonePair(msg) {
+    $("phone-pair").hidden = true;
+    clearInterval(phoneTimer);
+    clearInterval(phoneLeftTimer);
+    phoneTimer = phoneLeftTimer = 0;
+    if (msg) $("phone-msg").textContent = msg;
+  }
+
+  if ($("phone-on")) {
+    $("phone-on").onchange = async () => {
+      const on = $("phone-on").checked;
+      $("phone-msg").textContent = on ? "Switching on…" : "Switching off…";
+      try {
+        await api("/api/admin/phone-remote/enabled", { method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabled: on }) });
+        $("phone-msg").textContent = on ? "On." : "Off.";
+        if (!on) closePhonePair();
+      } catch (e) {
+        $("phone-msg").textContent = String(e.message || e);
+      }
+      loadPhoneRemote();
+    };
+    $("phone-save").onclick = async () => {
+      try {
+        await api("/api/admin/phone-remote/settings", { method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ stop_on_exit: $("phone-stop-on-exit").checked, host: $("phone-host").value.trim() }) });
+        $("phone-msg").textContent = "Saved." + (phoneInfo && phoneInfo.status && phoneInfo.status.running && $("phone-host").value.trim()
+          ? " Switch it off and on again to use the new address." : "");
+        loadPhoneRemote();
+      } catch (e) { $("phone-msg").textContent = String(e.message || e); }
+    };
+    $("phone-add").onclick = async () => {
+      try {
+        const p = await api("/api/admin/phone-remote/pair", { method: "POST" });
+        const qr = window.qrcode ? window.qrcode(0, "M") : null;
+        if (qr) {
+          qr.addData(p.qr_url);
+          qr.make();
+          $("phone-qr").innerHTML = qr.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+        } else {
+          $("phone-qr").textContent = "(QR code library missing: type the code instead)";
+        }
+        $("phone-url").textContent = p.url;
+        $("phone-code").textContent = p.code.slice(0, 3) + " " + p.code.slice(3);
+        $("phone-pair").hidden = false;
+        $("phone-msg").textContent = "";
+        const until = Date.now() + p.expires_in * 1000;
+        const tick = () => {
+          const left = Math.max(0, Math.round((until - Date.now()) / 1000));
+          $("phone-left").textContent = left ? `Works for ${left} more seconds, for one phone.` : "Expired.";
+          if (!left) closePhonePair("The code ran out. Press Add a phone again.");
+        };
+        tick();
+        clearInterval(phoneLeftTimer);
+        phoneLeftTimer = setInterval(tick, 1000);
+        clearInterval(phoneTimer);
+        phoneTimer = setInterval(loadPhoneRemote, 2000);
+      } catch (e) { $("phone-msg").textContent = String(e.message || e); }
+    };
+    $("phone-pair-cancel").onclick = async () => {
+      closePhonePair();
+      try { await api("/api/admin/phone-remote/pair/cancel", { method: "POST" }); } catch (_) {}
+    };
+    $("phone-list").addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button[data-phone-remove]");
+      if (!b || !confirm("Remove this phone? It stops working at once; pair it again to use it.")) return;
+      try {
+        await api("/api/admin/phone-remote/phones/" + encodeURIComponent(b.dataset.phoneRemove), { method: "DELETE" });
+        loadPhoneRemote();
+      } catch (e) { $("phone-msg").textContent = String(e.message || e); }
+    });
   }
 
   /** Live controls page opened: load everything, then refresh the status every 15 s (activateTab clears the timer on leaving). */

@@ -31,6 +31,7 @@ import os
 
 from api.admin_routes import _CORE_ROOT, create_admin_router
 from api.highlight_routes import create_highlight_router
+from api.phone_admin_routes import create_phone_admin_router
 from core.local_guard import (
     LOOPBACK_ORIGIN_REGEX,
     LocalGuard,
@@ -665,6 +666,8 @@ def create_app(core_state: "CoreState") -> FastAPI:
     app.include_router(create_admin_router(core_state))
     # Highlighted message (core/highlights.py): /api/admin/highlight*
     app.include_router(create_highlight_router(core_state, _CORE_ROOT))
+    # Phone remote card (Setup → Phone remote): switch the phone door, pair / remove phones
+    app.include_router(create_phone_admin_router(core_state, _CORE_ROOT))
 
     admin_dir = Path(__file__).resolve().parent.parent / "admin"
     if admin_dir.is_dir():
@@ -727,6 +730,8 @@ class CoreState:
         self.reactions = None
         self.activity = None     # core.activity.ActivityLog: the Live page Stream events window
         self.highlights = None   # core.highlights.HighlightBoard: the Highlighted message overlay
+        self.phone_remote = None   # core.phone_remote.PhoneRemote: paired phones + pairing codes
+        self.phone_server = None   # api.phone_server.PhoneServer: the phone door (made in main.py _run)
         self.chat_games = None
         self.avatars = None
         self.paid = None         # core.paid.PaidLog (Admin → Paid)
