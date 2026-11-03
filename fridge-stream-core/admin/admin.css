@@ -1472,3 +1472,39 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
   .feed-row { grid-template-columns: 6.6em minmax(0, 1fr); }
   .feed-kind { display: none; }
 }
+
+/* ---- Live controls: Highlighted message card (admin.js "Highlighted message") ---- */
+.hl-card { grid-column: 1 / -1; }
+.hl-now {
+  padding: 8px 10px;
+  border-left: 4px solid #a55bff;
+  background: var(--bg);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.hl-now .hl-who { font-weight: 700; margin-right: 6px; }
+.hl-queue { margin: 8px 0; padding-left: 1.4em; font-size: 0.88rem; }
+.hl-queue li { margin: 2px 0; overflow-wrap: anywhere; }
+.hl-queue .link-btn { margin-left: 6px; }
+.hl-pick-title { margin: 12px 0 6px; font-size: 0.95rem; }
+/* Fixed height like the Stream events window: new chat scrolls inside the box */
+.hl-pick {
+  height: 240px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  font-size: 0.88rem;
+}
+.hl-pick p { margin: 8px; }
+.hl-line { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 6px; align-items: baseline; padding: 2px 4px; border-radius: 4px; }
+.hl-line:nth-child(odd) { background: var(--panel); }
+.hl-line .hl-star { padding: 0 6px; min-height: 24px; line-height: 1; }
+.hl-line .hl-who { font-weight: 600; margin-right: 4px; }
+.hl-line.flagged { opacity: 0.55; }
+.hl-options { margin-top: 10px; }
+.hl-options label { display: block; margin: 6px 0; }
+.hl-options input[type="number"] { width: 5em; }
+.chat-star { padding: 0 6px; min-height: 24px; margin-right: 4px; }

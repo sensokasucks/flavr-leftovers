@@ -623,19 +623,35 @@
     return { buckets, keys };
   }
 
+  // Names styles: chatters the streamer highlighted on stream (Core's Highlighted message,
+  // core/highlights.py) come first under their own heading and are left out of the list below.
+  // Movie styles get them as a "Featured" department from core/cast.py instead.
+  function featuredSplit(chatters) {
+    const featured = chatters.filter((c) => c.featured)
+      .sort((a, b) => (Number(a.featured_at) || 0) - (Number(b.featured_at) || 0));
+    return { featured, rest: featured.length ? chatters.filter((c) => !c.featured) : chatters };
+  }
+
+  function featuredLabel() {
+    return theme.featured_label || "Featured";
+  }
+
   function renderNamesBody(opts) {
-    const chatters = roster.chatters || [];
-    if (!chatters.length) return '<div class="empty">Waiting for chat</div>';
+    const all = roster.chatters || [];
+    if (!all.length) return '<div class="empty">Waiting for chat</div>';
     if (isMovie()) return renderMovieBody(opts);
     const n = cols();
+    const { featured, rest: chatters } = featuredSplit(all);
+    const top = featured.length ? heading(featuredLabel(), opts) + grid(featured, n, opts) : "";
+    if (!chatters.length) return top;
     if (theme.group_by_platform) {
       const { buckets, keys } = platformBuckets(chatters);
-      return keys.map((p) =>
+      return top + keys.map((p) =>
         '<div class="plat-block"><div class="plat-h ' + esc(p) + '">' +
         esc(PLATFORM_LABEL[p] || p) + "</div>" + grid(buckets[p], n, opts) + "</div>"
       ).join("");
     }
-    return heading(theme.section_label || "Chatters", opts) + grid(chatters, n, opts);
+    return top + heading(theme.section_label || "Chatters", opts) + grid(chatters, n, opts);
   }
 
   // Crawls: the whole list as one tall block in #reel.
@@ -704,16 +720,21 @@
       }
       if (c.thanks.length) push(heading("Special Thanks", opts) + crewBlock(c.thanks, opts));
       if (c.legal.length) push(legalBlock(c.legal, opts));
-    } else if (theme.group_by_platform) {
-      const { buckets, keys } = platformBuckets(chatters);
-      keys.forEach((p) => {
-        chunk(buckets[p], per).forEach((part) => {
-          push('<div class="plat-h ' + esc(p) + '">' + txt(PLATFORM_LABEL[p] || p, opts) + "</div>" + grid(part, n, opts));
-        });
-      });
     } else {
-      const label = theme.section_label || "Chatters";
-      chunk(chatters, per).forEach((part) => push(heading(label, opts) + grid(part, n, opts)));
+      // names styles: the Featured page(s) first (featuredSplit), then everyone else
+      const { featured, rest } = featuredSplit(chatters);
+      chunk(featured, per).forEach((part) => push(heading(featuredLabel(), opts) + grid(part, n, opts)));
+      if (theme.group_by_platform) {
+        const { buckets, keys } = platformBuckets(rest);
+        keys.forEach((p) => {
+          chunk(buckets[p], per).forEach((part) => {
+            push('<div class="plat-h ' + esc(p) + '">' + txt(PLATFORM_LABEL[p] || p, opts) + "</div>" + grid(part, n, opts));
+          });
+        });
+      } else {
+        const label = theme.section_label || "Chatters";
+        chunk(rest, per).forEach((part) => push(heading(label, opts) + grid(part, n, opts)));
+      }
     }
 
     if (theme.footer || ratingLine()) push(footerBlock(opts));
@@ -1308,7 +1329,16 @@
     const chatters = roster.chatters || [];
     const bits = ['<span class="tick-title">' + esc(theme.title || "Thanks for watching") + "</span>"];
     if (!chatters.length) bits.push('<span class="name">Waiting for chat</span>');
-    else chatters.forEach((c) => bits.push(nameCell(c, {})));
+    else {
+      // highlighted chatters first, under their own label (featuredSplit)
+      const { featured, rest } = featuredSplit(chatters);
+      if (featured.length) {
+        bits.push('<span class="tick-title">' + esc(featuredLabel()) + "</span>");
+        featured.forEach((c) => bits.push(nameCell(c, {})));
+        if (rest.length) bits.push('<span class="tick-title">' + esc(theme.section_label || "Chatters") + "</span>");
+      }
+      rest.forEach((c) => bits.push(nameCell(c, {})));
+    }
     if (ratingLine()) bits.push('<span class="tick-title">' + esc(ratingLine()) + "</span>");
     if (theme.footer) bits.push('<span class="tick-title">' + esc(theme.footer) + "</span>");
     el.innerHTML = bits.join("") + bits.join("");
@@ -1384,7 +1414,11 @@
         });
       }
     } else if (chatters.length) {
-      chunk(chatters, per).forEach((part) => {
+      const { featured, rest } = featuredSplit(chatters);
+      chunk(featured, per).forEach((part) => {
+        sections.push({ title: featuredLabel(), names: part.map(prettyName) });
+      });
+      chunk(rest, per).forEach((part) => {
         sections.push({ title: theme.section_label || "Chatters", names: part.map(prettyName) });
       });
     }

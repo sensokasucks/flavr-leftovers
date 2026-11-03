@@ -30,6 +30,7 @@ from pathlib import Path
 import os
 
 from api.admin_routes import _CORE_ROOT, create_admin_router
+from api.highlight_routes import create_highlight_router
 from core.local_guard import (
     LOOPBACK_ORIGIN_REGEX,
     LocalGuard,
@@ -429,6 +430,10 @@ def create_app(core_state: "CoreState") -> FastAPI:
             if looks is not None:
                 # Stream Rooms' bubble and silhouette looks (core/audience_looks.py); overlays ignore it
                 await ws.send_json({"type": "audience_looks", "data": looks.payload()})
+            highlights = getattr(core_state, "highlights", None)
+            if highlights is not None:
+                # what /overlay/highlight.html shows (and whose seat glows in Stream Rooms)
+                await ws.send_json({"type": "highlight", "data": highlights.state()})
             credits = getattr(core_state, "credits", None)
             if credits:
                 await ws.send_json({"type": "credits_theme", "data": credits.theme})
@@ -658,6 +663,8 @@ def create_app(core_state: "CoreState") -> FastAPI:
 
     # Admin API + dashboard
     app.include_router(create_admin_router(core_state))
+    # Highlighted message (core/highlights.py): /api/admin/highlight*
+    app.include_router(create_highlight_router(core_state, _CORE_ROOT))
 
     admin_dir = Path(__file__).resolve().parent.parent / "admin"
     if admin_dir.is_dir():
@@ -719,6 +726,7 @@ class CoreState:
         self.core = None
         self.reactions = None
         self.activity = None     # core.activity.ActivityLog: the Live page Stream events window
+        self.highlights = None   # core.highlights.HighlightBoard: the Highlighted message overlay
         self.chat_games = None
         self.avatars = None
         self.paid = None         # core.paid.PaidLog (Admin → Paid)

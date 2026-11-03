@@ -66,6 +66,7 @@ try:
     from core.store import Store
     from core.local_guard import is_placeholder_token, resolve_admin_token
     from core.credits import CreditsEngine
+    from core.highlights import HighlightBoard
     from core.avatar_store import AvatarStore
     from core.media_library import default_library
     from core.widget_store import default_store as default_widgets
@@ -194,6 +195,13 @@ class StreamCore:
         self.state.store = self.store
         self.credits = CreditsEngine(config, ROOT)
         self.state.credits = self.credits
+        # Highlighted message (core/highlights.py): the chat line the streamer put on the
+        # lower-third overlay, its queue, and the recent lines the chat windows pick from.
+        # Each highlight that reaches the screen is also "Featured" in the end credits.
+        self.highlights = HighlightBoard(config)
+        self.highlights.on_change = self._send_highlight
+        self.highlights.on_featured = self._credits_featured
+        self.state.highlights = self.highlights
         # Game plugins (plugins/<id>/): loaded now so their routes exist, started in start()
         self.plugins = PluginManager(
             get_config=lambda: self.state.config or self.config,
@@ -337,6 +345,8 @@ class StreamCore:
         self._credits_task = asyncio.create_task(self._credits_persist_loop(), name="credits-persist")
         self._chat_trim_task = asyncio.create_task(self._chat_trim_loop(), name="chat-trim")
         self._games_task = asyncio.create_task(self._games_loop(), name="chat-games")
+        # Highlighted message auto-hide (highlight.hold_sec)
+        self._highlight_task = asyncio.create_task(self.highlights.run(self._stop), name="highlight-timer")
         if (self.config.get("core") or {}).get("watch_config", True):
             self._config_watch_task = asyncio.create_task(
                 self._config_watch_loop(), name="config-watch"
@@ -638,6 +648,12 @@ class StreamCore:
             except asyncio.CancelledError:
                 pass
             self.chat_games.tick_save()
+        if getattr(self, "_highlight_task", None):
+            self._highlight_task.cancel()
+            try:
+                await self._highlight_task
+            except asyncio.CancelledError:
+                pass
         if getattr(self, "_config_watch_task", None):
             self._config_watch_task.cancel()
             try:
@@ -764,6 +780,8 @@ class StreamCore:
             },
         }
         self.recent_chat.append(payload["data"])
+        # the dashboard / phone chat windows pick highlights from this list
+        self.highlights.note_chat(payload["data"])
         if not hidden:
             self.avatars.note(plat, str(event.user.id), event.user.profile_image_url or "",
                               event.user.username, event.user.display_name, on_ready=self._avatar_ready)
@@ -977,6 +995,19 @@ class StreamCore:
             target_platform=event.platform,
             source="chat_game",
         ))
+
+    def _credits_featured(self, platform: str, username: str, display_name: str, quote: str) -> None:
+        """HighlightBoard.on_featured: a highlight reached the screen. That chatter goes in the end
+        credits' "Featured" section (core/credits.py CreditsEngine.feature) and the credits overlay
+        gets the new roster."""
+        if self.credits.feature(platform, username, display_name, quote) and self.state.ws_manager:
+            self.state.ws_manager.push_roster(self.credits.snapshot)
+
+    async def _send_highlight(self, state: dict) -> None:
+        """HighlightBoard.on_change: the highlight on screen or its queue changed. Sent to every
+        /ws client as {"type": "highlight"}: /overlay/highlight.html draws it, Stream Rooms makes
+        that chatter's seat glow, the dashboard's Highlighted card follows it."""
+        await self._ws_broadcast({"type": "highlight", "data": state})
 
     def _send_audience_looks(self, payload: dict) -> None:
         """AudienceLooks.on_change: the looks were saved; send them to every /ws client (Stream Rooms
@@ -1329,6 +1360,14 @@ class StreamCore:
         except Exception:
             log.exception("store.submit_chat failed")
         await self._note_paid_chat(event, "", flagged=True)   # money is never missed
+        # The streamer's own chat windows (dashboard / phone) still show the line, marked 🚩;
+        # it can't be highlighted (core/highlights.py)
+        u = event.user
+        self.highlights.note_chat({
+            "platform": event.platform.value, "message_id": event.message_id,
+            "message": event.message, "timestamp": event.timestamp, "emotes": list(event.emotes or []),
+            "user": {"id": u.id, "username": u.username, "display_name": u.display_name, "color": u.color},
+        }, flagged=True)
         if flagged.get("new"):
             u = event.user
             await self.hide_flagged(event.platform.value, str(u.id or ""), u.username, u.display_name)
@@ -1461,6 +1500,12 @@ class StreamCore:
         gone = matching_recent(self.recent_chat, platform, user_id, username, display_name)
         for item in gone:
             self.recent_chat.remove(item)
+        # off the highlight overlay and its queue too, and marked 🚩 in the chat windows
+        on_screen = self.highlights.current
+        before = (on_screen, len(self.highlights.queue))
+        self.highlights.forget_user(platform, user_id, username)
+        if before != (self.highlights.current, len(self.highlights.queue)):
+            await self.highlights.changed()
         try:
             if self.credits.forget(platform, username, display_name) and self.state.ws_manager:
                 self.state.ws_manager.push_roster(self.credits.snapshot)
