@@ -5,7 +5,7 @@ Home: `fridge-stream-core/core/highlights.py` (HighlightBoard), `api/highlight_r
 ## Must keep
 
 - [ ] One highlight on screen at a time; more wait in a queue (`QUEUE_MAX` 20, oldest waiting dropped). **Next** = current off, next on; **Clear** = screen and queue empty; × removes one waiting.
-- [ ] `highlight.hold_sec` (0..600, default 0 = until Next / Clear) is timed by Core (`HighlightBoard.run`), never by the overlay. `show_avatar` default on. `read_aloud` exists in config, default **off**, nothing uses it until TTS is built.
+- [ ] `highlight.hold_sec` (0..600, default 0 = until Next / Clear) is timed by Core (`HighlightBoard.run`), never by the overlay. `show_avatar` default on. `read_aloud` default **off**; it is the same switch as the TTS page's "Highlighted message" trigger (the TTS settings save writes both). `on_shown` (set by main.py to `TtsEngine.on_highlight`) runs when a highlight reaches the screen; see [tts.md](tts.md).
 - [ ] Every change broadcasts `{"type": "highlight", "data": HighlightBoard.state()}` on `/ws` (`current`, `queue`, `queue_len`, `hold_sec`, `show_avatar`); new sockets get it on connect. Stream Rooms uses `current.user` / `current.platform` for the seat glow.
 - [ ] Highlights are built by `clean_item()`: known fields only, strings clipped, emote / picture links must be http(s), avatar_local must be `/avatars/...`, colours must be `#hex`. The overlay escapes all text too (it shares an origin with `/admin`).
 - [ ] Red-flagged chatters can't be highlighted (409), and `main.py hide_flagged` takes a newly flagged chatter off the screen and queue (`forget_user`).

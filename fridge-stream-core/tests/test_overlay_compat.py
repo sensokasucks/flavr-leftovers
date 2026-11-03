@@ -157,7 +157,8 @@ class AlertsPage(unittest.TestCase):
     def test_builder_offers_the_filters(self):
         keys = {p["key"] for p in by_id("alerts")["params"]}
         for k in ("platforms", "kinds", "hide", "group", "min", "min_bits", "min_kicks", "tests", "duration",
-                  "sound", "volume", "image", "message", "layout", "align", "queue", "css", "tiers", "in", "out"):
+                  "sound", "volume", "tts", "tts_volume", "image", "message", "layout", "align", "queue", "css", "tiers",
+                  "in", "out"):
             self.assertIn(k, keys)
         kinds = {o[0] for o in next(p for p in by_id("alerts")["params"] if p["key"] == "kinds")["options"]}
         from core.alerts import KINDS

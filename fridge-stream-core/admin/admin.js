@@ -22,6 +22,7 @@
  *   Stored files   (files)   /api/admin/media
  *   Chat widgets   (widgets) /api/admin/widgets
  *   Audience looks (looks)   in admin/audience-looks.js: /api/admin/audience-looks (Stream Rooms' bubbles + silhouettes)
+ *   Read aloud (tts)         in admin/tts.js: /api/admin/tts... (also the Live controls "Read aloud" card)
  *   Integrations   (integrations)  /api/admin/integrations, /commands/test, /games/<id>/...
  *   Users & points (users)   /api/admin/users, /users/<id>/points|link|merge|notes
  *   Chat history   (chat)    /api/admin/chat, /chat/export, /chat/clear
@@ -520,6 +521,8 @@
     if (tabId === "live") {
       loadLive();
       loadFun();
+      // the "Read aloud" card (admin/tts.js), shown only while text-to-speech is on
+      if (window.TtsPage) window.TtsPage.openLive();
     }
     if (tabId === "fun") loadFun();
     if (tabId === "status") loadStatus();
@@ -534,6 +537,8 @@
     if (tabId === "widgets") loadWidgets();
     // Audience looks lives in its own file (admin/audience-looks.js, loaded before this one)
     if (tabId === "looks" && window.AudienceLooksPage) window.AudienceLooksPage.open();
+    // Read aloud (TTS) lives in its own file (admin/tts.js, loaded before this one)
+    if (tabId === "tts" && window.TtsPage) window.TtsPage.open();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "chat") {
@@ -2054,6 +2059,8 @@
       viewers: optNum("alert-viewers"),
       duration_ms: optNum("alert-duration"),
       item: ($("alert-item") && $("alert-item").value.trim()) || "",
+      // the "Read aloud too" tick: core/tts.py reads this test alert even if its trigger is off
+      read_aloud: !!($("alert-read-aloud") && $("alert-read-aloud").checked),
     };
     const btn = $("alert-fire");
     if (btn) btn.disabled = true;

@@ -67,6 +67,7 @@ try:
     from core.local_guard import is_placeholder_token, resolve_admin_token
     from core.credits import CreditsEngine
     from core.highlights import HighlightBoard
+    from core.tts import TtsEngine
     from core.avatar_store import AvatarStore
     from core.media_library import default_library
     from core.widget_store import default_store as default_widgets
@@ -278,6 +279,23 @@ class StreamCore:
         # Paid list: every paid message, tip and sub with a tick box (core/paid.py, Admin → Paid)
         self.paid = PaidLog(lambda: self.store)
         self.state.paid = self.paid
+        # Text-to-speech (core/tts.py): lines go to the streamer's own TTS server and the audio is
+        # played by the alerts overlay. Off until switched on (Setup → Read aloud (TTS)).
+        self.tts = TtsEngine(
+            get_config=lambda: self.state.config or self.config,
+            data_dir=ROOT / "data",
+            broadcast=self._ws_broadcast,
+            note=self.bus.note,
+            store=self.store,
+            is_admin=lambda user: self.perms.has_permission(user, "admin"),
+            prefix=lambda: self.router.prefix,
+            red_flag_phrases=lambda: list(self.red_flags.phrases),
+        )
+        self.state.tts = self.tts
+        # a game plugin's ctx.say(...) (core/plugin_api.py PluginContext.say) lands here
+        self.bus.say = self.tts.say_plugin
+        # a highlight reaching the screen is read aloud when that trigger is on
+        self.highlights.on_shown = self.tts.on_highlight
 
         self._metrics_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
@@ -347,6 +365,8 @@ class StreamCore:
         self._games_task = asyncio.create_task(self._games_loop(), name="chat-games")
         # Highlighted message auto-hide (highlight.hold_sec)
         self._highlight_task = asyncio.create_task(self.highlights.run(self._stop), name="highlight-timer")
+        # Text-to-speech worker: one line at a time; re-checks a "down" server every 30 s
+        self._tts_task = asyncio.create_task(self.tts.run(self._stop), name="tts-worker")
         if (self.config.get("core") or {}).get("watch_config", True):
             self._config_watch_task = asyncio.create_task(
                 self._config_watch_loop(), name="config-watch"
@@ -690,8 +710,8 @@ class StreamCore:
         """Every chat line from every platform (EventBus ``on_chat``). Order matters:
 
         flags / red flags (may hide the line) -> overlay broadcast + catch-up history ->
-        credits -> Paid list / paid alert -> chat log + points -> reactions -> chat games ->
-        command router (Core command, or ``publish_execute`` to the game plugins).
+        credits -> Paid list / paid alert -> chat log + points -> !tts / chat read aloud (core/tts.py)
+        -> reactions -> chat games -> command router (Core command, or ``publish_execute`` to the game plugins).
         """
         # Red-flagged chatters (or the line that flags them) never reach an overlay or Stream Rooms
         live = getattr(self.state, "config", None) or self.config
@@ -831,6 +851,24 @@ class StreamCore:
         name = (event.command_name or "").lower() if is_cmd else ""
         router_owns = bool(is_cmd and (name == "permit" or self.router.find(name)))
         taken = False
+        # !tts (core/tts.py handle_command): read the chatter's message aloud, for points
+        if is_cmd and not router_owns:
+            try:
+                taken, answer = await self.tts.handle_command(event)
+                if answer:
+                    await self._reaction_reply(event, answer)
+            except Exception:
+                log.exception("!tts failed")
+        if taken:
+            self.metrics.record_command()
+            return
+        if not is_cmd:
+            # chosen chat lines read aloud (tts.triggers.chat: who, 1 in N, gap), before reactions
+            # and chat games so a line with a reaction emoji is still read
+            try:
+                self.tts.on_chat(event)
+            except Exception:
+                log.exception("tts chat line failed")
         try:
             taken = await self.reactions.handle_chat(event, router_owns_command=router_owns)
         except Exception:
@@ -1665,6 +1703,15 @@ class StreamCore:
         elif payload.get("source") == "chat" and payload.get("kind") == "jewels":
             # a YouTube gift arrives as a chat line; its alert is where the gifter gets points
             await self._award_alert_points(payload)
+        # Text-to-speech: queue this alert's voice when its trigger is on; "tts" tells the alerts
+        # overlay to keep the alert up until the voice has played (or wait_ms has passed)
+        try:
+            voice = self.tts.on_alert(payload)
+        except Exception:
+            log.exception("tts alert failed")
+            voice = None
+        if voice:
+            payload["tts"] = voice
         self.recent_alerts.append(payload)
         if len(self.recent_alerts) > self.recent_alerts_max:
             del self.recent_alerts[: -self.recent_alerts_max]

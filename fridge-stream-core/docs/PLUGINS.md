@@ -161,6 +161,7 @@ class MyGame(BasePlugin):
 | `await ctx.reply(platform, text, to_user)` | say something in chat as Core |
 | `await ctx.alert(payload)` | send an alert to the alerts overlay |
 | `ctx.activity(text, kind="game")` | add a line to the Live controls page's Stream events window ("game" by default, "error" for a problem the streamer should see) |
+| `await ctx.say(text, voice="")` | read `text` aloud on the alerts overlay through the streamer's TTS server (Setup → Read aloud (TTS)); returns False when TTS or its "Game plugins" trigger is off, or the line is filtered (blocked words). `voice` empty = the trigger's voice, else the main voice |
 | `ctx.broadcast` | send a WebSocket message to every overlay |
 
 Optional methods Core uses when they exist:
