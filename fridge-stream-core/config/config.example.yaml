@@ -67,6 +67,22 @@ youtube:
   poll_interval_sec: 0           # seconds between chat checks; 0 = what YouTube suggests.
                                  # official mode never goes faster than YouTube asks, and every
                                  # check spends API quota (slower = the daily quota lasts longer)
+  # Optional: your own Google OAuth client ("TVs and Limited Input devices") for Connect
+  # YouTube, so Core can post its replies into the live chat. docs/YOUTUBE_APP_SETUP.md.
+  client_id: ""
+  client_secret: ""                # keep private; never share or show on stream
+
+# Where Core's replies (command answers, game and chat game lines) go, per platform:
+#   auto    - into the platform's real chat when Core is signed in to post there
+#             (Connect Kick / Connect Twitch / Connect YouTube), else on the overlay
+#   chat    - into the real chat only (nothing on the overlay, even if posting fails)
+#   overlay - only on the chat overlay / replies overlay / Stream Rooms reply screen
+#   both    - into the real chat and on the overlay
+# Also in Admin -> Settings -> Core + chat platforms.
+replies:
+  kick: auto
+  twitch: auto
+  youtube: auto
 
 # Chat smoothing: hold a platform's chat for a moment and let it out at an even pace, so a
 # YouTube clump (one check's worth of chat) doesn't land all at once. Kick and Twitch push each

@@ -232,6 +232,13 @@ LOOKUP_RETRY_FIRST = 15.0
 LOOKUP_RETRY_MAX = 120.0
 
 
+def _slug_key(name: str) -> str:
+    """A Kick account name or channel slug in one comparable form: "Sensoka_FlaVR",
+    "sensoka-flavr" and "kick.com/sensoka-flavr" all become "sensoka-flavr" (Kick's slugs are
+    the lower-case name with "_" turned into "-"). Used by ``KickAdapter.can_send``."""
+    return kick_slug(name or "").lower().replace("_", "-")
+
+
 def _opt_int(raw: Any, name: str) -> Optional[int]:
     """A numeric id from config, or None. A typo is logged instead of stopping Core."""
     if raw in (None, "", 0, "0"):
@@ -246,9 +253,9 @@ def _opt_int(raw: Any, name: str) -> Optional[int]:
 class KickAdapter(BaseAdapter):
     """Kick chat (Pusher WebSocket) plus a viewer-count poll every ``kick.poll_viewer_interval_sec``.
 
-    ``send_message`` posts into the channel through the official API once the streamer has
-    pressed Connect Kick (adapters/kick_auth.py); without that sign-in it returns False.
-    Nothing in Core calls it for command replies yet.
+    ``send_message`` posts Core's replies into the channel through Kick's official API once the
+    streamer has pressed Connect Kick (adapters/kick_auth.py); main.py ``_post_reply`` calls it
+    and falls back to the overlay when ``can_send`` says no or the post fails.
     """
 
     platform = Platform.KICK
@@ -359,18 +366,43 @@ class KickAdapter(BaseAdapter):
         self.avatars.stop()
         log.info("Kick adapter stopped")
 
-    async def send_message(self, text: str, reply_to: Optional[ChatEvent] = None) -> bool:
-        """Post ``text`` into the signed-in streamer's Kick chat (as a reply to ``reply_to`` when given).
+    def can_send(self) -> tuple[bool, str]:
+        """(can Core post into this Kick chat now, why not). Asked by main.py ``_post_reply``.
 
-        Uses the shared KickAuth (``kick.client_id`` / ``client_secret`` + Connect Kick). The Kick
-        sign-in posts into the channel of whoever signed in, which should be this adapter's
-        ``kick.channel_slug``.
+        Needs Connect Kick with the ``chat:write`` scope, signed in as the account whose channel
+        this adapter reads (``kick.channel_slug``): Kick posts into the signed-in account's own
+        channel, so with another account the reply would land in the wrong chat.
         """
         auth = get_kick_auth(self.config)
-        reply_id = (reply_to.message_id or "") if reply_to is not None else ""
-        ok, why = await auth.send_chat(text, reply_to_message_id=reply_id)
+        if not auth.connected:
+            return False, "Kick is not connected (Settings → Kick → Connect Kick)"
+        if "chat:write" not in (auth.status().get("scopes") or []):
+            return False, "the Kick sign-in can't post in chat; press Reconnect on the Kick card"
+        who = _slug_key(auth.login)
+        if who and self.slug and who != _slug_key(self.slug):
+            return False, (f"Kick is connected as {auth.login}, but Core reads kick.com/{self.slug}; "
+                           "connect with the channel's own account")
+        return True, ""
+
+    async def send_message(self, text: str, reply_to_message_id: str = "",
+                           reply_to_user: str = "") -> bool:
+        """Post ``text`` into the streamer's Kick chat through Kick's official API.
+
+        Called by main.py ``_post_reply`` (command answers, game and chat game lines) after
+        ``can_send``. With ``reply_to_message_id`` (the Kick message id of the line being
+        answered) Kick shows it as a reply to that line, so ``reply_to_user`` isn't needed.
+        Uses the shared KickAuth (``kick.client_id`` / ``client_secret`` + Connect Kick).
+        """
+        auth = get_kick_auth(self.config)
+        # noted before posting: Pusher can deliver the echo before Kick's HTTP answer arrives
+        self._remember_sent(text)
+        ok, why = await auth.send_chat(text, reply_to_message_id=reply_to_message_id or "")
         if not ok:
-            log.debug("Kick send_message not sent: %s", why)
+            self._forget_sent(text)
+            self.last_send_error = why
+            log.info("Kick reply not posted, showing it on the overlay instead: %s", why)
+        else:
+            self.last_send_error = ""
         return ok
 
     # ------------------------------------------------------------------

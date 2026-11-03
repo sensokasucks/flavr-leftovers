@@ -1316,6 +1316,37 @@
         </label>
       </fieldset>
 
+      <!-- Where Core's replies go, per platform (config replies.*, main.py CoreApp._reply_mode).
+           Option values must match main.py REPLY_MODES. -->
+      <fieldset class="cfg-card">
+        <legend>Where Core's replies go</legend>
+        <p class="hint">Command answers, game lines (like the Schedule I name vote) and chat game messages. <strong>Auto</strong> posts them into the platform's real chat once you have pressed Connect on that platform's card, and shows them on the chat overlay, the replies overlay and the Stream Rooms reply screen only when Core can't post (not connected, or the platform refused the message).</p>
+        <label>Kick
+          <select id="cfg-replies-kick">
+            <option value="auto">Auto: real chat when connected, else overlay</option>
+            <option value="chat">Real chat only</option>
+            <option value="overlay">Overlay only (never post)</option>
+            <option value="both">Real chat and overlay</option>
+          </select>
+        </label>
+        <label>Twitch
+          <select id="cfg-replies-twitch">
+            <option value="auto">Auto: real chat when connected, else overlay</option>
+            <option value="chat">Real chat only</option>
+            <option value="overlay">Overlay only (never post)</option>
+            <option value="both">Real chat and overlay</option>
+          </select>
+        </label>
+        <label>YouTube
+          <select id="cfg-replies-youtube">
+            <option value="auto">Auto: real chat when connected, else overlay</option>
+            <option value="chat">Real chat only</option>
+            <option value="overlay">Overlay only (never post)</option>
+            <option value="both">Real chat and overlay</option>
+          </select>
+        </label>
+      </fieldset>
+
       <fieldset class="cfg-card">
         <legend>Kick</legend>
         <p class="hint">Public chat socket + viewer poll. Chatroom id is auto-detected and saved when possible.</p>
@@ -1369,7 +1400,7 @@
 
       <fieldset class="cfg-card">
         <legend>Twitch</legend>
-        <p class="hint">Chat is read without a login. Connect your Twitch account for chatter profile pictures and the paid events chat doesn't carry.</p>
+        <p class="hint">Chat is read without a login. Connect your Twitch account so Core can post its replies into your chat, and for chatter profile pictures and the paid events chat doesn't carry.</p>
         <label class="check"><input id="cfg-tw-enabled" type="checkbox" /> Enabled</label>
         <label>Channel <span class="field-help">twitch.tv/<strong>this</strong></span>
           <input id="cfg-tw-channel" type="text" placeholder="twitch.tv/THIS_PART" />
@@ -1387,9 +1418,11 @@
           </div>
           <div class="tw-auth-buttons">
             <button type="button" id="tw-auth-connect">Connect Twitch</button>
+            <button type="button" id="tw-auth-test" class="secondary" hidden>Send test message</button>
             <button type="button" id="tw-auth-disconnect" class="secondary" hidden>Disconnect</button>
             <button type="button" id="tw-auth-cancel" class="secondary" hidden>Cancel</button>
           </div>
+          <p class="hint" id="tw-test-state"></p>
           <p class="hint">The sign-in happens between this PC and Twitch; the token is kept in <code>data\twitch_token.json</code> and sent nowhere else. Core asks only to read chat, to post in it, and to read the channel's bits, charity and Hype Train events.</p>
         </div>
         <details class="tw-advanced">
@@ -1424,6 +1457,46 @@
         <label title="YouTube is read by asking for new chat every few seconds. Empty or 0 = as often as YouTube suggests.">Check for new chat every (seconds) <span class="field-help">Empty = what YouTube suggests (usually a few seconds). Official mode never goes faster than YouTube asks, and every check spends API quota, so slower makes the daily quota last longer.</span>
           <input id="cfg-yt-poll" type="number" min="0" max="30" step="0.5" placeholder="auto" />
         </label>
+        <!-- YouTube sign-in (admin.js "YouTube account", adapters/youtube_auth.py). Only for
+             posting Core's replies into the live chat; reading chat above needs no sign-in.
+             Each streamer makes their own Google client (steps below, docs/YOUTUBE_APP_SETUP.md). -->
+        <div class="tw-auth" id="yt-auth">
+          <p class="tw-auth-state" id="yt-auth-state">YouTube account: checking…</p>
+          <p class="hint">Optional. Chat is read without it. Connecting lets Core post its replies into your live chat (each reply uses 50 of your Google project's 10,000 free daily API units, about 200 replies a day).</p>
+          <details class="kick-help" id="yt-app-help">
+            <summary>How to make your Google client (about 10 minutes, once)</summary>
+            <ol class="hint">
+              <li>Go to <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">console.cloud.google.com</a>, sign in with any Google account and make a new project, for example "My Stream Core".</li>
+              <li>In that project open <a href="https://console.cloud.google.com/apis/library/youtube.googleapis.com" target="_blank" rel="noopener">YouTube Data API v3</a> and press <strong>Enable</strong>.</li>
+              <li>Open <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener">Google Auth Platform</a> (OAuth consent screen) and press <strong>Get started</strong>: any app name, your e-mail, Audience <strong>External</strong>.</li>
+              <li>Under <strong>Audience</strong>, press <strong>Publish app</strong> (status "In production"). Left in "Testing", Google signs Core out every 7 days. Google will show an "unverified app" warning when you connect; that is normal for your own app: press Advanced, then Go to (your app).</li>
+              <li>Under <strong>Clients</strong>, press <strong>Create client</strong>, type <strong>TVs and Limited Input devices</strong>, any name, then <strong>Create</strong>.</li>
+              <li>Copy the <strong>Client ID</strong> and <strong>Client secret</strong> into the boxes below and press <strong>Save</strong> at the bottom of this page.</li>
+              <li>Press <strong>Connect YouTube</strong>, open google.com/device, type the code, pick the Google account <strong>that owns your YouTube channel</strong> and press Allow.</li>
+              <li>While you are live (and the Live video box is filled in), press <strong>Send test message</strong>. A line appears in your live chat when it works.</li>
+            </ol>
+            <p class="hint">Keep the Client secret private: don't show it on stream or share it.</p>
+          </details>
+          <label>Client ID
+            <input id="cfg-yt-client-id" type="text" autocomplete="off" placeholder="…apps.googleusercontent.com" />
+          </label>
+          <label>Client Secret
+            <input id="cfg-yt-client-secret" type="password" autocomplete="off" placeholder="from your Google client" />
+          </label>
+          <div class="tw-auth-code" id="yt-auth-code" hidden>
+            <p>Go to <a id="yt-auth-link" href="https://www.google.com/device" target="_blank" rel="noopener">google.com/device</a> and enter this code:</p>
+            <p class="tw-auth-digits" id="yt-auth-digits"></p>
+            <p class="hint">Core notices by itself once you have entered it.</p>
+          </div>
+          <div class="tw-auth-buttons">
+            <button type="button" id="yt-auth-connect">Connect YouTube</button>
+            <button type="button" id="yt-auth-test" class="secondary" hidden>Send test message</button>
+            <button type="button" id="yt-auth-disconnect" class="secondary" hidden>Disconnect</button>
+            <button type="button" id="yt-auth-cancel" class="secondary" hidden>Cancel</button>
+          </div>
+          <p class="hint" id="yt-test-state"></p>
+          <p class="hint">The sign-in happens between this PC and Google; the token is kept in <code>data\youtube_token.json</code> and sent nowhere else.</p>
+        </div>
       </fieldset>
 
       <fieldset class="cfg-card">

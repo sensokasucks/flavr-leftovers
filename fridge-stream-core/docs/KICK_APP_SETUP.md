@@ -1,7 +1,9 @@
 # Making your Kick app (for Connect Kick)
 
 Stream Core reads Kick chat without any sign-in. **Connect Kick** is only needed when you want
-Core to *post* into your Kick chat (the **Send test message** button now, command answers later).
+Core to *post* into your Kick chat: command answers, game lines and chat game messages go into
+the real chat instead of only the overlay (Settings → Core + chat platforms → **Where Core's
+replies go** picks Auto / Real chat only / Overlay only / Both per platform).
 
 Kick doesn't let one app be shared without a secret, and Stream Core's code is public, so every
 streamer makes their own small Kick app. It's free, takes about five minutes, and you only do it

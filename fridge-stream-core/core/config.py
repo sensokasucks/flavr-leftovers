@@ -85,6 +85,23 @@ DEFAULTS: Dict[str, Any] = {
         # How often to ask YouTube for new chat, in seconds. 0 = what YouTube suggests
         # (usually a few seconds). Official mode never goes faster than YouTube asks.
         "poll_interval_sec": 0,
+        # the streamer's own Google OAuth client ("TVs and Limited Input devices") for
+        # "Connect YouTube", which lets Core post replies into the live chat
+        # (adapters/youtube_auth.py, docs/YOUTUBE_APP_SETUP.md). Reading chat never needs it.
+        "client_id": "",
+        "client_secret": "",
+    },
+    # Where Core's replies (command answers, game and chat game lines) go, per platform
+    # (main.py CoreApp._reply_mode; dashboard: Settings → Core + chat platforms):
+    #   auto    = into the platform's real chat when Core is signed in to post there
+    #             (Connect Kick / Connect Twitch / Connect YouTube), else on the overlay
+    #   chat    = into the real chat only (nothing on the overlay, even if posting fails)
+    #   overlay = only on the overlay / Stream Rooms reply screen (never posts)
+    #   both    = into the real chat and on the overlay
+    "replies": {
+        "kick": "auto",
+        "twitch": "auto",
+        "youtube": "auto",
     },
     # Chat smoothing (core/chat_pacer.py): let a platform's chat out at an even pace instead
     # of in clumps. Off by default; max_delay_sec caps how long any line is held.

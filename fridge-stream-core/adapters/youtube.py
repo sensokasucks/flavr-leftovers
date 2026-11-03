@@ -1,5 +1,5 @@
 """
-YouTube Live Chat adapter (read-only).
+YouTube Live Chat adapter (reads chat; posts Core's replies when signed in).
 
 Two modes (config youtube.mode):
 
@@ -16,6 +16,9 @@ Settings live in the ``youtube:`` block of config.yaml. Both modes poll (there i
 turn each item into a ChatEvent / removal / alert through BaseAdapter, and fall back to
 retrying until the stream is live. Helpers: youtube_avatar.py (photo size), youtube_capture.py
 (notes InnerTube fields Core doesn't know yet).
+
+Posting replies (``send_message``, called by main.py ``_post_reply``) needs Connect YouTube
+(adapters/youtube_auth.py, the streamer's own Google client); reading never does.
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ from typing import Any, Optional
 import httpx
 
 from adapters.base import BaseAdapter
+from adapters.youtube_auth import get_auth as get_youtube_auth
 from adapters.youtube_avatar import best_photo
 from adapters.youtube_capture import FieldScout
 from core.event_bus import EventBus
@@ -258,6 +262,42 @@ class YouTubeAdapter(BaseAdapter):
         # gift sender's name -> channel id, from the gift animation that comes with each Jewels gift
         self._gift_senders: OrderedDict[str, str] = OrderedDict()
         self._reached = False  # this attempt got as far as reading chat
+
+    def can_send(self) -> tuple[bool, str]:
+        """(can Core post into this live chat now, why not). Asked by main.py ``_post_reply``.
+        Needs Connect YouTube (youtube.client_id / client_secret + the sign-in) and a live video."""
+        auth = get_youtube_auth(self.config)
+        if not auth.connected:
+            return False, "YouTube is not connected (Settings → YouTube → Connect YouTube)"
+        if not (self.live_chat_id or self.video_id):
+            return False, "no live video set"
+        return True, ""
+
+    async def send_message(self, text: str, reply_to_message_id: str = "",
+                           reply_to_user: str = "") -> bool:
+        """Post ``text`` into the live chat with the YouTube Data API (liveChatMessages.insert,
+        50 quota units each). YouTube chat has no reply threads, so ``reply_to_user`` is put in
+        front as "@name". The chat id comes from ``youtube.live_chat_id`` / official mode, else
+        is looked up from the live video once (YouTubeAuth.live_chat_id)."""
+        auth = get_youtube_auth(self.config)
+        name = (reply_to_user or "").strip().lstrip("@")
+        if name and not text.lower().startswith("@" + name.lower()):
+            text = f"@{name} {text}"
+        chat_id = self.live_chat_id
+        why = ""
+        if not chat_id:
+            chat_id, why = await auth.live_chat_id(self.video_id)
+        ok = False
+        if chat_id:
+            # noted before posting: the next chat check may already carry the echo
+            self._remember_sent(text)
+            ok, why = await auth.send_chat(text, chat_id)
+            if not ok:
+                self._forget_sent(text)
+        self.last_send_error = "" if ok else why
+        if not ok:
+            log.info("YouTube reply not posted, showing it on the overlay instead: %s", why)
+        return ok
 
     async def start(self) -> None:
         """Check the settings, pick the mode and start the poll loop in the background."""

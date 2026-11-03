@@ -96,6 +96,14 @@ class ChatEvent:
     # emote is drawn big) or "animated" (Message Effects). None for ordinary messages.
     highlight: Optional[str] = None
 
+    # True when this line is Stream Core's own reply coming back from the platform: Core posted
+    # it with the streamer's sign-in (main.py _post_reply -> adapter.send_message) and the
+    # platform's chat feed then delivers it like any other line. BaseAdapter._emit sets it by
+    # matching the text against what was sent in the last ECHO_WINDOW_SEC. main.py shows such a
+    # line as a Stream Core line and never runs it as a command, so a reply that starts with
+    # "!" can't trigger anything (it would otherwise run with the streamer's admin rights).
+    from_core: bool = False
+
     def to_dict(self) -> dict:
         """JSON-ready dict with the nested user, as sent to overlays and kept in recent chat."""
         d = asdict(self)
@@ -159,15 +167,18 @@ class ChatReply:
     """
     Outbound message Core wants to send back to chat.
 
-    Adapters that support write (future OAuth / bot tokens) subscribe to
-    EventBus replies and post them. Until then, replies are logged and
-    shown on the chat overlay as a system message.
+    main.py ``_on_reply`` gets every one from the EventBus. When the platform is signed in
+    for posting (Connect Kick / Connect Twitch / Connect YouTube) and ``replies.post_to_chat``
+    is on, the adapter's ``send_message`` posts it into the real chat. Otherwise (or when the
+    post fails) it is shown on the chat overlay, the replies overlay and the Stream Rooms
+    reply screen instead: the overlay is the fallback.
     """
     platform: Platform
     message: str
     reply_to_user: Optional[str] = None
     reply_to_message_id: Optional[str] = None
-    # If set, only this platform should attempt to send; otherwise all write-capable adapters
+    # If set, only this platform is posted to. None = an announcement for everyone: every
+    # running platform that can post gets it (main.py _reply_targets).
     target_platform: Optional[Platform] = None
     is_system: bool = True
     timestamp: float = field(default_factory=time.time)
