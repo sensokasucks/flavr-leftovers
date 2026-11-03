@@ -9,6 +9,8 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.11.2] — 2026-11-03
+
 ### Added
 - **Replies go into the real chat.** Command answers, game lines (like the Schedule I `!mixname` vote), chat game messages, reaction and flag answers are now posted into Kick, Twitch and YouTube chat when Core is signed in to post there, instead of only appearing on the overlay. Kick uses **Connect Kick** (its official chat API, as a threaded reply to the chatter); Twitch uses **Connect Twitch** (Helix "Send Chat Message", threaded too; a sign-in from before posting existed shows "press Reconnect"). The overlay (chat overlay system line, `/overlay/replies.html`, the Stream Rooms reply screen) is now the fallback: used when a platform isn't connected or refuses the message (AutoMod, quota, wrong account). Announcements with no chatter go to every running platform. The reply Core posted comes back through the platform's chat like any line; Core recognises it (`ChatEvent.from_core`), shows it as a Stream Core line, and never runs it as a command, gives it points or answers it with a flag.
 - **Where Core's replies go** (Settings → Core + chat platforms, `replies.kick` / `replies.twitch` / `replies.youtube`): **Auto** (real chat when connected, else overlay; the default), **Real chat only**, **Overlay only** (the old behaviour) or **Real chat and overlay**.
