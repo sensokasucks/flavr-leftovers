@@ -13,6 +13,7 @@
 | Stored files | [stored-files.md](stored-files.md) | `core/media_library.py`, `data/media/`, `/media/`, Stored files page, picture / sound slots |
 | Audience looks | [audience-looks.md](audience-looks.md) | `core/audience_looks.py`, Audience looks page, `audience_looks` `/ws` frames, Stream Rooms' bubble / silhouette keys |
 | Chat widgets | [widgets.md](widgets.md) | `core/widget_store.py`, `/overlay/widget.html`, `/widget-frame/`, Chat widgets page, StreamElements / Streamlabs event shapes |
+| Highlighted message | [highlight.md](highlight.md) | `core/highlights.py`, `api/highlight_routes.py`, `/overlay/highlight.html`, Live controls Highlighted card, `highlight` `/ws` frames |
 | Credits (Core) | [credits-core.md](credits-core.md) | Built-in credits overlay, cast styles, Admin Credits |
 | Gamer Stonks (the market) | [market.md](market.md) | Now a plugin in flavr-game-plugins; what Core still owes it |
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |

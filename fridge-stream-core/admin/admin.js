@@ -1035,6 +1035,150 @@
     };
   }
 
+  // ------------------------------------------------------------------
+  // Live controls "Highlighted message" card (core/highlights.py, api/highlight_routes.py).
+  // Polls GET /api/admin/highlight/recent?after=<seq> and GET /api/admin/highlight every 2 s
+  // while the Live page is open. ★ on a line = POST /api/admin/highlight {platform, message_id};
+  // Next / Clear / × on a queue row change what /overlay/highlight.html shows.
+  // highlightLine() is also used by the ★ on Chat & flags rows (loadChat).
+  // ------------------------------------------------------------------
+  const HL_POLL_MS = 2000;
+  const HL_LINES = 80;            // lines kept in the Recent chat box
+  let hlLast = 0;                 // highest seq seen (sent back as ?after=)
+  let hlLines = [];               // newest first
+  let hlTimer = 0;
+
+  // Kick sends emotes as [emote:ID:NAME] in the text: show just the name here
+  function hlText(text) {
+    return String(text || "").replace(/\[emote:\d+:([^\]]+)\]/g, "$1");
+  }
+
+  function hlWho(row) {
+    const u = row.user || {};
+    return u.display_name || u.username || "?";
+  }
+
+  function renderHighlightState(st) {
+    if (!st) return;
+    const now = $("live-hl-now");
+    if (now) {
+      const c = st.current;
+      now.innerHTML = c
+        ? `<span class="hl-who">${escapeHtml(hlWho(c))}</span>${escapeHtml(hlText(c.message))}`
+        : '<span class="muted">Nothing on screen.</span>';
+    }
+    if ($("live-hl-state")) {
+      $("live-hl-state").textContent = st.current ? "on screen" + (st.queue_len ? `, ${st.queue_len} waiting` : "") : "";
+    }
+    const q = $("live-hl-queue");
+    if (q) {
+      const rows = st.queue || [];
+      q.hidden = !rows.length;
+      q.innerHTML = rows.map((r) =>
+        `<li><strong>${escapeHtml(r.name)}</strong> ${escapeHtml(hlText(r.message))}` +
+        `<button type="button" class="link-btn" data-hl-remove="${Number(r.id)}" title="Take it out of the queue">×</button></li>`
+      ).join("");
+    }
+    const set = st.settings;
+    if (set && $("live-hl-hold") && document.activeElement !== $("live-hl-hold")) {
+      $("live-hl-hold").value = set.hold_sec;
+      $("live-hl-avatar").checked = !!set.show_avatar;
+    }
+  }
+
+  function renderHighlightPick() {
+    const box = $("live-hl-pick");
+    if (!box) return;
+    if (!hlLines.length) {
+      box.innerHTML = '<p class="muted">Chat shows up here as it comes in.</p>';
+      return;
+    }
+    box.innerHTML = hlLines.map((r) =>
+      `<div class="hl-line${r.flagged ? " flagged" : ""}">` +
+      (r.flagged
+        ? '<span title="Red-flagged: stays off stream">🚩</span>'
+        : `<button type="button" class="hl-star" data-hl-seq="${Number(r.seq)}" title="Highlight this on stream">★</button>`) +
+      `<span><span class="hl-who">${escapeHtml(hlWho(r))}</span>${escapeHtml(hlText(r.message))}</span></div>`
+    ).join("");
+  }
+
+  /** Put a chat line on the highlight overlay. ``row`` needs platform + message_id; message / user
+   *  go along so an older saved line (Chat & flags) still works after it left Core's recent list. */
+  async function highlightLine(row) {
+    try {
+      const res = await api("/api/admin/highlight", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ platform: row.platform, message_id: row.message_id || "",
+                               message: row.message || "", user: row.user || {} }),
+      });
+      renderHighlightState(res);
+      setStatus(res.on_screen ? "Highlighted on stream" : `Highlight queued (${res.queue_len} waiting)`);
+    } catch (e) {
+      setStatus(String(e.message || e), false);
+    }
+  }
+
+  async function pollHighlight() {
+    if (!token() || !$("tab-live") || !$("tab-live").classList.contains("active")) return;
+    try {
+      const [recent, st] = await Promise.all([
+        api(`/api/admin/highlight/recent?after=${hlLast}&limit=${HL_LINES}`),
+        api("/api/admin/highlight"),
+      ]);
+      if (recent.reset) hlLines = [];
+      (recent.items || []).forEach((r) => hlLines.unshift(r));
+      hlLines = hlLines.slice(0, HL_LINES);
+      hlLast = recent.last || 0;
+      if (recent.reset || (recent.items || []).length) renderHighlightPick();
+      renderHighlightState(st);
+      if ($("live-hl-pick-state")) $("live-hl-pick-state").textContent = "";
+    } catch (e) {
+      if ($("live-hl-pick-state")) $("live-hl-pick-state").textContent = "paused: " + String(e.message || e);
+    }
+  }
+
+  if ($("live-hl-pick")) {
+    $("live-hl-pick").addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-hl-seq]");
+      if (!b) return;
+      const row = hlLines.find((r) => r.seq === Number(b.dataset.hlSeq));
+      if (row) highlightLine(row);
+    });
+  }
+  if ($("live-hl-queue")) {
+    $("live-hl-queue").addEventListener("click", async (ev) => {
+      const b = ev.target.closest("button[data-hl-remove]");
+      if (!b) return;
+      try {
+        renderHighlightState(await api("/api/admin/highlight/remove", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: Number(b.dataset.hlRemove) }),
+        }));
+      } catch (e) { setStatus(String(e.message || e), false); }
+    });
+  }
+  for (const [id, path] of [["live-hl-next", "next"], ["live-hl-clear", "clear"]]) {
+    if (!$(id)) continue;
+    $(id).onclick = async () => {
+      try {
+        renderHighlightState(await api("/api/admin/highlight/" + path, { method: "POST" }));
+      } catch (e) { setStatus(String(e.message || e), false); }
+    };
+  }
+  if ($("live-hl-save")) {
+    $("live-hl-save").onclick = async () => {
+      try {
+        const res = await api("/api/admin/highlight/settings", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ hold_sec: Number($("live-hl-hold").value) || 0, show_avatar: $("live-hl-avatar").checked }),
+        });
+        $("live-hl-msg").textContent = "Saved.";
+        $("live-hl-hold").value = res.settings.hold_sec;
+      } catch (e) { $("live-hl-msg").textContent = String(e.message || e); }
+    };
+  }
+
   /** Live controls page opened: load everything, then refresh the status every 15 s (activateTab clears the timer on leaving). */
   function loadLive() {
     loadLiveStatus();
@@ -1043,6 +1187,9 @@
     pollFeed();
     // the feed timer checks for itself whether the Live page is showing, so it can stay running
     if (!feedTimer) feedTimer = setInterval(pollFeed, FEED_POLL_MS);
+    // Highlighted message card: same idea, its own timer
+    pollHighlight();
+    if (!hlTimer) hlTimer = setInterval(pollHighlight, HL_POLL_MS);
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(() => {
       if ($("tab-live") && $("tab-live").classList.contains("active")) loadLiveStatus();
@@ -3293,8 +3440,15 @@
             : escapeHtml(r.display_name || r.username)) +
           `</td>` +
           `<td>${escapeHtml(r.platform)}</td>` +
-          `<td>${escapeHtml(r.message)}</td>`;
+          `<td>${r.flagged ? "" : '<button type="button" class="chat-star" title="Highlight this on stream (Highlighted message overlay)">★</button>'}${escapeHtml(r.message)}</td>`;
         const who = tr.querySelector(".chat-who");
+        const star = tr.querySelector(".chat-star");
+        // Highlighted message (Live controls card): Core finds the line by message_id when it is
+        // recent (emotes kept); older lines go as plain text
+        if (star) star.onclick = () => highlightLine({
+          platform: r.platform, message_id: r.message_id || "", message: r.message,
+          user: { id: r.platform_user_id, username: r.username, display_name: r.display_name },
+        });
         if (who) who.onclick = () => openPerson(r.user_id);
         tb.appendChild(tr);
       }

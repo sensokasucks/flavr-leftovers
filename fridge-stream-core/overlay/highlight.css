@@ -1,0 +1,70 @@
+/*
+ * Highlighted message overlay look (/overlay/highlight.html, drawn by highlight.js).
+ * A lower-third bar: picture on the left, name + platform letter on top, the message below.
+ * Change the look with the variables below in OBS Custom CSS, or with a saved chat
+ * stylesheet (?css=<name>), which styles the same .msg / .name / .message classes.
+ */
+:root {
+  --hl-bg: rgba(12, 15, 24, 0.9);
+  --hl-accent: #a55bff;          /* the stripe on the left and the name underline */
+  --hl-text: #f3f5fa;
+  --hl-size: 34px;               /* message text size */
+  --hl-name-size: 26px;
+  --hl-max-width: 1400px;
+  --hl-margin: 64px;             /* gap from the bottom (or top with ?pos=top) of the frame */
+  --hl-avatar: 96px;
+  --hl-emote: 1.4em;
+}
+
+html, body { margin: 0; background: transparent; overflow: hidden; }
+
+.hl-root {
+  position: fixed;
+  left: 0; right: 0; bottom: var(--hl-margin);
+  display: flex; justify-content: center;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  pointer-events: none;
+}
+.hl-root.top { bottom: auto; top: var(--hl-margin); }
+
+.hl {
+  display: flex; align-items: center; gap: 22px;
+  max-width: var(--hl-max-width);
+  margin: 0 40px;
+  padding: 18px 30px 20px 22px;
+  background: var(--hl-bg);
+  border-left: 8px solid var(--hl-accent);
+  border-radius: 14px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+  color: var(--hl-text);
+}
+.hl[hidden] { display: none; }
+.hl.in { animation: hlIn 0.45s cubic-bezier(.2, .9, .3, 1.2) both; }
+.hl.out { animation: hlOut 0.35s ease-in both; }
+@keyframes hlIn { from { opacity: 0; transform: translateY(40px) scale(.96); } to { opacity: 1; transform: none; } }
+@keyframes hlOut { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(30px); } }
+
+.hl .avatar {
+  width: var(--hl-avatar); height: var(--hl-avatar);
+  border-radius: 50%; object-fit: cover; flex: none;
+  border: 3px solid var(--hl-accent);
+}
+.hl .avatar[hidden] { display: none; }
+.hl .body { min-width: 0; }
+.hl .meta { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.hl .name { font-size: var(--hl-name-size); font-weight: 700; }
+.hl .plat {
+  font-size: 15px; font-weight: 700; padding: 2px 7px; border-radius: 6px;
+  background: #2a3140; color: #fff;
+}
+.hl .plat-kick { background: #53fc18; color: #081005; }
+.hl .plat-twitch { background: #9146ff; }
+.hl .plat-youtube { background: #ff0033; }
+.hl .paid { font-size: 18px; font-weight: 700; color: #ffd166; }
+.hl .message {
+  font-size: var(--hl-size); line-height: 1.3;
+  overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.hl .emote { height: var(--hl-emote); vertical-align: middle; }
+.hl .emote.sticker, .hl .emote.gift { height: 2.4em; }

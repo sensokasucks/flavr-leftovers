@@ -105,6 +105,7 @@ The rules Sen set for keeping the menu tidy (also in the project instructions). 
 - [ ] **Growing boxes go below the controls** and keep a fixed height (Stream events window `.live-feed`), so new lines never move buttons.
 - [ ] **Old links keep working.** Page ids (`#credits`, `#redflags`, `#config/reactions` ...) never change; a page that moves into a plugin goes in `MOVED_TABS`.
 - [ ] **Top-bar platform lights** (`#top-lights`, `renderTopLights`) for every switched-on chat platform; clicking one opens Connect platforms › Connection check.
+- [ ] **Highlighted message card** (Live controls, `#live-hl-card`): on-screen line, queue with ×, Next / Clear, a Recent chat box with ★ (fixed height `.hl-pick`, polls `/api/admin/highlight/recent` + `/api/admin/highlight` every 2 s while the page is open) and Options (hold seconds, picture). Chat & flags rows have a ★ too (`highlightLine`); red-flagged rows have none. See [highlight.md](highlight.md).
 - [ ] **Stream events window** (Live controls, `#live-feed-card`): polls `GET /api/admin/activity?after=<id>` every 3 s while the page is open (core/activity.py). Kinds alert / redeem / command / game / flag / error match the filter buttons; plugins add lines with `ctx.activity(text)`. Pause / Clear only affect the window. Tests: `tests/test_activity.py`.
 - [ ] To do (not built yet): an overlay whose source is off (e.g. Gamer Stonks turned off) goes blank instead of showing old numbers or an error, and its link in Overlay links is greyed out with "off".
 

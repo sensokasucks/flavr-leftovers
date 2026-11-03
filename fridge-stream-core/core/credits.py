@@ -128,6 +128,10 @@ class CreditsEngine:
             "generation": 0,
         }
         self.session_path = root / "data" / "credits_session.json"
+        # Chatters the streamer highlighted on stream this session (core/highlights.py), by
+        # "platform:username" -> {"quote": '"short quote"', "at": unix seconds}, oldest first.
+        # Saved in the session file; the cast puts them in a "Featured" section.
+        self.featured: dict[str, dict] = {}
         self.cast = CastBoard(root, allow_alert_groups=True)
         self.command_permission = "mod"
         # Optional hook (main.py): chat games' {"titles": {chatter key: title}, "rating_line": str}
@@ -178,6 +182,9 @@ class CreditsEngine:
             log.exception("credits session unreadable")
             return
         self.started_at = float(data.get("started_at") or self.started_at)
+        feat = data.get("featured")
+        if isinstance(feat, dict):
+            self.featured = {str(k): dict(v) for k, v in feat.items() if isinstance(v, dict)}
         for item in data.get("chatters") or []:
             try:
                 c = Chatter.from_dict(item)
@@ -189,9 +196,9 @@ class CreditsEngine:
     def save(self) -> None:
         """Write the session now, on the calling thread."""
         self._dirty = False
-        self._write(self.started_at, list(self.chatters.values()))
+        self._write(self.started_at, list(self.chatters.values()), dict(self.featured))
 
-    def _write(self, started_at: float, chatters: list) -> None:
+    def _write(self, started_at: float, chatters: list, featured: Optional[dict] = None) -> None:
         """Compact JSON (no indent: with indent Python falls back to its slow encoder), written
         to a temporary file and swapped in so a crash never leaves half a file."""
         self.session_path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,6 +206,7 @@ class CreditsEngine:
             "started_at": started_at,
             "saved_at": time.time(),
             "chatters": [c.to_dict() for c in chatters],
+            "featured": featured or {},
         }
         tmp = self.session_path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
@@ -215,7 +223,8 @@ class CreditsEngine:
             return
         self._dirty = False
         try:
-            await asyncio.to_thread(self._write, self.started_at, list(self.chatters.values()))
+            await asyncio.to_thread(self._write, self.started_at, list(self.chatters.values()),
+                                    dict(self.featured))
         except Exception:
             self._dirty = True
             raise
@@ -280,6 +289,7 @@ class CreditsEngine:
         ]
         for k in drop:
             del self.chatters[k]
+            self.featured.pop(k, None)
         if drop:
             self._dirty = True
         return bool(drop)
@@ -287,6 +297,7 @@ class CreditsEngine:
     def reset(self) -> None:
         """Start a new session: empty roll, new start time (which also reshuffles the cast), saved at once."""
         self.chatters.clear()
+        self.featured.clear()
         self.started_at = time.time()
         self.play["frozen_roster"] = None
         self.play["freeze"] = False
@@ -331,6 +342,13 @@ class CreditsEngine:
                 extra = self.extra() or {}
             except Exception:
                 log.exception("credits extra hook failed")
+        # Highlighted on stream: the cast's "Featured" section (core/cast.py) reads these
+        for c, d in zip(items, snap["chatters"]):
+            feat = self.featured.get(c.key)
+            if feat:
+                d["featured"] = True
+                d["featured_quote"] = str(feat.get("quote") or "")
+                d["featured_at"] = float(feat.get("at") or 0)
         titles = extra.get("titles") or {}
         if titles:
             for c, d in zip(items, snap["chatters"]):
@@ -381,6 +399,20 @@ class CreditsEngine:
     def note_alert(self, kind: str, platform: str, username: str) -> None:
         """An alert happened (raid, follow, sub, paid ...): tag the chatter for the cast groups."""
         self.cast.tag_alert(kind, platform, username)
+
+    def feature(self, platform: str, username: str, display_name: str = "", quote: str = "") -> bool:
+        """The streamer highlighted this chatter's message on stream (core/highlights.py, called
+        by main.py _credits_featured). They get a place in the credits' "Featured" section; a
+        later highlight of the same chatter keeps the first quote. Returns True when they are new."""
+        user = (username or "").strip()
+        if not user:
+            return False
+        key = f"{(platform or '').lower()}:{user}"
+        if key in self.featured:
+            return False
+        self.featured[key] = {"quote": str(quote or "")[:60], "at": time.time()}
+        self._dirty = True
+        return True
 
     def apply_credit_command(self, raw_message: str, default_platform: str, set_by: str) -> str:
         """Handle !credit "name" "job" / !credit "name" clear / !credit "name". Returns the chat reply."""

@@ -258,6 +258,8 @@ DEFAULTS["credits"].update(LOOK_DEFAULTS)
 DEFAULTS["reactions"] = copy.deepcopy(_REACTIONS_DEFAULTS)
 # Chat games (Admin → Chat games). Off by default; core/chat_games/config.py fills the rest.
 DEFAULTS["chat_games"] = {"enabled": False}
+# Highlighted message overlay (core/highlights.py DEFAULTS; Chat box page -> Highlighted message)
+DEFAULTS["highlight"] = {"hold_sec": 0, "show_avatar": True, "read_aloud": False}
 
 # Game plugins (plugins/<id>/plugin.json) add their own section, switched off, and command group.
 _plugin_manifest.set_reserved_ids(DEFAULTS)

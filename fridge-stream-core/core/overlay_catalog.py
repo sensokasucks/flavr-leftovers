@@ -152,6 +152,20 @@ OVERLAYS: list[dict[str, Any]] = [
         "settings": [{"label": "Import widgets, their settings and test buttons", "hash": "#widgets"}],
     },
     {
+        # core/highlights.py + overlay/highlight.js; the card on Live controls picks the line
+        "id": "highlight",
+        "file": "highlight.html",
+        "name": "Highlighted message (lower third)",
+        "notes": "The one chat line you highlight (Live controls, the ★ on Chat & flags rows, or your phone). Transparent; 1920×1080.",
+        "params": [
+            _select("pos", "Bar position", [["bottom", "Bottom"], ["top", "Top"]], "bottom"),
+            _bool("avatars", "Chatter's picture", True, "Untick to leave it out whatever the dashboard says"),
+            _text("css", "Saved chat stylesheet", "", "Name of a stylesheet from Chat box → Custom CSS", "twitch"),
+            _bool("preview", "Preview with a made-up line", False),
+        ],
+        "settings": [{"label": "Highlight a message, Next / Clear, how long it stays", "hash": "#live"}],
+    },
+    {
         "id": "replies",
         "file": "replies.html",
         "name": "Replies + boards overlay",

@@ -191,6 +191,36 @@
         </div>
         <pre id="live-cmd-result" class="integ-result" hidden></pre>
       </section>
+      <!-- Highlighted message (core/highlights.py, api/highlight_routes.py; admin.js "Highlighted
+           message"): what is on /overlay/highlight.html, the queue, and recent chat to pick from.
+           The chat list has a fixed height (admin.css .hl-pick) so it never moves the cards. -->
+      <section class="live-card hl-card" id="live-hl-card">
+        <div class="live-card-head">
+          <h3>Highlighted message</h3>
+          <span id="live-hl-state" class="muted"></span>
+          <a href="#sources" class="live-link">Overlay link →</a>
+        </div>
+        <p class="hint">Press ★ on a chat line to put it on the <code>/overlay/highlight.html</code> lower third.
+          More highlights wait in line. Highlighted chatters get a "Featured" spot in the end credits.</p>
+        <div id="live-hl-now" class="hl-now"><span class="muted">Nothing on screen.</span></div>
+        <div class="live-buttons">
+          <button type="button" id="live-hl-next" class="primary" title="Take this one off and show the next one waiting">Next</button>
+          <button type="button" id="live-hl-clear" title="Take it off and empty the queue">Clear</button>
+        </div>
+        <ol id="live-hl-queue" class="hl-queue" hidden></ol>
+        <h4 class="hl-pick-title">Recent chat <span id="live-hl-pick-state" class="muted"></span></h4>
+        <div id="live-hl-pick" class="hl-pick" role="log" aria-live="off" tabindex="0">
+          <p class="muted">Chat shows up here as it comes in.</p>
+        </div>
+        <details class="hl-options">
+          <summary>Options</summary>
+          <label>Stays on screen for <input id="live-hl-hold" type="number" min="0" max="600" step="1" /> seconds
+            <span class="muted">(0 = until you press Next or Clear)</span></label>
+          <label class="check"><input id="live-hl-avatar" type="checkbox" /> Show the chatter's picture</label>
+          <button type="button" id="live-hl-save">Save</button>
+          <span id="live-hl-msg" class="muted" role="status"></span>
+        </details>
+      </section>
       <!-- Stream events: what just happened (GET /api/admin/activity, core/activity.py). Kept last
            and at a fixed height so new lines never push the buttons above around. -->
       <section class="live-card live-feed-card" id="live-feed-card">

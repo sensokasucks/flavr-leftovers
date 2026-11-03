@@ -105,6 +105,10 @@ def _unique_people(chatters: list[dict]) -> list[dict]:
         cur["is_vip"] = bool(cur.get("is_vip") or c.get("is_vip"))
         cur["is_subscriber"] = bool(cur.get("is_subscriber") or c.get("is_subscriber"))
         cur["is_paid"] = bool(cur.get("is_paid") or c.get("is_paid"))
+        # highlighted on one platform = featured for the person (core/cast.py decorate)
+        if c.get("featured") and not cur.get("featured"):
+            for k in ("featured", "featured_quote", "featured_at"):
+                cur[k] = c.get(k)
         if (c.get("last_seen") or 0) > (cur.get("last_seen") or 0):
             cur["last_seen"] = c.get("last_seen")
             if c.get("color"):
@@ -483,6 +487,21 @@ class CastBoard:
             if ov and ov.get("job"):
                 assigned.append(row_for(c, clamp_job(ov["job"]), "pinned", "Special Thanks", True))
                 shown.add(pk)
+
+        # Featured: chatters the streamer highlighted on stream (core/highlights.py stamps
+        # ``featured`` / ``featured_quote`` via CreditsEngine.snapshot). They get their own
+        # department, first in the roll, with their quote as the "job"; a pinned job wins.
+        # Title from the style's ``featured_title`` (default "Featured").
+        featured_title = str(style.get("featured_title") or "Featured")
+        featured_rows = []
+        for c in sorted((c for c in chatters if c.get("featured")), key=lambda c: float(c.get("featured_at") or 0)):
+            pk = _person_key(c)
+            if not pk or pk in shown:
+                continue
+            quote = clamp_job(str(c.get("featured_quote") or "")) or "Highlighted on stream"
+            featured_rows.append(row_for(c, quote, "featured", featured_title, False))
+            shown.add(pk)
+        assigned = featured_rows + assigned
 
         pool_pass = (
             "paid", "donors", "mods", "subs", "gifted", "followers", "raiders", "vips", "any",

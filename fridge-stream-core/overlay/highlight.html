@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Highlighted message</title>
+  <!--
+    Highlighted message overlay: /overlay/highlight.html (OBS / XSplit browser source,
+    transparent, 1920×1080 is a good size). Shows the one chat line the streamer highlighted
+    (dashboard Live controls → Highlighted message, the ★ on Chat & flags rows, or the phone
+    remote) as a lower-third bar. Core sends {"type": "highlight"} on /ws (core/highlights.py).
+
+    The message row uses the chat overlay's class names (.msg .meta .name .message .emote,
+    see overlay/CHAT.md), so a saved chat stylesheet can restyle it: ?css=<name>.
+    URL options: ?css=<saved chat stylesheet>, ?avatars=0|1, ?preview=1 (a made-up line),
+    ?pos=bottom|top (bar position), ?hint=0.
+  -->
+  <link rel="stylesheet" href="animate-lite.css" />
+  <link rel="stylesheet" href="highlight.css" />
+  <link rel="stylesheet" id="hl-custom-css" />
+</head>
+<body>
+  <div id="hl-root" class="hl-root">
+    <div id="hl" class="hl" hidden></div>
+  </div>
+  <script src="overlay-hint.js"></script>
+  <script src="highlight.js"></script>
+</body>
+</html>
