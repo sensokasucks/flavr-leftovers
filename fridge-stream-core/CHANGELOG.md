@@ -15,8 +15,13 @@ Dates are when the work landed in this tree.
 - **Connect YouTube** (Settings → YouTube): sign in with your own Google client ("TVs and Limited Input devices"; steps on the card and in `docs/YOUTUBE_APP_SETUP.md`) so Core can post replies into your live chat. Code at google.com/device like Connect Twitch; token in `data/youtube_token.json`, sent only to Google. Each reply costs 50 of the project's 10,000 free daily API units. YouTube chat has no reply threads, so replies start with `@name`. **Send test message** on the YouTube and Twitch cards.
 - The dashboard Status data now carries each platform's `send_error`: why the last reply couldn't be posted.
 
+- **Stream events window** on Live controls: a live list of what just happened (alerts, point redeems, commands that ran, game plugin events, custom flag hits, and errors from anywhere in Core, plus warnings from the chat platforms and plugins), newest first, with filter buttons, Pause and Clear. It sits below the other controls at a fixed height, so it never pushes the buttons around. Kept in memory only (`core/activity.py`, `GET /api/admin/activity`); plugins add lines with `ctx.activity(text)`.
+- **Platform lights** in the top bar: one dot per chat platform that is switched on (green when connected, red when not); click one for the connection check.
+
 ### Changed
 
+- **Tidier dashboard menu with a Live / Setup switch.** The sidebar went from 23 entries to two short lists. **Live** shows what you use mid-stream: Live controls, Paid & thank-yous, Chat games, Chat & flags, Viewers and your game pages. **Setup** shows things you set once, in groups: Stream look (Overlay links for OBS, Chat box, Alerts, End credits), Stream Rooms (Audience looks), Chat & viewers (Points & permissions, Commands & reactions), Games (Add or remove games) and Core (Connect platforms, Stored files, Advanced). Pages that belonged together now share one entry with tabs at the top: Paid + Credits checklist, Chat history + Red flags, Chat overlay + Chat widgets, Chat commands + Reactions + Command groups + Try a command, Platforms + Connection check. The Settings pages no longer list themselves twice, and "Integrations" is split into Game panels (Live), Try a command and More overlays. Search finds pages in both modes and flips the switch for you; old links and bookmarks (`#credits`, `#redflags`, `#config/reactions` ...) still open the same pages.
+- Live controls: the End credits card only shows while credits are on, and the Stage curtain card only while Stream Rooms is connected.
 - Plugin settings fields can carry `"page": true` to live on the plugin's own page instead of its
   Settings → Plugins card; the card says where they went (docs/PLUGINS.md, Field types).
 

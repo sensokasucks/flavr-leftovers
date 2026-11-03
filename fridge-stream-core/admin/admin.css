@@ -1360,3 +1360,115 @@ html.plugin-page body > main { padding: 0 2px 16px; }
   .looks-row { grid-template-columns: 1fr; }
   .looks-groups { grid-template-columns: 1fr; }
 }
+
+/* ---- Menu modes (Live / Setup switch at the top of the sidebar; admin.js "Menu modes") ---- */
+.nav-mode {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  margin: 0 0 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.nav-mode-btn {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: 6px 8px;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.nav-mode-btn:hover { color: var(--text); }
+.nav-mode-btn[aria-pressed="true"] { background: var(--accent); color: #0b0e12; font-weight: 700; }
+.nav-mode-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.nav-group[hidden] { display: none !important; }
+html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); outline-offset: -2px; }
+
+/* Pages whose sub-pages the menu picks (Settings, Integrations): their own pill row would only
+   repeat the menu, so it is hidden; page sets show .set-tabs instead. */
+.panel[data-menu-subs] > .subtabs { display: none; }
+
+/* Tabs across a page set (one menu entry covering several pages; admin.js renderSetTabs) */
+.set-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 4px;
+  border-bottom: 1px solid var(--border);
+}
+.set-tab {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 6px 6px 0 0;
+  color: var(--muted);
+  padding: 7px 14px;
+  font-size: 0.92rem;
+  margin-bottom: -1px;
+}
+.set-tab:hover { color: var(--text); background: #1b2029; }
+.set-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 700; }
+
+/* ---- Top-bar platform lights (admin.js renderTopLights) ---- */
+.top-lights { display: flex; gap: 12px; flex-wrap: wrap; font-size: 0.85rem; }
+.top-lights:empty { display: none; }
+.top-light { color: var(--muted); text-decoration: none; display: inline-flex; align-items: center; gap: 5px; }
+.top-light:hover { color: var(--text); }
+.top-light i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.top-light.off i { background: var(--danger); }
+.top-light.off { color: var(--text); }
+
+/* ---- Live controls: Stream events window (admin.js "Stream events") ---- */
+.live-feed-card { grid-column: 1 / -1; }
+.live-feed-card .live-card-head .link-btn:first-of-type { margin-left: auto; }
+.feed-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.feed-filters button {
+  font-size: 0.8rem;
+  padding: 2px 10px;
+  min-height: 26px;
+  border-radius: 12px;
+  background: #1b2029;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.feed-filters button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent-dim); }
+/* Fixed height: new lines scroll inside the box and never move the controls above */
+.live-feed {
+  height: 260px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px;
+  font-size: 0.88rem;
+}
+.live-feed p { margin: 8px; }
+.feed-row {
+  display: grid;
+  grid-template-columns: 7.4em 5.8em minmax(0, 1fr);
+  gap: 8px;
+  align-items: baseline;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.feed-row:nth-child(odd) { background: var(--panel); }
+.feed-row time { font-family: ui-monospace, Consolas, monospace; font-size: 0.78rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.feed-kind { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.feed-text { overflow-wrap: anywhere; }
+.feed-alert .feed-kind { color: var(--accent); }
+.feed-redeem .feed-kind { color: #a970ff; }
+.feed-command .feed-kind { color: #6cc4ff; }
+.feed-game .feed-kind { color: var(--warn); }
+.feed-flag .feed-kind { color: #ff8fb1; }
+.feed-error .feed-kind { color: var(--danger); }
+@media (max-width: 560px) {
+  .feed-row { grid-template-columns: 6.6em minmax(0, 1fr); }
+  .feed-kind { display: none; }
+}

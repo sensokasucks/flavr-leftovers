@@ -21,7 +21,7 @@ Tabs, in order:
 - [ ] **Chat History** — only fills when `chat_log.enabled`; shows the newest 200 and says so; names open the person; Download CSV follows the platform / search / 🚩 filters (`GET /chat/export?platform=&q=&flagged=`)
 - [ ] **Red flags** (People) — its own page (`#redflags`), not a card on Chat history; Unflag offers Undo (`DELETE /red-flags/{id}` returns `removed`, `POST /red-flags/restore` puts it back). **Custom flags** card on the same page saves through `PUT /red-flags` (`custom`); its own Unflag + Undo (`DELETE /red-flags/custom/{id}`, `POST /red-flags/custom/restore`)
 - [ ] **Config** — hybrid editor for `config.yaml` + `commands.json`; advanced fields accordion; **Reactions** editor; command group table; overlay module checkboxes
-- [ ] One name per page: menu, Settings pills (same order as the menu), page title and in-app links use the same words ("Points, permissions + chat", "Plugins", "Sources & overlays" under Overlays). No banner or hint points at a "Config" menu. Live controls is the landing page (`tab-live` is the `active` panel in the HTML).
+- [ ] One name per page: menu entry, set tabs, page title and in-app links use the same words ("Paid & thank-yous", "Overlay links for OBS", "Connect platforms"). No banner or hint points at a "Config" menu. Live controls is the landing page (`tab-live` is the `active` panel in the HTML).
 - [ ] Credits on/off has one switch, on the Credits page (`PUT /credits/enabled`); a config save keeps the live `credits.enabled`. While off, the Credits page and Live controls show a red "Credits are off" line with **Turn on**, and the play state never says "Looping". Live controls and Credits page buttons share labels.
 - [ ] Sources & overlays: Customise remembers its switches and open panels in `sessionStorage` (per browser tab); Copy shows "Copied ✓" on the button.
 - [ ] Sub-page pills are a `role=tablist` (arrow keys move). Status cards are `<section>` with a heading, not `<legend>` outside a fieldset. **Start a new stream now** asks first.
@@ -68,7 +68,7 @@ Save rules:
 ## Navigation (2026-09 rebuild)
 
 - [ ] Landing page is **Live controls** (status chips, credits roll buttons, test alerts, dry-run command). Live buttons use `data-proxy="<id>"` to press the feature page's real button — don't duplicate handlers.
-- [ ] Flat sidebar, no collapsible groups. Settings sub-pages are sidebar items (`data-tab="config" data-sub="…"`); the config pill bar is hidden.
+- [ ] Live / Setup menu (see "Menu layout" below). Settings sub-pages are menu items (`data-tab="config" data-sub="…"`) or tabs of a page set; panels with `data-menu-subs` (config, integrations) hide their own pill bar.
 - [ ] Pages with `.acc-stack[data-acc]` show one sub-page at a time (`showSub`); `data-aside` sections (Credits / Alerts preview) stay visible beside every sub-page.
 - [ ] Save config.yaml bar shows only on the yaml sub-pages (core, games, points, advanced); Reactions / groups / commands keep their own save buttons — and those stay **visible** (hide `.config-savebar` there, never every `.config-actions`).
 - [ ] Every page with settings has the **page save bar** (`.page-savebar`, admin.js "Page save bar"): Chat games, Credits, Alerts, and Config → Reactions / Command groups / Chat commands. A new block of settings is added to its `sections` list (scope or fields + its own Save button or save function), or with `PAGE_SAVER.add(...)` when it is drawn later (game plugins' Market sub-pages) — otherwise its edits are never flagged or saved by the bar / Ctrl+S.
@@ -91,3 +91,20 @@ Save rules:
 - [ ] `:focus-visible` outline on every control; `html.hc` high-contrast theme (header `#hc-toggle`, `prefers-contrast: more`, remembered in localStorage).
 - [ ] Form-only deletes / resets (reaction, command, group, Reset form to defaults) use `undoToast()` (role=status, Ctrl+Z) — not `confirm()`. Anything that writes or acts immediately keeps its `confirm()`.
 - [ ] Under 900 px: sidebar is a drawer behind `#nav-toggle` (label = current page); no page scrolls sideways (tables scroll inside their card).
+
+## Menu layout (2026-11, Live / Setup)
+
+The rules Sen set for keeping the menu tidy (also in the project instructions). Check every new page or plugin page against them.
+
+- [ ] **Two modes.** The switch at the top of the sidebar (`.nav-mode`, remembered in `localStorage` `stream_core_admin_mode`) shows the **Live** groups (things touched mid-stream: Live controls, Paid & thank-yous, Chat games, Chat & flags, Viewers, Games) or the **Setup** groups (set-once things: Stream look, Stream Rooms, Chat & viewers, Games, Core). Each `.nav-group` has `data-mode` and `data-heading`. Opening a page from search, a link or Back flips the switch to that page's mode (`markNav`).
+- [ ] **One home per feature.** No two menu entries open the same thing. Live controls cards are shortcuts that link to (or press, `data-proxy`) the real page; they don't copy its settings.
+- [ ] **Related pages are tabs, not entries.** One menu entry with `data-set="<name>"` covers several pages; `PAGE_SETS` in admin.js lists them as `[page, sub or null, tab label]` and `renderSetTabs` draws `.set-tabs` under the title. Today: thanks (Paid + Credits checklist), chatflags (Chat history + Red flags), links (Overlay links + More overlays), chatbox (Chat overlay + Chat widgets), cmds (Chat commands, Reactions, Command groups, Try a command), connect (Platforms + Connection check / Status).
+- [ ] **One entry per game.** A game plugin's pages go under Live › Games (`#nav-games-live`, or the group its plugin.json `nav` names; old names Overlays / People / Settings map through `NAV_GROUP_ALIASES`). Turning games on/off is Setup › Games › Add or remove games.
+- [ ] **Plain names** that say what the page is for; groups of about 5 entries at most.
+- [ ] **Optional cards only when their thing is on.** Live controls: End credits card only while credits are on (`renderCreditsOnOff`), Stage curtain only while Stream Rooms is connected, YouTube live video only while YouTube is on.
+- [ ] **Growing boxes go below the controls** and keep a fixed height (Stream events window `.live-feed`), so new lines never move buttons.
+- [ ] **Old links keep working.** Page ids (`#credits`, `#redflags`, `#config/reactions` ...) never change; a page that moves into a plugin goes in `MOVED_TABS`.
+- [ ] **Top-bar platform lights** (`#top-lights`, `renderTopLights`) for every switched-on chat platform; clicking one opens Connect platforms › Connection check.
+- [ ] **Stream events window** (Live controls, `#live-feed-card`): polls `GET /api/admin/activity?after=<id>` every 3 s while the page is open (core/activity.py). Kinds alert / redeem / command / game / flag / error match the filter buttons; plugins add lines with `ctx.activity(text)`. Pause / Clear only affect the window. Tests: `tests/test_activity.py`.
+- [ ] To do (not built yet): an overlay whose source is off (e.g. Gamer Stonks turned off) goes blank instead of showing old numbers or an error, and its link in Overlay links is greyed out with "off".
+

@@ -46,6 +46,17 @@ class EventBus:
         self._lock = asyncio.Lock()
         # Optional chat smoothing (core/chat_pacer.py): adapters go through submit_chat
         self.pacer = None
+        # Stream events feed for the Live controls page (core/activity.py). Set in main.py;
+        # anything holding the bus adds lines with bus.note(kind, text).
+        self.activity = None
+
+    def note(self, kind: str, text: str, platform: str = "") -> None:
+        """Add a line to the Live page's Stream events window (no-op until main.py sets activity)."""
+        if self.activity is not None:
+            try:
+                self.activity.add(kind, text, platform)
+            except Exception:
+                log.exception("activity note failed")
 
     def on_chat(self, handler: ChatHandler) -> None:
         """Every chat line after smoothing (main.py: command router, overlays, store, credits ...)."""

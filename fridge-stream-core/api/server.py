@@ -718,6 +718,7 @@ class CoreState:
         self.test_metrics = None
         self.core = None
         self.reactions = None
+        self.activity = None     # core.activity.ActivityLog: the Live page Stream events window
         self.chat_games = None
         self.avatars = None
         self.paid = None         # core.paid.PaidLog (Admin → Paid)

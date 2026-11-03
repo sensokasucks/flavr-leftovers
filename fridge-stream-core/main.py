@@ -56,6 +56,7 @@ try:
     from core.command_groups import resolve_active_groups
     from core.chat_pacer import ChatPacer
     from core.event_bus import EventBus
+    from core.activity import ActivityLog, ActivityLogHandler
     from core.metrics import MetricsAggregator
     from core.permissions import PermissionManager
     from core.command_router import CommandRouter
@@ -136,6 +137,16 @@ class StreamCore:
     def __init__(self, config: dict):
         self.config = config
         self.bus = EventBus()
+        # Stream events feed (core/activity.py): the Live page's window, GET /api/admin/activity.
+        # Logged errors (and platform / plugin warnings) are copied in by ActivityLogHandler;
+        # an older Core in this process (after a restart) has its handler swapped for this one.
+        self.activity = ActivityLog()
+        self.bus.activity = self.activity
+        root_log = logging.getLogger()
+        for h in list(root_log.handlers):
+            if isinstance(h, ActivityLogHandler):
+                root_log.removeHandler(h)
+        root_log.addHandler(ActivityLogHandler(self.activity))
         # Chat smoothing (off unless chat_smoothing.<platform> is on); reads the live config
         self.bus.pacer = ChatPacer(
             self.bus.publish_chat,
@@ -173,6 +184,7 @@ class StreamCore:
         self.state.boot_config = copy.deepcopy(config)
         self.state.metrics = self.metrics
         self.state.router = self.router
+        self.state.activity = self.activity
         self.state.adapters = self.adapters
         self.state.games = self.games
 
@@ -208,6 +220,7 @@ class StreamCore:
                                   library=default_library()),
         )
         self.state.reactions = self.reactions
+        self.reactions.note = self.bus.note
         # Chat games + crowd moments (combos, hype, polls, predictions, slots, heists ...)
         self.chat_games = ChatGames(
             get_config=lambda: self.state.config or self.config,
@@ -823,6 +836,11 @@ class StreamCore:
             return
 
         cmd_def = self.router.find(req.command_name)
+        # Stream events window: every command that passed the router (core and game ones)
+        self.bus.note("command", f"{self.router.prefix}{req.command_name} by "
+                      f"{event.user.display_name or event.user.username}"
+                      + (f" ({cmd_def.group})" if cmd_def and cmd_def.group and cmd_def.group != "core" else ""),
+                      event.platform.value)
         # Core-handled commands (points, help, future polls) — no game fan-out
         if cmd_def and (cmd_def.handler or "game") == "core":
             await self._handle_core_command(event, req, cmd_def)
@@ -1339,6 +1357,8 @@ class StreamCore:
                 "hidden": hidden,
                 "timestamp": event.timestamp,
             }
+            # Stream events window: every custom flag hit, whether or not plugins are told
+            self.bus.note("flag", f"{flag.name}: {u.display_name or u.username} said \"{hit['phrase']}\"", plat)
             if flag.notify:
                 await self.bus.publish_flag(payload)
                 for game in list(self.games.values()):
@@ -1568,6 +1588,10 @@ class StreamCore:
         """
         hidden = not payload.get("is_test") and self.red_flags.hides(
             str(payload.get("platform") or ""), "", str(payload.get("username") or ""))
+        # Stream events window: the alert's own headline ("nightowl subscribed for 3 months")
+        self.bus.note("alert", (payload.get("headline") or payload.get("kind") or "alert")
+                      + (" (test)" if payload.get("is_test") else "")
+                      + (" (hidden: red-flagged)" if hidden else ""), str(payload.get("platform") or ""))
         if (payload.get("source") == "platform" and not payload.get("is_test")
                 and payload.get("kind") in PAID_ALERT_KINDS):
             # subs, gifted subs, KICKs, Twitch power-ups ... (paid chat is listed from the chat line instead)
@@ -1757,6 +1781,7 @@ class StreamCore:
                     log.info("[%s] executed %s", name, req.command_name)
                 else:
                     log.warning("[%s] execute failed: %s", name, result.get("error"))
+                    self.bus.note("error", f"{name}: {req.command_name} failed: {result.get('error') or 'no reason given'}")
                 reply_text = result.get("reply") if isinstance(result, dict) else None
                 if reply_text:
                     await self.bus.publish_reply(ChatReply(

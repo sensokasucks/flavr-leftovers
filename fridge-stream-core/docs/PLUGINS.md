@@ -160,6 +160,7 @@ class MyGame(BasePlugin):
 | `ctx.core_url()` | `http://127.0.0.1:3850` (or the configured address) for overlay links |
 | `await ctx.reply(platform, text, to_user)` | say something in chat as Core |
 | `await ctx.alert(payload)` | send an alert to the alerts overlay |
+| `ctx.activity(text, kind="game")` | add a line to the Live controls page's Stream events window ("game" by default, "error" for a problem the streamer should see) |
 | `ctx.broadcast` | send a WebSocket message to every overlay |
 
 Optional methods Core uses when they exist:

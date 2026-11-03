@@ -723,6 +723,8 @@ class ReactionEngine:
         self.recent: deque = deque(maxlen=30)   # admin "last reactions" list
         self.stage_state: Dict[str, Any] = {}    # game's stage (curtain open / closed)
         self.stats = {"fired": 0, "rejected": 0, "refunded": 0, "points_spent": 0}
+        # Stream events feed hook: main.py sets this to bus.note(kind, text, platform)
+        self.note: Optional[Callable[..., None]] = None
 
     # ---------------- config helpers ----------------
 
@@ -1132,6 +1134,13 @@ class ReactionEngine:
             "route": route, "cost": charged, "outcome": "sent",
         })
         self._expire_pending()
+        # Live page Stream events window (core/activity.py): a points redeem, or a free emoji one
+        if self.note is not None:
+            who = user.display_name or user.username
+            what = entry["label"] or entry["id"]
+            self.note("redeem", f"{who} " + (f"spent {charged} points on {what}" if charged else f"set off {what}")
+                      + (f" x{count}" if count > 1 else "") + (f" at {target.get('name')}" if target and target.get("name") else ""),
+                      user.platform.value)
         if entry["reply_ok"] and loud or (entry["reply_ok"] and charged):
             await self._send_reply(event, entry["reply_ok"], {**base, "cost": charged, "count": count,
                                                                "target": (target or {}).get("name", "")})
