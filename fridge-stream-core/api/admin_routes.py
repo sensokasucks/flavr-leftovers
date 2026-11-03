@@ -987,6 +987,77 @@ def create_admin_router(core_state) -> APIRouter:
         await auth.disconnect()
         return auth.status()
 
+    @router.post("/twitch/auth/test")
+    async def twitch_auth_test(x_admin_token: Optional[str] = Header(None)):
+        """Send test message: post one line into the Twitch chat Core reads, as the signed-in account."""
+        _auth(x_admin_token)
+        auth = _twitch_auth()
+        adapter = (getattr(core_state, "adapters", None) or {}).get("twitch")
+        if adapter is None:
+            return {**auth.status(), "test_ok": False,
+                    "test_message": "Twitch chat isn't running. Tick Enabled, set the channel and press Save."}
+        ok, why = adapter.can_send()
+        if ok:
+            ok = await adapter.send_message("Stream Core is connected to Twitch chat.")
+            why = adapter.last_send_error
+        return {**auth.status(), "test_ok": ok,
+                "test_message": "Sent. Look in your Twitch chat." if ok else why}
+
+    # ------------------------------------------------------------------
+    # YouTube sign-in (the streamer's own Google client, device code). Never returns tokens
+    # or the secret. Only for posting replies into the live chat (adapters/youtube_auth.py).
+    # ------------------------------------------------------------------
+
+    def _youtube_auth():
+        """The shared YouTubeAuth, configured from the live config."""
+        from adapters.youtube_auth import get_auth
+
+        return get_auth(getattr(core_state, "config", None) or load_config())
+
+    @router.get("/youtube/auth")
+    async def youtube_auth_status(x_admin_token: Optional[str] = Header(None)):
+        """Connected? As which channel? Is a code waiting to be typed at google.com/device?"""
+        _auth(x_admin_token)
+        return _youtube_auth().status()
+
+    @router.post("/youtube/auth/start")
+    async def youtube_auth_start(x_admin_token: Optional[str] = Header(None)):
+        """Ask Google for a sign-in code; Core polls in the background until it is entered."""
+        _auth(x_admin_token)
+        return await _youtube_auth().start_login()
+
+    @router.post("/youtube/auth/cancel")
+    async def youtube_auth_cancel(x_admin_token: Optional[str] = Header(None)):
+        """Stop waiting for the code."""
+        _auth(x_admin_token)
+        auth = _youtube_auth()
+        auth.cancel_login()
+        return auth.status()
+
+    @router.post("/youtube/auth/disconnect")
+    async def youtube_auth_disconnect(x_admin_token: Optional[str] = Header(None)):
+        """Revoke the token at Google and delete data/youtube_token.json."""
+        _auth(x_admin_token)
+        auth = _youtube_auth()
+        await auth.disconnect()
+        return auth.status()
+
+    @router.post("/youtube/auth/test")
+    async def youtube_auth_test(x_admin_token: Optional[str] = Header(None)):
+        """Send test message: post one line into the current stream's live chat (50 quota units)."""
+        _auth(x_admin_token)
+        auth = _youtube_auth()
+        adapter = (getattr(core_state, "adapters", None) or {}).get("youtube")
+        if adapter is None:
+            return {**auth.status(), "test_ok": False,
+                    "test_message": "YouTube chat isn't running. Tick Enabled, set the live video and press Save."}
+        ok, why = adapter.can_send()
+        if ok:
+            ok = await adapter.send_message("Stream Core is connected to YouTube chat.")
+            why = adapter.last_send_error
+        return {**auth.status(), "test_ok": ok,
+                "test_message": "Sent. Look in your YouTube live chat." if ok else why}
+
     # ------------------------------------------------------------------
     # Kick sign-in (the streamer's own Kick app, OAuth code + PKCE). Never returns tokens or
     # the secret. Kick sends the browser back to /kick/callback, served by api/server.py.

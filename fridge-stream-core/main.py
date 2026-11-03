@@ -96,6 +96,11 @@ log = logging.getLogger("main")
 CHAT_TRIM_EVERY = 6 * 3600
 
 # Chat platforms Core can start, stop and reconnect while running
+# Where Core's replies go, per platform (config replies.kick / .twitch / .youtube); see
+# CoreApp._reply_mode. Keep in step with the dashboard's "Where Core's replies go" selects
+# (admin/index.html cfg-replies-*) and core/config.py DEFAULTS["replies"].
+REPLY_MODES = ("auto", "chat", "overlay", "both")
+
 PLATFORM_ADAPTERS = {
     "kick": KickAdapter,
     "twitch": TwitchAdapter,
@@ -263,6 +268,9 @@ class StreamCore:
         # Recent command replies (the reply screen / replies overlay catch up on connect)
         self.recent_replies: list[dict] = []
         self.recent_replies_max = 20
+        # Replies being posted into chat (_on_reply runs each in a task); the lock keeps their order
+        self._reply_tasks: set[asyncio.Task] = set()
+        self._reply_lock = asyncio.Lock()
 
     async def start(self) -> None:
         """Subscribe the handlers to the bus and start plugins, chat platforms and background loops."""
@@ -289,7 +297,8 @@ class StreamCore:
         self.state.reload_commands = self.reload_commands_live
         self.state.refresh_command_groups = self.refresh_command_groups
 
-        # Outbound chat replies (adapters may send; overlay always shows)
+        # Outbound chat replies: posted into the platform's chat and/or shown on the overlay
+        # (replies.<platform> mode, see _reply_mode)
         self.bus.on_reply(self._on_reply)
 
         # Stream alerts (admin test tab + paid chat)
@@ -664,7 +673,9 @@ class StreamCore:
         plat = event.platform.value
         # custom flags first: one set to "red-flag them too" decides whether this line shows
         try:
-            hits = await self.chat_flags.check(event)
+            # Core's own echoed reply (event.from_core) is never checked: a flag answering it
+            # would make Core talk to itself
+            hits = [] if event.from_core else await self.chat_flags.check(event)
         except Exception:
             log.exception("chat flag check failed")
             hits = []
@@ -679,7 +690,7 @@ class StreamCore:
                 except Exception:
                     log.exception("red flag from a custom flag failed")
         try:
-            flagged = await self.red_flags.check(event)
+            flagged = None if event.from_core else await self.red_flags.check(event)
         except Exception:
             log.exception("red flag check failed")
             flagged = None
@@ -733,6 +744,10 @@ class StreamCore:
                 "paid_currency": event.paid_currency,
                 # Twitch channel-point styles: "highlighted" / "gigantified" / "animated" / None
                 "highlight": event.highlight,
+                # Core's own reply posted into the platform's chat and echoed back: drawn as a
+                # Stream Core line (chat.js "system" style)
+                "is_system": bool(event.from_core),
+                "from_core": bool(event.from_core),
             },
         }
         self.recent_chat.append(payload["data"])
@@ -747,6 +762,15 @@ class StreamCore:
                 await self.state.ws_manager.broadcast(payload)
             except Exception:
                 log.exception("chat WS broadcast failed")
+
+        if event.from_core:
+            # Core's own reply echoed back by the platform: logged, but no points, credits,
+            # reactions or commands (a reply starting with "!" must not run as the streamer)
+            try:
+                self.store.submit_chat(event, award=False, keep=keep)
+            except Exception:
+                log.exception("store.submit_chat failed")
+            return
 
         try:
             added = self.credits.ingest(event)
@@ -918,7 +942,7 @@ class StreamCore:
         return out
 
     async def _games_reply(self, event, text: str) -> None:
-        """Chat games answer through the same API-free reply path as commands."""
+        """Chat games answer through the same reply path as commands (real chat or overlay, ``_deliver_reply``)."""
         from core.models import Platform
         if event is None:
             try:
@@ -971,7 +995,86 @@ class StreamCore:
         await self.bus.publish_reply(ChatReply(platform=plat, message=text, source="game"))
 
     async def _on_reply(self, reply: ChatReply) -> None:
-        """Show system replies on the chat overlay; real platform send is adapter-side later."""
+        """Every ChatReply from the EventBus (command answers, game lines, chat games, flags).
+
+        Posting into the real chat can take a moment (a web request), so it runs in a task;
+        ``_reply_lock`` keeps replies in the order they were made.
+        """
+        task = asyncio.create_task(self._deliver_reply(reply), name="chat-reply")
+        self._reply_tasks.add(task)
+        task.add_done_callback(self._reply_tasks.discard)
+
+    def _reply_mode(self, platform: str) -> str:
+        """Where replies for ``platform`` go, from ``replies.<platform>`` in config.yaml
+        (Settings → Core + chat platforms → "Where Core's replies go"):
+
+          auto     post into the platform's chat when signed in for it; the overlay only
+                   when it can't (not signed in, or the platform refused the message)
+          chat     post into chat only; nothing on the overlay even if posting fails
+          overlay  never post; overlay only (how Core worked before it could post)
+          both     post into chat and show on the overlay too
+        """
+        live = getattr(self.state, "config", None) or self.config
+        mode = str(((live.get("replies") or {}).get(platform) or "auto")).lower().strip()
+        return mode if mode in REPLY_MODES else "auto"
+
+    def _reply_targets(self, reply: ChatReply) -> list[str]:
+        """Platforms a reply is for: its ``target_platform``, or for an announcement (no
+        target) every running platform, so a multistream's chats all get it."""
+        if reply.target_platform is not None:
+            return [reply.target_platform.value]
+        running = [name for name in self.adapters]
+        return running or [reply.platform.value]
+
+    async def _post_reply(self, platform: str, reply: ChatReply) -> bool:
+        """Try to post one reply into ``platform``'s real chat; True when the platform took it.
+        Uses the adapter's ``can_send`` / ``send_message`` (adapters/kick.py, twitch.py,
+        youtube.py). Never raises."""
+        adapter = self.adapters.get(platform)
+        if adapter is None:
+            return False
+        try:
+            ok, why = adapter.can_send()
+            if not ok:
+                adapter.last_send_error = why
+                log.debug("[%s] reply not posted: %s", platform, why)
+                return False
+            return bool(await adapter.send_message(
+                reply.message,
+                reply_to_message_id=reply.reply_to_message_id or "",
+                reply_to_user=reply.reply_to_user or "",
+            ))
+        except Exception:
+            log.exception("[%s] posting a reply failed", platform)
+            return False
+
+    async def _deliver_reply(self, reply: ChatReply) -> None:
+        """Post the reply into each target platform's chat and/or show it on the overlay,
+        following each platform's ``replies.<platform>`` mode (``_reply_mode``)."""
+        async with self._reply_lock:
+            posted: list[str] = []
+            show = False
+            for plat in self._reply_targets(reply):
+                mode = self._reply_mode(plat)
+                ok = False
+                if mode != "overlay":
+                    ok = await self._post_reply(plat, reply)
+                    if ok:
+                        posted.append(plat)
+                # overlay: always for "overlay" / "both"; for "auto" only when posting failed
+                if mode in ("overlay", "both") or (mode == "auto" and not ok):
+                    show = True
+            if posted:
+                log.info("[core reply → %s chat] %s", ", ".join(posted), reply.message)
+            if show:
+                await self._show_reply(reply, posted_to_chat=bool(posted))
+            elif not posted:
+                log.info("[core reply, not shown: posting failed and the overlay is off] %s", reply.message)
+
+    async def _show_reply(self, reply: ChatReply, posted_to_chat: bool = False) -> None:
+        """Show a reply on Core's own screens: a Stream Core line on the chat overlay, plus a
+        ``reply`` frame for /overlay/replies.html and the Stream Rooms reply screen. This is the
+        fallback when the reply could not be posted into the platform's chat (``_deliver_reply``)."""
         payload = {
             "type": "chat",
             "data": {
@@ -995,8 +1098,7 @@ class StreamCore:
         self.recent_chat.append(payload["data"])
         if len(self.recent_chat) > self.recent_chat_max:
             del self.recent_chat[:-self.recent_chat_max]
-        # Core has no chat-write login for Kick / YouTube, so this broadcast is how viewers
-        # see an answer: the replies overlay, and the Stream Rooms reply screen.
+        # the replies overlay and the Stream Rooms reply screen read this frame
         data = {
             "id": f"reply-{reply.timestamp}",
             "message": reply.message,
@@ -1005,7 +1107,7 @@ class StreamCore:
             "reply_to_message_id": reply.reply_to_message_id or "",
             "source": reply.source or "command",
             "timestamp": reply.timestamp,
-            "posted_to_chat": False,
+            "posted_to_chat": posted_to_chat,   # also posted into a real chat ("both" mode)
         }
         self.recent_replies.append(data)
         if len(self.recent_replies) > self.recent_replies_max:
@@ -1016,7 +1118,7 @@ class StreamCore:
                 await self.state.ws_manager.broadcast({"type": "reply", "data": data})
             except Exception:
                 log.exception("reply WS broadcast failed")
-        log.info("[core reply] %s", reply.message)
+        log.info("[core reply on overlay] %s", reply.message)
 
     async def fire_alert(self, payload: dict) -> dict:
         """Admin test tab and adapters use this."""

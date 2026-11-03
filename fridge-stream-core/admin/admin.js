@@ -866,6 +866,8 @@
       } else {
         text += " · no chat yet";
       }
+      // why the last reply couldn't go into this chat (adapter last_send_error, main.py _post_reply)
+      if (p.send_error) text += " · last reply shown on the overlay: " + p.send_error;
       return { text: label + ": " + text, html: `<strong>${label}</strong> <span class="platform-ok">${escapeHtml(text)}</span>`, quiet };
     }
     if (p.running) {
@@ -4088,6 +4090,16 @@
     $("cfg-yt-apikey").value = yt.api_key ?? "";
     $("cfg-yt-livechat").value = yt.live_chat_id ?? "";
     $("cfg-yt-poll").value = Number(yt.poll_interval_sec) > 0 ? yt.poll_interval_sec : "";
+    $("cfg-yt-client-id").value = yt.client_id ?? "";
+    $("cfg-yt-client-secret").value = yt.client_secret ?? "";
+    loadYouTubeAuth();
+
+    // Where Core's replies go (replies.<platform>: auto / chat / overlay / both, main.py _reply_mode)
+    const rep = cfg.replies || {};
+    for (const plat of ["kick", "twitch", "youtube"]) {
+      const sel = $(`cfg-replies-${plat}`);
+      if (sel) sel.value = ["auto", "chat", "overlay", "both"].includes(rep[plat]) ? rep[plat] : "auto";
+    }
     const sm = cfg.chat_smoothing || {};
     $("cfg-smooth-youtube").checked = sm.youtube === true;
     $("cfg-smooth-twitch").checked = sm.twitch === true;
@@ -4129,6 +4141,7 @@
     $("tw-auth-connect").hidden = !!pending;
     $("tw-auth-cancel").hidden = !pending;
     $("tw-auth-disconnect").hidden = !s.connected || !!pending;
+    $("tw-auth-test").hidden = !s.connected || !!pending;
     if (pending) {
       $("tw-auth-digits").textContent = pending.user_code || "";
       $("tw-auth-link").href = pending.verification_uri || "https://www.twitch.tv/activate";
@@ -4145,7 +4158,9 @@
     }
     if (s.error) state.textContent += ` — ${s.error}`;
     if (s.connected && !pending && (s.missing_scopes || []).length) {
-      state.textContent += " — press Reconnect once so Twitch also sends bits power-ups, celebrations, charity and Hype Trains";
+      state.textContent += (s.missing_scopes || []).includes("user:write:chat")
+        ? " — press Reconnect once so Core may post its replies into your chat"
+        : " — press Reconnect once so Twitch also sends bits power-ups, celebrations, charity and Hype Trains";
     }
     const paid = $("tw-paid-state");
     if (paid) paid.textContent = (s.paid_events && s.paid_events.message) || "";
@@ -4203,10 +4218,12 @@
     }
   }
 
-  /** POST /api/admin/twitch/auth/<start | cancel | disconnect>. */
+  /** POST /api/admin/twitch/auth/<start | cancel | disconnect | test>. */
   async function twitchAuthAction(action) {
     try {
-      showTwitchAuth(await api(`/api/admin/twitch/auth/${action}`, { method: "POST" }));
+      const s = await api(`/api/admin/twitch/auth/${action}`, { method: "POST" });
+      if (action === "test") $("tw-test-state").textContent = s.test_message || "";
+      showTwitchAuth(s);
     } catch (e) {
       setStatus(String(e.message || e), false);
     }
@@ -4215,6 +4232,7 @@
   if ($("tw-auth-connect")) {
     $("tw-auth-connect").onclick = () => twitchAuthAction("start");
     $("tw-auth-cancel").onclick = () => twitchAuthAction("cancel");
+    $("tw-auth-test").onclick = () => twitchAuthAction("test");
     $("tw-auth-disconnect").onclick = () => {
       if (confirm("Disconnect your Twitch account from Stream Core? Chatter pictures stop until you connect again.")) {
         twitchAuthAction("disconnect");
@@ -4313,6 +4331,81 @@
     $("kick-copy-redirect").onclick = (ev) => copyWithFeedback(ev.currentTarget, $("kick-redirect-uri").textContent);
   }
 
+  // ── YouTube account (the streamer's own Google client, device code like Twitch) ──────
+  // Core does the talking to Google (adapters/youtube_auth.py). Connect YouTube shows a code
+  // to type at google.com/device; while Core waits, the state is re-read every 3 s.
+  let ytAuthTimer = null;
+
+  /** Draw the YouTube sign-in state (GET /api/admin/youtube/auth answer). */
+  function showYouTubeAuth(s) {
+    const state = $("yt-auth-state");
+    if (!state) return;
+    const pending = s.pending;
+    $("yt-auth-code").hidden = !pending;
+    $("yt-auth-connect").hidden = !!pending;
+    $("yt-auth-cancel").hidden = !pending;
+    $("yt-auth-disconnect").hidden = !s.connected || !!pending;
+    $("yt-auth-test").hidden = !s.connected || !!pending;
+    if (pending) {
+      $("yt-auth-digits").textContent = pending.user_code || "";
+      $("yt-auth-link").href = pending.verification_url || "https://www.google.com/device";
+      state.textContent = "YouTube account: waiting for you to enter the code…";
+    } else if (s.connected) {
+      state.textContent = `YouTube account: connected as ${s.channel_title || "(channel pending)"}`;
+      $("yt-auth-connect").textContent = "Reconnect";
+    } else {
+      state.textContent = s.has_app
+        ? "YouTube account: not connected"
+        : "YouTube account: not connected (make your Google client first, steps below)";
+      $("yt-auth-connect").textContent = "Connect YouTube";
+    }
+    if (s.error) state.textContent += ` — ${s.error}`;
+    if (!s.has_app && !s.connected) $("yt-app-help").open = true;
+    clearTimeout(ytAuthTimer);
+    if (pending) ytAuthTimer = setTimeout(loadYouTubeAuth, 3000);
+  }
+
+  /** GET /api/admin/youtube/auth. */
+  async function loadYouTubeAuth() {
+    if (!$("yt-auth-state")) return;
+    try {
+      showYouTubeAuth(await api("/api/admin/youtube/auth"));
+    } catch (e) {
+      $("yt-auth-state").textContent = `YouTube account: ${e.message || e}`;
+    }
+  }
+
+  /** POST /api/admin/youtube/auth/<start | cancel | disconnect | test>. */
+  async function youtubeAuthAction(action) {
+    try {
+      const s = await api(`/api/admin/youtube/auth/${action}`, { method: "POST" });
+      if (action === "test") $("yt-test-state").textContent = s.test_message || "";
+      showYouTubeAuth(s);
+    } catch (e) {
+      setStatus(String(e.message || e), false);
+    }
+  }
+
+  if ($("yt-auth-connect")) {
+    $("yt-auth-connect").onclick = () => {
+      // Core reads the Client ID / Secret from config.yaml, so unsaved edits don't count yet
+      const cfgYt = (lastLoadedConfig || {}).youtube || {};
+      if ($("cfg-yt-client-id").value.trim() !== (cfgYt.client_id || "") ||
+          $("cfg-yt-client-secret").value.trim() !== (cfgYt.client_secret || "")) {
+        setStatus("Press Save first so Core knows your Google client's Client ID and Secret, then Connect YouTube.", false);
+        return;
+      }
+      youtubeAuthAction("start");
+    };
+    $("yt-auth-cancel").onclick = () => youtubeAuthAction("cancel");
+    $("yt-auth-test").onclick = () => youtubeAuthAction("test");
+    $("yt-auth-disconnect").onclick = () => {
+      if (confirm("Disconnect your YouTube account from Stream Core? Core stops posting into YouTube chat until you connect again. Reading chat is not affected.")) {
+        youtubeAuthAction("disconnect");
+      }
+    };
+  }
+
   /**
    * The Settings form back to a whole config for PUT /api/admin/config. Starts from the last loaded
    * config so sections the form doesn't show (command_groups, plugin blocks ...) travel along; Core
@@ -4361,6 +4454,15 @@
         video_id: cleanYouTube($("cfg-yt-video").value) || $("cfg-yt-video").value.trim(),
         live_chat_id: $("cfg-yt-livechat").value.trim(),
         poll_interval_sec: num($("cfg-yt-poll").value, 0),
+        // the streamer's own Google client for Connect YouTube (adapters/youtube_auth.py)
+        client_id: $("cfg-yt-client-id").value.trim(),
+        client_secret: $("cfg-yt-client-secret").value.trim(),
+      },
+      replies: {
+        ...((lastLoadedConfig || {}).replies || {}),
+        kick: $("cfg-replies-kick").value || "auto",
+        twitch: $("cfg-replies-twitch").value || "auto",
+        youtube: $("cfg-replies-youtube").value || "auto",
       },
       chat_smoothing: {
         ...((lastLoadedConfig || {}).chat_smoothing || {}),

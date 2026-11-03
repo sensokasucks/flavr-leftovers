@@ -94,7 +94,8 @@ class PluginContext:
         return f"http://{core.get('host') or '127.0.0.1'}:{int(core.get('port') or 3850)}"
 
     async def reply(self, platform, text: str, to_user: str = "") -> None:
-        """Say something as Core (chat reply + replies overlay)."""
+        """Say something as Core: posted into ``platform``'s real chat when Core is signed in there,
+        else shown on the overlay (main.py ``_deliver_reply`` and the replies.<platform> setting)."""
         if self.bus is None or not text:
             return
         await self.bus.publish_reply(ChatReply(

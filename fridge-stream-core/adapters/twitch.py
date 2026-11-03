@@ -7,7 +7,9 @@ IRC doesn't carry: power-ups with their bits, celebrations, charity, Hype Trains
 
 Settings come from the ``twitch:`` block of config.yaml (``channel``, ``avatars``,
 ``third_party_emotes``, ``paid_events``). main.py starts it when ``twitch.enabled`` is true.
-There is no ``send_message`` here, so command replies are not posted into Twitch chat.
+With Connect Twitch (scope ``user:write:chat``) ``send_message`` posts Core's replies into
+the channel through Helix "Send Chat Message" (main.py ``_post_reply``); without it main.py
+shows them on the overlay instead.
 """
 
 from __future__ import annotations
@@ -24,12 +26,19 @@ from adapters.twitch_auth import get_auth
 from adapters.twitch_avatars import TwitchAvatars
 from adapters.twitch_emotes import ThirdPartyEmotes, parse_twitch_emotes, strip_action
 from adapters.twitch_eventsub import EventSubClient
+from adapters.twitch_eventsub import _http_httpx as _helix_json
 from core.event_bus import EventBus
 from core.metrics import MetricsAggregator
 from core.models import ChatEvent, ChatUser, Platform
 from core.platform_links import twitch_channel
 
 log = logging.getLogger("adapters.twitch")
+
+# Helix (Twitch's official API) addresses used for posting replies (TwitchAdapter.send_message)
+HELIX_CHAT_URL = "https://api.twitch.tv/helix/chat/messages"
+HELIX_USERS_URL = "https://api.twitch.tv/helix/users"
+TWITCH_CHAT_MAX_CHARS = 500     # Twitch refuses longer chat messages
+WRITE_SCOPE = "user:write:chat"
 
 HOST = "irc.chat.twitch.tv"
 PORT = 6667     # plain-text IRC; chat is public, and the anonymous login sends no secret
@@ -228,6 +237,104 @@ class TwitchAdapter(BaseAdapter):
         # bits power-ups / celebrations / charity / Hype Trains (needs the streamer's sign-in)
         self.paid_events = bool(cfg.get("paid_events", True))
         self.eventsub: Optional[EventSubClient] = None
+        # Posting replies (send_message): Helix JSON requests, swapped for a fake in tests;
+        # the channel's numeric id, looked up once when the sign-in isn't the channel itself
+        self._helix = _helix_json
+        self._broadcaster_id = ""
+
+    def can_send(self) -> tuple[bool, str]:
+        """(can Core post into this Twitch chat now, why not). Asked by main.py ``_post_reply``.
+
+        Needs Connect Twitch with ``user:write:chat`` (in twitch_auth.CHAT_SCOPES; a sign-in
+        from before that scope existed has to press Reconnect). The reply is posted as the
+        signed-in account, normally the channel owner.
+        """
+        if not self.channel:
+            return False, "no Twitch channel set"
+        if not self.auth.connected:
+            return False, "Twitch is not connected (Settings → Twitch → Connect Twitch)"
+        if WRITE_SCOPE not in (self.auth.status().get("scopes") or []):
+            return False, "the Twitch sign-in can't post in chat; press Reconnect on the Twitch card"
+        return True, ""
+
+    async def _channel_id(self, token: str) -> str:
+        """The channel's numeric Twitch id for Helix: the signed-in account's own when it is the
+        channel (the usual case), else looked up once by name (GET /helix/users?login=)."""
+        if self.auth.login and self.auth.login.lower() == self.channel:
+            return self.auth.user_id
+        if self._broadcaster_id:
+            return self._broadcaster_id
+        status, body = await self._helix(
+            "GET", f"{HELIX_USERS_URL}?login={self.channel}", None,
+            {"Client-Id": self.auth.client_id, "Authorization": f"Bearer {token}"})
+        rows = body.get("data") if isinstance(body, dict) else None
+        if status == 200 and rows:
+            self._broadcaster_id = str(rows[0].get("id") or "")
+        return self._broadcaster_id
+
+    async def send_message(self, text: str, reply_to_message_id: str = "",
+                           reply_to_user: str = "") -> bool:
+        """Post ``text`` into the Twitch chat with Helix "Send Chat Message"; True when Twitch
+        says it was sent.
+
+        Called by main.py ``_post_reply`` after ``can_send``. ``reply_to_message_id`` is the IRC
+        ``id`` tag of the line being answered (ChatEvent.message_id), so Twitch shows a threaded
+        reply. Twitch may still drop a message (AutoMod, a blocked word, followers-only ...):
+        it then answers ``is_sent: false`` with a ``drop_reason``, and this returns False so the
+        overlay shows it instead. A 401 refreshes the sign-in once and tries again.
+        """
+        text = (text or "").strip()
+        if not text:
+            return False
+        if len(text) > TWITCH_CHAT_MAX_CHARS:
+            text = text[:TWITCH_CHAT_MAX_CHARS - 1] + "…"
+        why = "Twitch refused the message"
+        # noted before posting: IRC can deliver the echo before Helix answers
+        self._remember_sent(text)
+        for attempt in (1, 2):
+            token = await self.auth.token()
+            if not token or not self.auth.connected:
+                why = "Twitch is not connected"
+                break
+            try:
+                broadcaster = await self._channel_id(token)
+            except Exception as e:
+                why = f"could not reach Twitch: {e}"
+                break
+            if not broadcaster:
+                why = f"could not find the Twitch channel {self.channel}"
+                break
+            body = {"broadcaster_id": broadcaster, "sender_id": self.auth.user_id, "message": text}
+            if reply_to_message_id:
+                body["reply_parent_message_id"] = str(reply_to_message_id)
+            try:
+                status, answer = await self._helix(
+                    "POST", HELIX_CHAT_URL, body,
+                    {"Client-Id": self.auth.client_id, "Authorization": f"Bearer {token}"})
+            except Exception as e:
+                why = f"could not reach Twitch: {e}"
+                break
+            if status == 401 and attempt == 1:
+                self.auth.invalidate()
+                continue
+            rows = answer.get("data") if isinstance(answer, dict) else None
+            if status == 200 and rows:
+                row = rows[0] if isinstance(rows[0], dict) else {}
+                if row.get("is_sent"):
+                    self.last_send_error = ""
+                    return True
+                drop = row.get("drop_reason") or {}
+                why = f"Twitch dropped the message: {drop.get('message') or drop.get('code') or 'no reason given'}"
+            else:
+                msg = answer.get("message") if isinstance(answer, dict) else ""
+                why = f"Twitch refused the message: {msg or f'HTTP {status}'}"
+                if status == 403:
+                    why += " (press Reconnect on the Twitch card so Core may post in chat)"
+            break
+        self._forget_sent(text)
+        self.last_send_error = why
+        log.info("Twitch reply not posted, showing it on the overlay instead: %s", why)
+        return False
 
     async def start(self) -> None:
         """Start the IRC loop (and EventSub) in the background; does nothing without a channel."""
