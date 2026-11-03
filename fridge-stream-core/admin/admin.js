@@ -10,8 +10,10 @@
  * Map, in file order (search for the section title):
  *   Helpers                  token, api(), error text, undo toast, high contrast, status lines
  *   Navigation               sidebar, sub-page pills, #page/sub addresses, phone drawer
+ *   Menu modes + page sets   Live / Setup switch, PAGE_SETS (one menu entry, tabs across pages)
  *   Search                   the sidebar search over pages and settings
  *   Live controls  (live)    /api/admin/status, /credits; buttons press the real ones elsewhere
+ *   Top-bar lights + Stream events (live)  /api/admin/status, /api/admin/activity (core/activity.py)
  *   Status page    (status)  /api/admin/status, /platforms/<name>/reconnect, /restart
  *   Sources & overlays (sources)  "sources" from /api/admin/status, Customise panels
  *   Alerts page    (alerts)  /api/admin/alerts/kinds, /alerts/test, /alerts/style, /overlay-css/...
@@ -332,15 +334,133 @@
     return pick;
   }
 
-  /** Highlight the sidebar entry for this page (entries with data-sub only match their own sub-page). */
-  function markNav(tabId, sub) {
+  // ------------------------------------------------------------------
+  // Menu modes + page sets (index.html .admin-nav). Live = what you touch mid-stream, Setup =
+  // what you set once; each .nav-group carries data-mode. A "page set" is one menu entry
+  // (data-set) covering several pages or sub-pages: those pages show a row of tabs across the
+  // set (.set-tabs, drawn by renderSetTabs) instead of having menu entries of their own.
+  // Keep PAGE_SETS in step with the data-set names in index.html; each item is
+  // [page id, sub-page id or null for "any sub-page", tab label].
+  // ------------------------------------------------------------------
+  const PAGE_SETS = {
+    thanks: [["paid", null, "Paid messages"], ["creditslist", null, "Credits checklist"]],
+    chatflags: [["chat", null, "Chat history"], ["redflags", null, "Red flags"]],
+    links: [["sources", null, "Overlay links"], ["integrations", "overlays", "More overlays"]],
+    chatbox: [["chatlook", null, "Your style"], ["widgets", null, "Ready-made widgets"]],
+    cmds: [["config", "commands", "Chat commands"], ["config", "reactions", "Reactions"],
+           ["config", "groups", "Command groups"], ["integrations", "tester", "Try a command"]],
+    connect: [["config", "core", "Platforms"], ["status", null, "Connection check"]],
+  };
+  const MODES = ["live", "setup"];
+  const modeKey = "stream_core_admin_mode";
+
+  /** The [page, sub] pairs one menu entry covers: its set, else just its own data-tab / data-sub. */
+  function navCovers(btn) {
+    const set = btn.dataset.set && PAGE_SETS[btn.dataset.set];
+    if (set) return set.map(([t, sb]) => [t, sb]);
+    return [[btn.dataset.tab, btn.dataset.sub || null]];
+  }
+
+  /** "live" or "setup": the mode of the menu group a sidebar entry sits in. */
+  function navModeOf(btn) {
+    const g = btn.closest(".nav-group[data-mode]");
+    return g ? g.dataset.mode : "live";
+  }
+
+  function currentMode() {
+    const on = document.querySelector(".nav-mode-btn[aria-pressed=\"true\"]");
+    return on ? on.dataset.mode : "live";
+  }
+
+  /**
+   * The menu entry that owns a page (and sub-page). An entry naming that exact sub-page beats
+   * one covering the whole page; on a tie the entry in the mode showing now wins. null for none.
+   * Used by markNav (highlight), setPageTitle and the search's "where" names.
+   */
+  function navButtonFor(tabId, sub) {
+    let best = null;
+    let bestScore = 0;
+    const mode = currentMode();
     document.querySelectorAll(".admin-nav .tab").forEach((b) => {
-      const hit = b.dataset.tab === tabId && (!b.dataset.sub || b.dataset.sub === sub);
-      b.classList.toggle("active", hit);
-      if (hit) b.setAttribute("aria-current", "page");
-      else b.removeAttribute("aria-current");
-      if (hit && $("nav-toggle-label")) $("nav-toggle-label").textContent = b.textContent.trim();
+      let score = 0;
+      navCovers(b).forEach(([t, sb]) => {
+        if (t !== tabId) return;
+        if (sb && sb === sub) score = Math.max(score, 3);
+        else if (!sb) score = Math.max(score, 2);
+      });
+      if (!score) return;
+      if (navModeOf(b) === mode) score += 0.5;
+      if (score > bestScore) {
+        best = b;
+        bestScore = score;
+      }
     });
+    return best;
+  }
+
+  /** Show one mode's menu groups (the switch at the top of the sidebar). Remembered in this browser. */
+  function setMode(mode) {
+    if (!MODES.includes(mode)) mode = "live";
+    document.querySelectorAll(".nav-mode-btn").forEach((b) => b.setAttribute("aria-pressed", b.dataset.mode === mode ? "true" : "false"));
+    document.querySelectorAll(".admin-nav .nav-group[data-mode]").forEach((g) => {
+      g.hidden = g.dataset.mode !== mode;
+    });
+    document.body.dataset.menuMode = mode;
+    try { localStorage.setItem(modeKey, mode); } catch (_) { /* private window */ }
+  }
+  document.querySelectorAll(".nav-mode-btn").forEach((b) => {
+    b.onclick = () => setMode(b.dataset.mode);
+  });
+  try { setMode(localStorage.getItem(modeKey) || "live"); } catch (_) { setMode("live"); }
+
+  /**
+   * The row of tabs across a page set, at the top of the page (under the title). Only drawn when
+   * the open page belongs to a set; clicking a tab opens that page through go().
+   */
+  function renderSetTabs(tabId, sub, btn) {
+    const panel = $("tab-" + tabId);
+    if (!panel) return;
+    const head = panel.querySelector(":scope > .page-head");
+    let bar = panel.querySelector(":scope > .page-head > .set-tabs");
+    const set = btn && btn.dataset.set && PAGE_SETS[btn.dataset.set];
+    if (!set || !head) {
+      if (bar) bar.hidden = true;
+      return;
+    }
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "set-tabs";
+      bar.setAttribute("role", "tablist");
+      const title = head.querySelector(".page-title");
+      if (title) title.after(bar);
+      else head.prepend(bar);
+      bar.addEventListener("click", (ev) => {
+        const b = ev.target.closest(".set-tab");
+        if (b) go(b.dataset.tab, b.dataset.sub || undefined);
+      });
+    }
+    bar.hidden = false;
+    bar.innerHTML = set.map(([t, sb, label]) => {
+      const on = t === tabId && (!sb || sb === sub);
+      return `<button type="button" role="tab" class="set-tab${on ? " active" : ""}" aria-selected="${on}" ` +
+        `data-tab="${escapeHtml(t)}" data-sub="${escapeHtml(sb || "")}">${escapeHtml(label)}</button>`;
+    }).join("");
+  }
+
+  /** Highlight the sidebar entry for this page and flip the menu to that entry's mode. Returns the entry. */
+  function markNav(tabId, sub) {
+    const hit = navButtonFor(tabId, sub);
+    document.querySelectorAll(".admin-nav .tab").forEach((b) => {
+      const on = b === hit;
+      b.classList.toggle("active", on);
+      if (on) b.setAttribute("aria-current", "page");
+      else b.removeAttribute("aria-current");
+    });
+    if (hit) {
+      if (navModeOf(hit) !== currentMode()) setMode(navModeOf(hit));
+      if ($("nav-toggle-label")) $("nav-toggle-label").textContent = hit.dataset.title || hit.textContent.trim();
+    }
+    return hit;
   }
 
   // Page title at the top of every page (the sidebar name; Settings pages use the sub name).
@@ -354,13 +474,12 @@
     if (intro) head.appendChild(intro);
   });
 
-  function setPageTitle(tabId, sub) {
+  /** The page's heading: its menu entry's name (data-title when the entry has a badge in it). */
+  function setPageTitle(tabId, sub, btn) {
     const panel = $("tab-" + tabId);
     const h = panel && panel.querySelector(":scope > .page-head .page-title");
     if (!h) return;
-    const exact = sub && document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"][data-sub="' + sub + '"]');
-    const page = document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"]');
-    const el = exact || page;
+    const el = btn || navButtonFor(tabId, sub);
     h.textContent = el ? (el.dataset.title || el.textContent.trim()) : tabId;
   }
 
@@ -378,8 +497,9 @@
     panel.dataset.opened = "1";
     document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p === panel));
     const pick = showSub(tabId, sub);
-    markNav(tabId, pick);
-    setPageTitle(tabId, pick);
+    const navBtn = markNav(tabId, pick);
+    setPageTitle(tabId, pick, navBtn);
+    renderSetTabs(tabId, pick, navBtn);
     const nav = loadJson(navStateKey, {});
     nav.lastTab = tabId;
     saveJson(navStateKey, nav);
@@ -529,13 +649,14 @@
     return c.textContent.replace(/\s+/g, " ").trim();
   }
 
-  /** "Page › Sub-page" name shown under a search hit. */
+  /** "Page › Tab" name shown under a search hit (the menu entry, then the set tab or sub-page pill). */
   function pageTitle(tabId, sub) {
-    const exact = document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"][data-sub="' + sub + '"]');
-    if (exact) return exact.textContent.trim();
-    const page = document.querySelector('.admin-nav .tab[data-tab="' + tabId + '"]');
-    let title = page ? page.textContent.trim() : tabId;
-    if (sub) {
+    const btn = navButtonFor(tabId, sub);
+    let title = btn ? (btn.dataset.title || btn.textContent.trim()) : tabId;
+    const set = btn && btn.dataset.set && PAGE_SETS[btn.dataset.set];
+    const item = set && set.find(([t, sb]) => t === tabId && (!sb || sb === sub));
+    if (item && set.length > 1) title += " › " + item[2];
+    if (sub && !(item && item[1]) && !(btn && btn.dataset.sub === sub)) {
       const pill = document.querySelector('#tab-' + tabId + ' .subtab[data-sub="' + sub + '"]');
       if (pill) title += " › " + pill.textContent.trim();
     }
@@ -558,9 +679,12 @@
       const where = pageTitle(tabId, sub) + (group && group.toLowerCase() !== text.toLowerCase() ? " › " + group : "");
       out.push({ text, tabId, sub: sub || "", el, kind, where, lc: text.toLowerCase(), kw: (keywords || "").toLowerCase() });
     };
-    document.querySelectorAll(".admin-nav .tab").forEach((b) => add(b.textContent.trim(), b.dataset.tab, b.dataset.sub, null, "page", "", b.dataset.keywords));
+    document.querySelectorAll(".admin-nav .tab").forEach((b) => add(b.dataset.title || b.textContent.trim(), b.dataset.tab, b.dataset.sub, null, "page", "", b.dataset.keywords));
+    // every tab of a page set is a page hit of its own ("Red flags" finds Chat & flags › Red flags)
+    Object.values(PAGE_SETS).forEach((set) => set.forEach(([t, sb, label]) => add(label, t, sb || "", null, "page")));
     document.querySelectorAll(".subtab[data-sub]").forEach((b) => {
       const panel = b.closest(".panel");
+      if (panel && panel.hasAttribute("data-menu-subs")) return;
       if (panel) add(b.textContent.trim(), panel.id.replace(/^tab-/, ""), b.dataset.sub, null, "page");
     });
     document.querySelectorAll(".panel label, .panel legend, .panel h3, .panel .acc > summary, .panel .cs-motion, .panel .cs-preset").forEach((el) => {
@@ -746,6 +870,9 @@
         const cur = (rx.stage || {}).curtain;
         $("live-stage-state").textContent = !rx.game_connected ? "Stream Rooms not connected" : cur ? "curtain " + cur : "";
       }
+      // The curtain card is only there while Stream Rooms is connected (its buttons do nothing otherwise)
+      if ($("live-stage-card")) $("live-stage-card").hidden = !rx.game_connected;
+      renderTopLights(s);
       box.innerHTML =
         `<div class="live-chips">${chips.join("")}</div>` +
         (problems.length ? `<ul class="status-list live-problems">${problems.join("")}</ul>` : "") +
@@ -799,11 +926,123 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Top-bar platform lights: a dot per chat platform that is switched on (green = chat arriving,
+  // red = stopped / retrying). Drawn from /api/admin/status by loadLiveStatus, and every 30 s by
+  // the start-up timer below on other pages. Replaces the old Status page in the menu (still
+  // reachable as Connect platforms › Connection check).
+  // ------------------------------------------------------------------
+  function renderTopLights(s) {
+    const box = $("top-lights");
+    if (!box || !s) return;
+    const rows = Object.entries(s.platforms || {}).filter(([, p]) => p.configured_enabled || p.running);
+    box.innerHTML = rows.map(([name, p]) => {
+      const state = p.running ? "on" : "off";
+      const word = p.running ? "connected" : p.state === "retrying" ? "retrying" : "not connected";
+      return `<a class="top-light ${state}" href="#status" title="${escapeHtml(name)}: ${word}">` +
+        `<i aria-hidden="true"></i>${escapeHtml(name.charAt(0).toUpperCase() + name.slice(1))}` +
+        `<span class="visually-hidden"> ${word}</span></a>`;
+    }).join("");
+  }
+  async function refreshTopLights() {
+    if (!token()) return;
+    try {
+      renderTopLights(await api("/api/admin/status"));
+    } catch (_) { /* the status line already says when Core can't be reached */ }
+  }
+
+  // ------------------------------------------------------------------
+  // Live controls "Stream events" window: polls GET /api/admin/activity?after=<last id> every
+  // 3 s while the Live page is open (core/activity.py keeps the list). Newest line on top; the box
+  // has a fixed height (admin.css .live-feed) so it scrolls inside instead of moving the page.
+  // Kinds and labels match core/activity.py KINDS and the filter buttons in index.html.
+  // ------------------------------------------------------------------
+  const LIVE_FEED_KINDS = { alert: "Alert", redeem: "Redeem", command: "Command", game: "Game", flag: "Flag", error: "Error" };
+  const FEED_MAX = 200;           // lines kept in the window
+  const FEED_POLL_MS = 3000;
+  let feedLast = 0;               // highest activity id seen (sent back as ?after=)
+  let feedRows = [];              // newest first
+  let feedKind = "";              // filter: "" = all
+  let feedPaused = false;
+  let feedTimer = 0;
+
+  function feedTime(ts) {
+    const d = new Date(ts * 1000);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+
+  function renderFeed() {
+    const box = $("live-feed");
+    if (!box) return;
+    const rows = feedRows.filter((r) => !feedKind || r.kind === feedKind);
+    if (!rows.length) {
+      box.innerHTML = `<p class="muted">${feedRows.length ? "Nothing of this kind yet." :
+        "Nothing yet. Alerts, redeems, commands and errors show up here as they happen."}</p>`;
+      return;
+    }
+    box.innerHTML = rows.slice(0, FEED_MAX).map((r) =>
+      `<div class="feed-row feed-${escapeHtml(r.kind)}"><time>${feedTime(r.ts)}</time>` +
+      `<span class="feed-kind">${escapeHtml(LIVE_FEED_KINDS[r.kind] || r.kind)}</span>` +
+      `<span class="feed-text">${escapeHtml(r.text)}${r.count > 1 ? ` <span class="muted">×${r.count}</span>` : ""}</span></div>`
+    ).join("");
+  }
+
+  async function pollFeed() {
+    if (feedPaused || !token() || !$("tab-live") || !$("tab-live").classList.contains("active")) return;
+    try {
+      const data = await api("/api/admin/activity?after=" + feedLast);
+      if ((data.last || 0) < feedLast) {
+        // Core restarted: its list starts again from 1
+        feedLast = 0;
+        feedRows = [];
+      }
+      (data.items || []).forEach((it) => {
+        // a repeated error comes back with a new id: replace the older copy of that line
+        feedRows = feedRows.filter((r) => !(r.kind === "error" && it.kind === "error" && r.text === it.text));
+        feedRows.unshift(it);
+      });
+      feedRows = feedRows.slice(0, FEED_MAX);
+      feedLast = Math.max(feedLast, data.last || 0);
+      if ($("live-feed-state")) $("live-feed-state").textContent = "";
+      if ((data.items || []).length) renderFeed();
+    } catch (e) {
+      if ($("live-feed-state")) $("live-feed-state").textContent = "paused: " + String(e.message || e);
+    }
+  }
+
+  if ($("live-feed-filters")) {
+    $("live-feed-filters").addEventListener("click", (ev) => {
+      const b = ev.target.closest("button[data-kind]");
+      if (!b) return;
+      feedKind = b.dataset.kind;
+      $("live-feed-filters").querySelectorAll("button[data-kind]").forEach((x) => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+      renderFeed();
+    });
+  }
+  if ($("live-feed-pause")) {
+    $("live-feed-pause").onclick = () => {
+      feedPaused = !feedPaused;
+      $("live-feed-pause").textContent = feedPaused ? "Resume" : "Pause";
+      $("live-feed-pause").setAttribute("aria-pressed", feedPaused ? "true" : "false");
+      $("live-feed-state").textContent = feedPaused ? "paused" : "";
+      if (!feedPaused) pollFeed();
+    };
+  }
+  if ($("live-feed-clear")) {
+    $("live-feed-clear").onclick = () => {
+      feedRows = [];
+      renderFeed();
+    };
+  }
+
   /** Live controls page opened: load everything, then refresh the status every 15 s (activateTab clears the timer on leaving). */
   function loadLive() {
     loadLiveStatus();
     loadLiveCredits();
     loadLiveAlerts();
+    pollFeed();
+    // the feed timer checks for itself whether the Live page is showing, so it can stay running
+    if (!feedTimer) feedTimer = setInterval(pollFeed, FEED_POLL_MS);
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(() => {
       if ($("tab-live") && $("tab-live").classList.contains("active")) loadLiveStatus();
@@ -3912,6 +4151,9 @@
    * These pages did not exist when the address was first read, so this opens one if the address
    * (bootHash) or the last visit (bootLastTab) pointed at it.
    */
+  // Old plugin.json "nav" group names -> the group that took their place (index.html data-heading)
+  const NAV_GROUP_ALIASES = { Overlays: "Stream look", People: "On stream", Settings: "Core" };
+
   async function addPluginPages() {
     if (!token()) return;
     let list = [];
@@ -3926,9 +4168,12 @@
       (p.pages || []).forEach((pg) => {
         const tabId = "plg-" + slug(p.id) + "-" + slug(pg.id);
         if ($("tab-" + tabId)) return;
-        const heading = Array.from(document.querySelectorAll(".admin-nav .nav-heading"))
-          .find((h) => h.textContent.trim() === pg.nav);
-        const group = heading ? heading.parentElement : document.querySelector(".admin-nav .nav-group:last-of-type");
+        // plugin.json "nav" names a menu group (data-heading in index.html). Old names from before
+        // the Live / Setup menu still land somewhere sensible; anything else goes under Live › Games.
+        const want = NAV_GROUP_ALIASES[pg.nav] || pg.nav;
+        const group = Array.from(document.querySelectorAll(".admin-nav .nav-group[data-heading]"))
+          .find((g) => g.dataset.heading === want && (want !== "Games" || g.dataset.mode === "live"))
+          || $("nav-games-live");
         const btn = document.createElement("button");
         btn.className = "tab";
         btn.dataset.tab = tabId;
@@ -6271,6 +6516,8 @@
     for (const id of ["crd-off", "live-crd-off", "cl-off"]) {
       if ($(id)) $(id).hidden = creditsEnabled !== false;
     }
+    // Live controls only shows the credits buttons while credits are on (turn them on on End credits)
+    if ($("live-crd-card")) $("live-crd-card").hidden = creditsEnabled === false;
     renderCreditsPlay();
   }
   document.addEventListener("click", async (ev) => {
@@ -7198,11 +7445,9 @@
         if (uniq.length) bar.querySelector(".ps-status").textContent = "";
       });
       // dots on the sidebar items and the sub-page pills
+      // (an entry covering a page set gets the dot when any page in the set has unsaved edits)
       document.querySelectorAll(".admin-nav .tab").forEach((b) => {
-        const t = b.dataset.tab;
-        const on = b.dataset.sub
-          ? sections.some((s) => s.page === t && s.sub === b.dataset.sub && s.dirty)
-          : sections.some((s) => s.page === t && s.dirty);
+        const on = navCovers(b).some(([t, sb]) => sections.some((s) => s.page === t && s.dirty && (!sb || s.sub === sb)));
         b.classList.toggle("unsaved", on);
       });
       document.querySelectorAll(".subtabs").forEach((sb) => {
@@ -7242,6 +7487,11 @@
   // ------------------------------------------------------------------
   refreshStats();
   loadUsers();
+  // Platform lights in the top bar: now, then every 30 s (the Live page also redraws them)
+  refreshTopLights();
+  setInterval(() => {
+    if (!($("tab-live") && $("tab-live").classList.contains("active"))) refreshTopLights();
+  }, 30000);
   // First page: the address (#page/sub), else the last page used, else Live.
   if (!routeFromHash()) {
     const last = loadJson(navStateKey, {}).lastTab;

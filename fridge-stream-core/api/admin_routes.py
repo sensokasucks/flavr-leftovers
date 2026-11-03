@@ -390,6 +390,16 @@ def create_admin_router(core_state) -> APIRouter:
         _auth(x_admin_token)
         return await _store().stats()
 
+    @router.get("/activity")
+    async def activity(after: int = 0, limit: int = 100, x_admin_token: Optional[str] = Header(None)):
+        """Stream events feed for the Live page window (core/activity.py): lines with id > ``after``,
+        oldest first, plus ``last`` (pass it back as ``after`` next time). Empty until Core has started."""
+        _auth(x_admin_token)
+        log = getattr(core_state, "activity", None)
+        if log is None:
+            return {"items": [], "last": 0}
+        return log.since(after, limit)
+
     @router.get("/status")
     async def runtime_status(x_admin_token: Optional[str] = Header(None)):
         """

@@ -102,6 +102,13 @@ class PluginContext:
             platform=platform, message=str(text), reply_to_user=to_user, target_platform=platform,
         ))
 
+    def activity(self, text: str, kind: str = "game") -> None:
+        """Add a line to the Live controls page's Stream events window, e.g.
+        ``ctx.activity("Cash drop placed at the docks")``. ``kind`` is one of core/activity.py
+        KINDS ("game" by default; "error" for a problem the streamer should see)."""
+        if self.bus is not None and hasattr(self.bus, "note"):
+            self.bus.note(kind, f"{self.id}: {text}")
+
     async def alert(self, payload: dict) -> None:
         """Show an alert on the alerts overlay; ``payload`` is a core.alerts.build_alert(...) dict."""
         if self.bus is not None:

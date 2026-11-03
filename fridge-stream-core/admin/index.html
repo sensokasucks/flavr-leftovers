@@ -11,6 +11,8 @@
   <header class="topbar">
     <button type="button" id="nav-toggle" class="nav-toggle" aria-controls="admin-nav" aria-expanded="false">☰ <span id="nav-toggle-label">Menu</span></button>
     <div class="brand">Stream Core <span>Admin</span></div>
+    <!-- Platform lights: one per chat platform that is switched on (admin.js renderTopLights) -->
+    <div id="top-lights" class="top-lights" aria-label="Chat platforms"></div>
     <div id="stats" class="stats"></div>
     <div class="token-row" id="token-row">
       <label for="token">Admin token</label>
@@ -30,46 +32,60 @@
       <div id="nav-results" class="nav-results" hidden></div>
     </div>
 
-    <div class="nav-group">
-      <div class="nav-heading">On stream</div>
-      <button class="tab" data-keywords="stream roll alert fire test quick buttons" data-tab="live">Live controls</button>
-      <button class="tab" data-keywords="poll predict prediction trivia rate rating request queue moments clip heist slots duel hype combo emote launch cheer boo streak claim seat games" data-tab="fun">Chat games</button>
-      <button class="tab" data-keywords="running adapters platforms health metrics viewers" data-tab="status">Status</button>
-      <button class="tab" data-keywords="paid super chat super sticker jewels gift bits power-up cheer kicks tip donation sub member checklist thank missed money" data-tab="paid" data-title="Paid">Paid <span class="nav-badge" id="paid-badge" hidden title="Paid messages and tips not ticked yet"></span></button>
-      <button class="tab" data-keywords="credits list end credits checklist chatters names thank shout out tick roll everyone" data-tab="creditslist" data-title="Credits list">Credits list</button>
+    <!--
+      The menu has two modes (admin.js "Menu modes"): Live = what you touch mid-stream,
+      Setup = what you set once. Each .nav-group says which mode it belongs to in data-mode.
+      One entry per feature: pages that belong together share one entry (data-set, see
+      PAGE_SETS in admin.js) and show tabs across their pages instead of extra menu lines.
+      A new page needs a place here AND in the dashboard layout rules (checklists/admin-hub.md).
+    -->
+    <div class="nav-mode" role="group" aria-label="Menu mode">
+      <button type="button" class="nav-mode-btn" data-mode="live" aria-pressed="true" title="What you use while streaming"><span class="nav-mode-dot" aria-hidden="true"></span>Live</button>
+      <button type="button" class="nav-mode-btn" data-mode="setup" aria-pressed="false" title="Things you set up once">Setup</button>
     </div>
 
-    <div class="nav-group">
-      <div class="nav-heading">Overlays</div>
-      <button class="tab" data-keywords="obs xsplit browser source url webpage overlay links customise customize builder switches options parameters" data-tab="sources">Sources &amp; overlays</button>
-      <button class="tab" data-keywords="end credits roll crawl star wars matrix typewriter teletype ticker motion preset font letterbox grain movie cast job pin csv" data-tab="credits">Credits</button>
+    <div class="nav-group" data-mode="live" data-heading="On stream">
+      <button class="tab" data-keywords="stream roll alert fire test quick buttons curtain credits events feed redeems errors commands" data-tab="live">Live controls</button>
+      <button class="tab" data-keywords="paid super chat super sticker jewels gift bits power-up cheer kicks tip donation sub member checklist thank missed money credits list end credits chatters names tick" data-tab="paid" data-set="thanks" data-title="Paid &amp; thank-yous">Paid &amp; thank-yous <span class="nav-badge" id="paid-badge" hidden title="Paid messages and tips not ticked yet"></span></button>
+      <button class="tab" data-keywords="poll predict prediction trivia rate rating request queue moments clip heist slots duel hype combo emote launch cheer boo streak claim seat games" data-tab="fun">Chat games</button>
+      <button class="tab" data-keywords="messages log export csv search history red flag flagged phrases hide block troll spam moderation ban unflag custom flags" data-tab="chat" data-set="chatflags">Chat &amp; flags</button>
+      <button class="tab" data-keywords="viewers users points balance accounts link merge notes" data-tab="users">Viewers</button>
+    </div>
+
+    <div class="nav-group" data-mode="live" data-heading="Games" id="nav-games-live">
+      <div class="nav-heading">Games</div>
+      <button class="tab" data-keywords="command tester dry run live execute minecraft factorio openttd granvir game integrations" data-tab="integrations" data-sub="games" data-title="Game panels">Game panels</button>
+      <!-- game plugin pages (plugin.json "pages") are added here by admin.js addPluginPages() -->
+    </div>
+
+    <div class="nav-group" data-mode="setup" data-heading="Stream look" hidden>
+      <div class="nav-heading">Stream look</div>
+      <button class="tab" data-keywords="obs xsplit browser source url webpage overlay links customise customize builder switches options parameters sources shared overlays" data-tab="sources" data-set="links" data-title="Overlay links for OBS">Overlay links for OBS</button>
+      <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom widget custom code html js javascript fields zip import etsy ko-fi theme" data-tab="chatlook" data-set="chatbox">Chat box</button>
       <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look sound picture gif webm upload" data-tab="alerts">Alerts</button>
-      <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom" data-tab="chatlook">Chat overlay</button>
-      <button class="tab" data-keywords="stored files library upload picture image sound video mp4 webm gif font reuse media replace css url" data-tab="files">Stored files</button>
-      <button class="tab" data-keywords="chat widget streamelements streamlabs custom code html css js javascript fields zip import etsy ko-fi skin theme" data-tab="widgets">Chat widgets</button>
+      <button class="tab" data-keywords="end credits roll crawl star wars matrix typewriter teletype ticker motion preset font letterbox grain movie cast job pin csv" data-tab="credits" data-title="End credits">End credits</button>
+    </div>
+
+    <div class="nav-group" data-mode="setup" data-heading="Stream Rooms" hidden>
+      <div class="nav-heading">Stream Rooms</div>
       <button class="tab" data-keywords="stream rooms audience speech bubble bubbles silhouette silhouettes figure style editor look looks group mods vip subs random mix picture" data-tab="looks">Audience looks</button>
     </div>
 
-    <div class="nav-group">
+    <div class="nav-group" data-mode="setup" data-heading="Chat &amp; viewers" hidden>
+      <div class="nav-heading">Chat &amp; viewers</div>
+      <button class="tab" data-keywords="points rules earn spend permissions who can mods chat credits chat history log keep" data-tab="config" data-sub="points" data-title="Points &amp; permissions">Points &amp; permissions</button>
+      <button class="tab" data-keywords="chat commands command groups reactions emoji tester try dry run" data-tab="config" data-sub="commands" data-set="cmds" data-title="Commands &amp; reactions">Commands &amp; reactions</button>
+    </div>
+
+    <div class="nav-group" data-mode="setup" data-heading="Games" id="nav-games-setup" hidden>
       <div class="nav-heading">Games</div>
-      <button class="tab" data-keywords="command tester dry run live execute minecraft factorio openttd granvir game" data-tab="integrations">Integrations</button>
+      <button class="tab" data-keywords="plugins game plugins minecraft factorio openttd granvir features install turn on off" data-tab="config" data-sub="games" data-title="Add or remove games">Add or remove games</button>
     </div>
 
-    <div class="nav-group">
-      <div class="nav-heading">People</div>
-      <button class="tab" data-keywords="viewers points balance accounts link" data-tab="users">Users &amp; points</button>
-      <button class="tab" data-keywords="messages log export csv search" data-tab="chat">Chat history</button>
-      <button class="tab" data-keywords="red flag flagged phrases hide block troll spam moderation ban unflag" data-tab="redflags">Red flags</button>
-    </div>
-
-    <div class="nav-group">
-      <div class="nav-heading">Settings</div>
-      <button class="tab" data-tab="config" data-sub="core">Core + chat platforms</button>
-      <button class="tab" data-tab="config" data-sub="games" data-keywords="plugins game plugins minecraft factorio openttd granvir features install">Plugins</button>
-      <button class="tab" data-tab="config" data-sub="points">Points, permissions + chat</button>
-      <button class="tab" data-tab="config" data-sub="reactions">Reactions</button>
-      <button class="tab" data-tab="config" data-sub="groups">Command groups</button>
-      <button class="tab" data-tab="config" data-sub="commands">Chat commands</button>
+    <div class="nav-group" data-mode="setup" data-heading="Core" hidden>
+      <div class="nav-heading">Core</div>
+      <button class="tab" data-keywords="kick twitch youtube sign in connect platforms core status running adapters health metrics viewers reconnect replies" data-tab="config" data-sub="core" data-set="connect" data-title="Connect platforms">Connect platforms</button>
+      <button class="tab" data-keywords="stored files library upload picture image sound video mp4 webm gif font reuse media replace css url" data-tab="files">Stored files</button>
       <button class="tab" data-tab="config" data-sub="advanced">Advanced</button>
     </div>
   </nav>
@@ -105,11 +121,12 @@
         </div>
         <p id="live-yt-msg" class="action-msg" role="status" aria-live="polite"></p>
       </section>
-      <section class="live-card">
+      <!-- Shown only while credits are on (admin.js renderCreditsOnOff) -->
+      <section class="live-card" id="live-crd-card">
         <div class="live-card-head">
-          <h3>Credits</h3>
+          <h3>End credits</h3>
           <span id="live-crd-count" class="muted"></span>
-          <a href="#credits" class="live-link">Credits page →</a>
+          <a href="#credits" class="live-link">End credits look →</a>
         </div>
         <p id="live-crd-state" class="live-state">—</p>
         <p id="live-crd-off" class="crd-off" role="status" hidden>Credits are off: nobody is being collected. <button type="button" class="crd-turn-on">Turn on</button></p>
@@ -124,7 +141,8 @@
           <button data-proxy="crd-live">Live list</button>
         </div>
       </section>
-      <section class="live-card">
+      <!-- Shown only while Stream Rooms is connected (admin.js loadLiveStatus) -->
+      <section class="live-card" id="live-stage-card" hidden>
         <div class="live-card-head">
           <h3>Stage curtain</h3>
           <span id="live-stage-state" class="muted"></span>
@@ -164,7 +182,7 @@
       <section class="live-card">
         <div class="live-card-head">
           <h3>Try a chat command</h3>
-          <a href="#integrations" class="live-link">Command tester →</a>
+          <a href="#integrations/tester" class="live-link">Command tester →</a>
         </div>
         <p class="hint">Runs through the command tester as a dry run (nothing reaches the game or chat).</p>
         <div class="live-cmd">
@@ -172,6 +190,28 @@
           <button id="live-cmd-run">Dry run</button>
         </div>
         <pre id="live-cmd-result" class="integ-result" hidden></pre>
+      </section>
+      <!-- Stream events: what just happened (GET /api/admin/activity, core/activity.py). Kept last
+           and at a fixed height so new lines never push the buttons above around. -->
+      <section class="live-card live-feed-card" id="live-feed-card">
+        <div class="live-card-head">
+          <h3>Stream events</h3>
+          <span id="live-feed-state" class="muted"></span>
+          <button type="button" id="live-feed-pause" class="link-btn" aria-pressed="false">Pause</button>
+          <button type="button" id="live-feed-clear" class="link-btn" title="Empties this window only; Core keeps its list">Clear</button>
+        </div>
+        <div class="feed-filters" id="live-feed-filters" role="group" aria-label="Show only">
+          <button type="button" data-kind="" aria-pressed="true">All</button>
+          <button type="button" data-kind="alert" aria-pressed="false">Alerts</button>
+          <button type="button" data-kind="redeem" aria-pressed="false">Redeems</button>
+          <button type="button" data-kind="command" aria-pressed="false">Commands</button>
+          <button type="button" data-kind="game" aria-pressed="false">Games</button>
+          <button type="button" data-kind="flag" aria-pressed="false">Flags</button>
+          <button type="button" data-kind="error" aria-pressed="false">Errors</button>
+        </div>
+        <div id="live-feed" class="live-feed" role="log" aria-live="off" tabindex="0">
+          <p class="muted">Nothing yet. Alerts, redeems, commands and errors show up here as they happen.</p>
+        </div>
       </section>
     </div>
   </section>
@@ -366,7 +406,7 @@
   </section>
 
   <!-- Integrations test bench -->
-  <section id="tab-integrations" class="panel">
+  <section id="tab-integrations" class="panel" data-menu-subs>
     <p class="tab-intro">
       Test chat commands and game features without going live in chat.
       <strong>Dry run</strong> only renders the template; <strong>Live execute</strong>
@@ -1262,7 +1302,7 @@
   </section>
 
   <!-- Config (hybrid GUI) -->
-  <section id="tab-config" class="panel">
+  <section id="tab-config" class="panel" data-menu-subs>
     <div class="config-banner" id="config-banner">
       <strong>Save writes the same files tech users edit by hand.</strong>
       Saving reconnects only the chat platforms (Kick, Twitch, YouTube) whose settings changed, no restart.
