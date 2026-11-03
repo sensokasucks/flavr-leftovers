@@ -50,6 +50,7 @@ and the standalone Chat Credits app (port 3854, only for people who don't run Co
 | 3853 | Minecraft server mod |
 | 3854 | Chat Credits |
 | 3855 | Granvir Stats |
+| 3860 | Stream Core phone remote (home Wi-Fi only, off until you switch it on) |
 
 ## Conventions
 
@@ -68,4 +69,4 @@ Copyright (C) 2026 Sensoka (sensokasucks).
 
 This project is free software under the [GNU General Public License v3.0](LICENSE) (GPL-3.0). You can use it for free, including on monetized streams and other commercial use, change it, and share it. If you pass it on to anyone, changed or not, free or paid, you must give them the full source code under the same GPL-3.0 terms.
 
-Bundled third-party parts keep their own licenses: `fridge-stream-core/overlay/vendor/jquery-3.7.1.min.js` is MIT (see `jquery-LICENSE.txt` next to it). Python packages installed by `install.bat` are not included in this repository and keep their own licenses.
+Bundled third-party parts keep their own licenses: `fridge-stream-core/overlay/vendor/jquery-3.7.1.min.js` is MIT (see `jquery-LICENSE.txt` next to it). `fridge-stream-core/admin/vendor/qrcode-generator-1.4.4.js` (draws the phone remote's pairing QR code) is MIT, by Kazuhiko Arase; its licence notice is at the top of the file. Python packages installed by `install.bat` are not included in this repository and keep their own licenses.

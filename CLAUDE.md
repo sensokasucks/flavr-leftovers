@@ -13,6 +13,8 @@ Style: build streaming plugins based on user needs. Keep everything modular and 
 | [fridge-stream-core](fridge-stream-core/) | Chat backbone: adapters → EventBus → commands / points / admin → game plugins (`plugins/`) | 3850 |
 | [checklists/](checklists/) | Feature contracts (`Must keep`) | — |
 
+Core's phone remote door (Setup → Phone remote) uses port 3860 on the PC's home-network address only, and is off by default: the one deliberate exception to "bind 127.0.0.1" ([checklists/phone-remote.md](checklists/phone-remote.md)).
+
 The game plugins and game-side mods (Minecraft, Factorio, Granvir, OpenTTD; ports 3847 / 3852 / 3853 / 3855)
 live in their own repo, [flavr-game-plugins](https://github.com/sensokasucks/flavr-game-plugins). Core's `plugins/` folder is empty in git
 (installed game folders are git-ignored). The audio-reactive avatar (port 3851) lives in
@@ -25,7 +27,7 @@ Changelog: [fridge-stream-core/CHANGELOG.md](fridge-stream-core/CHANGELOG.md). M
 
 - One concern per folder. Platforms = adapters. Games = plugins. Overlays = dumb HTML.
 - Prefix is `fridge-`. Do not create new `xsplit-*` folders.
-- Bind `127.0.0.1` by default. Do not expose ports.
+- Bind `127.0.0.1` by default. Do not expose ports. (Only exception: the opt-in phone remote door, home network only.)
 - Ports above are fixed. Do not renumber.
 - Games are plugins (`fridge-stream-core/plugins/<id>/`, [docs/PLUGINS.md](fridge-stream-core/docs/PLUGINS.md)) and opt-in (`minecraft.enabled`, `factorio.enabled`, `granvir.enabled`, `openttd.enabled` default **false**). Core must run with `plugins/` empty. Chat platforms default **off**.
 - Do not invent a second copy of a feature a checklist already places in another folder.

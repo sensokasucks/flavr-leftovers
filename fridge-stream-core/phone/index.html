@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f1218" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="robots" content="noindex" />
+  <title>Stream Core remote</title>
+  <!--
+    Phone remote page: served ONLY by the phone door (api/phone_server.py, port 3860 on the PC's
+    home-network address), never on the 127.0.0.1:3850 dashboard. Drawn by phone.js.
+    Three screens (bottom bar): Live (buttons + Stream events), Chat (tap a line for actions),
+    People (find a chatter, change points, unflag). A first visit shows the pairing screen.
+  -->
+  <link rel="stylesheet" href="phone.css" />
+</head>
+<body>
+  <div id="offline" class="offline" hidden>Reconnecting to Stream Core…</div>
+
+  <!-- Pairing: shown until this phone has a key (phone.js showPair) -->
+  <section id="pair" class="screen" hidden>
+    <h1>Pair this phone</h1>
+    <p class="hint">On the PC, open Stream Core → Setup → <strong>Phone remote</strong> and press
+      <strong>Add a phone</strong>. Scan the QR code, or type the 6-digit code here.</p>
+    <label>Code <input id="pair-code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="123 456" /></label>
+    <label>Name for this phone <input id="pair-name" maxlength="40" placeholder="My phone" /></label>
+    <button id="pair-go" class="big primary" type="button">Pair</button>
+    <p id="pair-msg" class="msg" role="status"></p>
+  </section>
+
+  <main id="app" hidden>
+    <header class="top">
+      <span id="lights" class="lights"></span>
+      <span id="me" class="me"></span>
+    </header>
+
+    <!-- Live: what you press mid-stream -->
+    <section id="tab-live" class="screen">
+      <div class="card hl-card">
+        <h2>Highlighted message <span id="hl-state" class="muted"></span></h2>
+        <div id="hl-now" class="hl-now"><span class="muted">Nothing on screen. Tap a line in Chat to highlight it.</span></div>
+        <div class="row">
+          <button type="button" class="big primary" data-act="hl-next">Next</button>
+          <button type="button" class="big" data-act="hl-clear">Clear</button>
+        </div>
+      </div>
+      <div class="card" id="stage-card" hidden>
+        <h2>Stage curtain <span id="stage-state" class="muted"></span></h2>
+        <div class="row">
+          <button type="button" class="big primary" data-stage="reveal">Reveal</button>
+          <button type="button" class="big" data-stage="close">Close</button>
+          <button type="button" class="big" data-stage="open">Open</button>
+        </div>
+      </div>
+      <div class="card" id="credits-card" hidden>
+        <h2>End credits <span id="credits-state" class="muted"></span></h2>
+        <div class="row wrap">
+          <button type="button" class="big primary" data-credits="roll">Roll credits</button>
+          <button type="button" class="big" data-credits="once">Play once</button>
+          <button type="button" class="big" data-credits="loop">Loop</button>
+          <button type="button" class="big" data-credits="pause" id="credits-pause">Pause</button>
+          <button type="button" class="big" data-credits="live">Live list</button>
+        </div>
+      </div>
+      <div class="card" id="games-card" hidden>
+        <h2>Chat games</h2>
+        <div class="row wrap">
+          <button type="button" class="big" data-fun="trivia/ask">Ask trivia</button>
+          <button type="button" class="big" data-fun="poll/end">End poll</button>
+          <button type="button" class="big" data-fun="predict/lock">Lock prediction</button>
+          <button type="button" class="big" data-fun="rate/close">Close rating</button>
+          <button type="button" class="big hold" data-fun="boards/clear"><span>Hold: clear boards</span></button>
+        </div>
+      </div>
+      <div class="card feed-card">
+        <h2>Stream events</h2>
+        <div id="feed" class="feed"><p class="muted">Alerts, redeems, commands and errors show up here.</p></div>
+      </div>
+    </section>
+
+    <!-- Chat: every platform, tap a line for the menu -->
+    <section id="tab-chat" class="screen" hidden>
+      <div id="chat" class="chat" role="log"></div>
+      <button id="chat-live" class="chat-live" type="button" hidden>↓ Back to live</button>
+    </section>
+
+    <!-- People: find a chatter, change points; red-flagged chatters with Unflag -->
+    <section id="tab-people" class="screen" hidden>
+      <div class="card">
+        <input id="people-q" type="search" placeholder="Find a chatter" autocomplete="off" />
+        <div id="people" class="people"></div>
+      </div>
+      <div class="card">
+        <h2>Red-flagged</h2>
+        <div id="flagged" class="people"><p class="muted">Nobody.</p></div>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button type="button" data-tab="live" aria-pressed="true">Live</button>
+      <button type="button" data-tab="chat" aria-pressed="false">Chat</button>
+      <button type="button" data-tab="people" aria-pressed="false">People</button>
+    </nav>
+  </main>
+
+  <!-- The menu for one chat line or one person (phone.js openSheet) -->
+  <div id="sheet" class="sheet" hidden>
+    <div class="sheet-box" role="dialog" aria-modal="true">
+      <div id="sheet-title" class="sheet-title"></div>
+      <div id="sheet-body"></div>
+      <button type="button" class="big" id="sheet-close">Close</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <script src="phone.js"></script>
+</body>
+</html>

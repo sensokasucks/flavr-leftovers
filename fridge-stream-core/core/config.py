@@ -260,6 +260,8 @@ DEFAULTS["reactions"] = copy.deepcopy(_REACTIONS_DEFAULTS)
 DEFAULTS["chat_games"] = {"enabled": False}
 # Highlighted message overlay (core/highlights.py DEFAULTS; Chat box page -> Highlighted message)
 DEFAULTS["highlight"] = {"hold_sec": 0, "show_avatar": True, "read_aloud": False}
+# Phone remote (core/phone_remote.py DEFAULTS; Setup → Phone remote). Off until switched on.
+DEFAULTS["phone_remote"] = {"enabled": False, "stop_on_exit": True, "host": ""}
 
 # Game plugins (plugins/<id>/plugin.json) add their own section, switched off, and command group.
 _plugin_manifest.set_reserved_ids(DEFAULTS)

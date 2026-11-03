@@ -19,6 +19,7 @@ Home: repo root. Map: [README.md](../README.md).
   | 3853 | Minecraft server mod / NeoForge bridge (flavr-game-plugins repo) |
   | 3854 | Standalone Chat Credits (fridge-chat-credits repo) |
   | 3855 | Granvir Stats (flavr-game-plugins repo) |
+  | 3860 | Stream Core phone remote door: home-network address only, **off by default** ([phone-remote.md](phone-remote.md)) |
 
 - [ ] Live secrets stay out of git: `config/config.yaml`, `.env`, `data/`, `*.db`, jars, `.venv`, `.grok/`.
 - [ ] Examples stay committed: `*.example.*`, `config.example.yaml`, `commands.example.json`.

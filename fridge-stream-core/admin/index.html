@@ -86,6 +86,7 @@
       <div class="nav-heading">Core</div>
       <button class="tab" data-keywords="kick twitch youtube sign in connect platforms core status running adapters health metrics viewers reconnect replies" data-tab="config" data-sub="core" data-set="connect" data-title="Connect platforms">Connect platforms</button>
       <button class="tab" data-keywords="stored files library upload picture image sound video mp4 webm gif font reuse media replace css url" data-tab="files">Stored files</button>
+      <button class="tab" data-keywords="phone remote mobile wifi wi-fi home network qr code pair pairing tablet" data-tab="phone">Phone remote</button>
       <button class="tab" data-tab="config" data-sub="advanced">Advanced</button>
     </div>
   </nav>
@@ -937,6 +938,49 @@
       </div>
       </details>
     </div>
+  </section>
+
+  <!-- Phone remote (core/phone_remote.py, api/phone_server.py, api/phone_admin_routes.py;
+       admin.js "Phone remote"): switch the phone door on, pair phones with a QR code, remove them. -->
+  <section id="tab-phone" class="panel">
+    <div class="page-head">
+      <h2 class="page-title">Phone remote</h2>
+      <p class="tab-intro">Use your phone as a remote for the Live controls over your home Wi-Fi: highlight chat,
+        roll the credits, open the curtain, give points and red-flag chatters. Settings, sign-ins and files stay on this PC.
+        Only phones you pair here can use it.</p>
+    </div>
+    <fieldset class="cfg-card">
+      <legend>Switch it on</legend>
+      <label class="check"><input id="phone-on" type="checkbox" /> <strong>Phone remote on</strong></label>
+      <p id="phone-state" class="live-state">—</p>
+      <p id="phone-net" class="hint" hidden></p>
+      <p class="hint">The first time, Windows asks whether Python may use the network. Tick <strong>Private networks</strong>
+        only (not Public) and press Allow. The phone must be on the same Wi-Fi as this PC; a guest network usually can't see it.</p>
+      <label class="check"><input id="phone-stop-on-exit" type="checkbox" /> Turn off when Core closes (switch it on again each stream)</label>
+      <details class="hl-options">
+        <summary>Advanced</summary>
+        <label>Use this PC address <input id="phone-host" type="text" placeholder="found by itself" autocomplete="off" />
+          <span class="muted">Only if the phone can't connect: the PC's Wi-Fi address, like 192.168.1.20.</span></label>
+        <p class="hint">If the address changes after a router restart, pair-by-address stops working until you scan again. To stop that,
+          "reserve" this PC's address in your router's settings (often called DHCP reservation).</p>
+      </details>
+      <button type="button" id="phone-save">Save</button>
+      <span id="phone-msg" class="muted" role="status"></span>
+    </fieldset>
+    <fieldset class="cfg-card">
+      <legend>Phones</legend>
+      <div id="phone-list"><span class="muted">No phones paired yet.</span></div>
+      <button type="button" class="primary" id="phone-add">Add a phone</button>
+      <div id="phone-pair" class="phone-pair" hidden>
+        <div id="phone-qr" class="phone-qr" aria-label="QR code for the phone"></div>
+        <div>
+          <p>Scan this with the phone's camera, or open <code id="phone-url"></code> on the phone and type the code:</p>
+          <p class="phone-code" id="phone-code"></p>
+          <p class="muted" id="phone-left"></p>
+          <button type="button" id="phone-pair-cancel">Cancel</button>
+        </div>
+      </div>
+    </fieldset>
   </section>
 
   <!-- Stored files: every upload once, reused anywhere (core/media_library.py) -->
@@ -1929,6 +1973,8 @@
 
   <script src="/overlay/credits-editor.js"></script>
   <script src="/admin/audience-looks.js"></script>
+  <!-- QR codes for Setup → Phone remote (MIT, Kazuhiko Arase; window.qrcode) -->
+  <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
   <script src="/admin/admin.js"></script>
 </body>
 </html>

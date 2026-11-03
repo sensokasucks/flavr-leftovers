@@ -123,6 +123,7 @@ If you leave it as `change-me`, Core refuses that value and generates a random t
 | Minecraft client mod | 3852 | Player stats / inventory (unchanged)       |
 | Minecraft server mod | 3853 | Command execution + Chat Dynamo (unchanged)|
 | Granvir Stats        | 3855 | BepInEx plugin or mock/mock_server.py      |
+| Phone remote         | 3860 | Home Wi-Fi only, off by default ([docs/PHONE_REMOTE.md](docs/PHONE_REMOTE.md)) |
 
 Minecraft and Granvir are **off by default**. Set `minecraft.enabled` / `granvir.enabled` in `config.yaml` when those bridges are running.
 

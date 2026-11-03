@@ -1508,3 +1508,11 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .hl-options label { display: block; margin: 6px 0; }
 .hl-options input[type="number"] { width: 5em; }
 .chat-star { padding: 0 6px; min-height: 24px; margin-right: 4px; }
+
+/* ---- Setup → Phone remote (admin.js "Phone remote") ---- */
+.phone-pair { display: flex; gap: 20px; align-items: center; flex-wrap: wrap; margin-top: 12px; padding: 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+.phone-qr { width: 220px; height: 220px; background: #fff; padding: 6px; border-radius: 6px; }
+.phone-qr svg { width: 100%; height: 100%; display: block; }
+.phone-code { font-size: 2rem; font-weight: 700; letter-spacing: 0.15em; font-variant-numeric: tabular-nums; margin: 6px 0; }
+#tab-phone .bad { color: var(--danger); }
