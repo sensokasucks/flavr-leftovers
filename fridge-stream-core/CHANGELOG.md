@@ -9,6 +9,11 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.11.4] — 2026-11-04
+
+### Fixed
+- **`INSTALL Stream Core.bat` works again.** The .bat files were stored with Unix line endings and some had long dashes in them, so Windows' command window chopped the lines up and printed errors like `'le-click' is not recognized` instead of installing. A new `.gitattributes` makes git (and GitHub's Download ZIP) always hand out .bat files with Windows line endings, and the long dashes are now plain `-`.
+
 ## [2026.11.2] — 2026-11-03
 
 ### Added
