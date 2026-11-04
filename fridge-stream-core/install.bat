@@ -1,13 +1,18 @@
 @echo off
 REM ============================================================
-REM Fridge Stream Core – one-time install (Windows)
+REM Fridge Stream Core - one-time install (Windows)
 REM Double-click this file after extracting / cloning the folder.
+REM
+REM Keep this file plain ASCII with Windows (CRLF) line endings.
+REM cmd.exe misreads .bat files saved with Unix (LF) endings or
+REM fancy characters like long dashes, and runs chopped-up words
+REM as commands. The repo's .gitattributes forces CRLF on checkout.
 REM ============================================================
 setlocal EnableExtensions
 cd /d "%~dp0"
 
 echo.
-echo === Fridge Stream Core – install ===
+echo === Fridge Stream Core - install ===
 echo.
 
 REM --- 1) Locate Python ---
@@ -68,7 +73,7 @@ if not exist "config\config.yaml" (
     copy /Y "config\config.example.yaml" "config\config.yaml" >nul
   )
 ) else (
-  echo config\config.yaml already present – leaving it alone
+  echo config\config.yaml already present - leaving it alone
 )
 
 if not exist "config\commands.json" (
@@ -77,7 +82,7 @@ if not exist "config\commands.json" (
     copy /Y "config\commands.example.json" "config\commands.json" >nul
   )
 ) else (
-  echo config\commands.json already present – leaving it alone
+  echo config\commands.json already present - leaving it alone
 )
 
 if not exist "data" mkdir data
@@ -93,7 +98,7 @@ if /I "%RUN_WIZARD%"=="no" goto done
 echo.
 ".venv\Scripts\python.exe" wizard.py
 if errorlevel 1 (
-  echo Wizard exited with an error – you can run wizard.py later.
+  echo Wizard exited with an error - you can run wizard.py later.
 )
 
 :done
