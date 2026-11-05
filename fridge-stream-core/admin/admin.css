@@ -47,7 +47,8 @@ body {
 .token-row input { width: 230px; }
 .token-row.has-token label,
 .token-row.has-token input,
-.token-row.has-token #save-token { display: none; }
+.token-row.has-token #save-token,
+.token-row.has-token #sign-in-here { display: none; }
 .token-row.needs-token #token { outline: 2px solid var(--warn); }
 .link-btn {
   background: transparent;

@@ -116,7 +116,7 @@ Everything the wizard sets is also on the dashboard, so skipping it is fine.
 
 Double-click **START Stream Core.bat** in the main workshop folder (or **start.bat** inside `fridge-stream-core`, the same thing) whenever you stream. A black window opens and stays open; that window *is* Stream Core, so leave it alone while you stream. Closing it, or pressing **Ctrl+C** in it, stops Core.
 
-The first lines it prints tell you what it connected to and the address of the admin dashboard. The **admin token** (the dashboard's password) is not printed in full, so it can't leak when you share your screen: double-click **`data\Open dashboard.url`** to open the dashboard already signed in. The token itself is `points.admin_token` in `config.yaml`, or, if you never set one, the one Core made for you in `data\admin_token.txt`. To have the dashboard open by itself every time Core starts, set `core.open_dashboard: true` in `config.yaml`.
+The first lines it prints tell you what it connected to and the address of the admin dashboard. The **admin token** (the dashboard's password) is not printed in full, so it can't leak when you share your screen: you don't need it. The first time Stream Core starts, it opens the dashboard in your browser already signed in. After that, double-click **Open Stream Core dashboard** next to `START Stream Core.bat`, or open the dashboard address and press **Sign in on this PC** (it works only on the PC that runs Stream Core). The token itself is `points.admin_token` in `config.yaml`, or, if you never set one, the one Core made for you in `data\admin_token.txt`; **Copy sign-in link** under Settings › Points gives you a link for another browser on this PC, such as an OBS dock. To have the dashboard open by itself every time Core starts, set `core.open_dashboard: true` in `config.yaml`.
 
 If a chat platform can't connect when Core starts (you're not live on YouTube yet, the network is down, Kick blocks the lookup), Core keeps trying by itself; the **Status** page shows **retrying** and why.
 
@@ -563,7 +563,7 @@ Both live in their own download now: [fridge-chat-credits](https://github.com/se
 | `config\cast\*.json` | Movie-style credits layouts. |
 | `data\stream_core.db` | Points, users, linked accounts, the chat log, stream attendance. Back this folder up if you care about points. |
 | `data\admin_token.txt` | The generated admin token, when you didn't set one. |
-| `data\Open dashboard.url` | Shortcut that opens the dashboard signed in (rewritten at each start). |
+| `data\Open dashboard.url` | Shortcut that opens the dashboard signed in (rewritten at each start; the same shortcut is next to `START Stream Core.bat` as **Open Stream Core dashboard**). |
 | `data\twitch_token.json` | Your Twitch sign-in (see section 5). Delete it, or press **Disconnect**, to forget it. |
 | `data\kick_avatars.json`, `twitch_avatars.json`, `chat_games.json`, `reactions_optout.json` | Caches and small state files. |
 | `overlay\assets\alerts\`, `overlay\assets\chat\` | Your alert pictures, videos and sounds; the chat overlay's background, badge pictures and sounds. |
@@ -584,7 +584,7 @@ Both live in their own download now: [fridge-chat-credits](https://github.com/se
 
 | Problem | Try this |
 |---|---|
-| The dashboard says the token is wrong | Double-click `data\Open dashboard.url`, or paste the token from `data\admin_token.txt` (or `points.admin_token` in `config.yaml`) and click **Save**. |
+| The dashboard says the token is wrong | Press **Sign in on this PC**, or double-click **Open Stream Core dashboard** next to `START Stream Core.bat`, or paste the token from `data\admin_token.txt` (or `points.admin_token` in `config.yaml`) and click **Save**. |
 | Nothing arrives from a platform | **Status** says whether it's connected and, if not, why. Settings → Core + chat platforms: is it **Enabled**, is the channel right? YouTube: the video is new every stream; paste its link on **Live controls**. |
 | Kick can't find the chat room | Open `https://kick.com/api/v2/channels/<your slug>` in a browser, find `"chatroom": {"id": …}` and put that number in `kick.chatroom_id` (Settings → Advanced). |
 | A chat command does nothing | Settings → Command groups: is its group on? Settings → Chat commands: its permission and whether another command owns the name. Try it in the **Command tester**. |

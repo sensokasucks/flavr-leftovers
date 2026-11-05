@@ -9,6 +9,14 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Changed
+- **Easier dashboard sign-in.** Nobody should have to dig out the admin token any more:
+  - The first time Stream Core starts (right after the install wizard), it opens the dashboard in your browser already signed in. After that it follows "open the dashboard at start" (`core.open_dashboard`) as before.
+  - The sign-in shortcut is now also next to `START Stream Core.bat`, as **Open Stream Core dashboard**, instead of only in `fridge-stream-core\data`.
+  - The token box has a **Sign in on this PC** button. It works only in a browser on the PC that runs Stream Core.
+  - Settings › Points has **Copy sign-in link** for another browser on this PC, such as an OBS dock.
+  - The black windows, the installer and the wizard point at these instead of the plain dashboard address, which only shows the token box.
+
 ## [2026.11.4] — 2026-11-04
 
 ### Fixed

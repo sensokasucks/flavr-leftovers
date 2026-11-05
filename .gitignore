@@ -17,6 +17,8 @@ build/
 
 # Runtime state
 **/data/
+# Sign-in shortcut Core writes beside START Stream Core.bat (holds the admin token)
+Open Stream Core dashboard.url
 *.db
 *.db-wal
 *.db-shm

@@ -230,7 +230,7 @@ def main() -> int:
         token = secrets.token_urlsafe(16)
         print(f"  Made an admin token (the dashboard's password), starting {token[:4]}…")
         print("  It's saved in config.yaml as points.admin_token. You don't need to copy it:")
-        print("  data\\Open dashboard.url (made when Core starts) opens the dashboard signed in.")
+        print("  the first time Core starts it opens the dashboard already signed in.")
     else:
         print(f"  Existing admin token kept (starts with {token[:4]}…)")
         if _prompt_yes_no("  Generate a new admin token?", default=False):
@@ -318,8 +318,11 @@ def main() -> int:
     port = _as_int(core.get("port"), 3850)
     print("Next steps:")
     print(f"  1. Double-click {_start_file_name()} to start Stream Core.")
-    print("  2. Open the dashboard: double-click data\\Open dashboard.url in the")
-    print(f"     fridge-stream-core folder (or http://127.0.0.1:{port}/admin/ and paste the token).")
+    # The dashboard opens signed in by itself the first time (core/dashboard_signin.py); these are
+    # the ways back in afterwards. Keep in step with the .bat texts and checklists/admin-hub.md.
+    print("  2. The dashboard opens in your browser, already signed in. Next time, double-click")
+    print("     \"Open Stream Core dashboard\" next to START Stream Core.bat, or open")
+    print(f"     http://127.0.0.1:{port}/admin/ and press \"Sign in on this PC\".")
     if tw.get("enabled"):
         print("  3. Settings → Core + chat platforms → Connect Twitch, so Twitch chatters get pictures.")
     if yt.get("enabled"):

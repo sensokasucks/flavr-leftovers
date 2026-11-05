@@ -106,7 +106,8 @@ echo.
 echo ----------------------------------------------------------
 echo  To start Stream Core later:  double-click "START Stream Core.bat" in the main folder
 echo                               (or start.bat in this folder)
-echo  Admin dashboard:             http://127.0.0.1:3850/admin/
+echo  Dashboard:                   opens signed in the first time Stream Core starts.
+echo                               Later: "Open Stream Core dashboard" next to START Stream Core.bat
 echo  Chat overlay:                http://127.0.0.1:3850/overlay/chat.html
 echo ----------------------------------------------------------
 echo.
