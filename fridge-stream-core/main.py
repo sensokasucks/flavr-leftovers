@@ -1992,6 +1992,10 @@ async def _run() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
+    # the cleaned troubleshooting log in data/logs_to_share (core/debug_log.py, core.log_files);
+    # it lowers the root logger to DEBUG for the file and keeps the console at ``level``
+    from core import debug_log
+    debug_log.start(config, ROOT)
 
     host = os.environ.get("STREAM_CORE_HOST") or config.get("core", {}).get("host", "127.0.0.1")
     port = int(os.environ.get("STREAM_CORE_PORT") or config.get("core", {}).get("port", 3850))
@@ -2012,6 +2016,7 @@ async def _run() -> None:
         loop="asyncio",
     )
     server = uvicorn.Server(uvi_config)
+    debug_log.attach("uvicorn")   # (uvicorn's own lines don't reach the root logger)
 
     # Graceful shutdown on SIGINT/SIGTERM
     loop = asyncio.get_running_loop()
@@ -2084,6 +2089,7 @@ async def _run() -> None:
             pass
     for t in pending:
         t.cancel()
+    debug_log.stop()   # closed normally: no "didn't close normally" note next start
     return restart["wanted"]
 
 

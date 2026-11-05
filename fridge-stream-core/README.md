@@ -201,6 +201,12 @@ YouTube `video_id` changes every live session. Prefer `mode: innertube` unless y
 
 No changes to the command router, permissions, or game plugins are required.
 
+## Log files for troubleshooting
+
+Each time Core runs it writes a log file to `data\logs_to_share\` (the last 15 runs are kept). It has more detail than the console window (every connection attempt, reconnects, errors with their full Python traceback, and a note plus Python's crash report when the last run didn't close normally), but not each chat message. Everything is cleaned before it is written: IP addresses become tags like `<ip-home#1>`, and your Windows user name, computer name, folders and every token, key and password in `config.yaml` are replaced. That makes a file safe to send to whoever is helping you.
+
+Dashboard: **Setup → Core → Advanced → Log files for troubleshooting** lists Core's files and Stream Rooms' (Stream Rooms writes its own, cleaned the same way) with **Download** and **Open log folder**. The tick there switches the files off (`core.log_files`; takes effect after a restart).
+
 ## Development notes
 
 - Tests run automatically on every pull request and every push to main (GitHub Actions, `.github/workflows/tests.yml`: Windows + Python 3.10 like Sen's PC, and Linux + Python 3.12 / 3.13). Run them yourself with `python -m pytest -q` from `fridge-stream-core`.
