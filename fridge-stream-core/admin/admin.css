@@ -1541,3 +1541,12 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .tts-r-skipped { color: var(--muted); }
 .tts-save-row { margin: 0 0 16px; }
 @media (max-width: 700px) { .tts-grid .row2 { grid-template-columns: 1fr; } }
+
+/* Setup → Advanced → "Log files for troubleshooting" (admin.js renderLogFiles): two short
+   lists of log files, newest first, each with a Download button. */
+.logs-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 12px 0 4px; font-size: 0.95rem; }
+.logs-head button { font-size: 0.8rem; }
+.logs-list { list-style: none; margin: 0; padding: 0; max-height: 220px; overflow-y: auto; }
+.logs-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 0.85rem; border-bottom: 1px solid var(--border, rgba(255,255,255,0.08)); }
+.logs-list li .logs-when { flex: 1; }
+.logs-list li button { font-size: 0.8rem; padding: 2px 8px; }

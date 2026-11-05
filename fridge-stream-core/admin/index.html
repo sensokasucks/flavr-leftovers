@@ -1898,6 +1898,19 @@
     <details class="acc cfg-advanced" id="cfg-advanced" data-sub="advanced">
       <summary>Advanced settings</summary>
       <div class="config-grid">
+        <!-- Troubleshooting log files: core/debug_log.py writes them, api/log_routes.py lists /
+             serves them, admin.js renderLogFiles fills the lists. The tick saves core.log_files. -->
+        <fieldset class="cfg-card" id="cfg-logs-card">
+          <legend>Log files for troubleshooting</legend>
+          <p class="hint">Each run writes what happened (errors, platform connections, crashes) to a file. IP addresses, your Windows user name, your folders and every token or key are taken out first, so a file is safe to send to whoever is helping. The last 15 runs are kept.</p>
+          <label class="check"><input type="checkbox" id="cfg-core-logfiles" /> Save a log file each time Core runs</label>
+          <h4 class="logs-head">Stream Core <button type="button" class="logs-open" data-logs-open="core">Open log folder</button></h4>
+          <ul class="logs-list" id="logs-core"><li class="muted">Loading…</li></ul>
+          <h4 class="logs-head">Stream Rooms <button type="button" class="logs-open" data-logs-open="rooms">Open log folder</button></h4>
+          <ul class="logs-list" id="logs-rooms"><li class="muted">Loading…</li></ul>
+          <p id="logs-msg" class="action-msg" role="status" aria-live="polite"></p>
+        </fieldset>
+
         <fieldset class="cfg-card">
           <legend>Kick (advanced)</legend>
           <label>Chatroom ID (optional)

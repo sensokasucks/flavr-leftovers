@@ -43,6 +43,9 @@ DEFAULTS: Dict[str, Any] = {
         "port": 3850,
         "command_prefix": "!",
         "log_level": "INFO",
+        # write a cleaned log file each run to data/logs_to_share, safe to send to a helper
+        # (core/debug_log.py; dashboard Setup > Core > Advanced, "Log files for troubleshooting")
+        "log_files": True,
         # open the admin dashboard (signed in) in the browser each time Core starts
         "open_dashboard": False,
     },

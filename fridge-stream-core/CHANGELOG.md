@@ -9,6 +9,9 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Log files for troubleshooting.** Core now saves a detailed log of each run to `data\logs_to_share\` (last 15 kept), cleaned as it is written so it is safe to send to someone helping: IP addresses become numbered tags (`<ip-home#1>`, `<ip-tailscale#2>`), and the Windows user and computer name, personal folders, Cloudflare tunnel names and every token, key and password from `config.yaml` are replaced. The file has DEBUG detail (minus the per-chat-message lines), uvicorn's start-up lines, uncaught errors from any thread, and after a crash a note plus Python's crash stack. Setup → Core → Advanced has a **Log files for troubleshooting** card: on/off tick (`core.log_files`, default on), the files from Core and from Stream Rooms on this PC with **Download**, and **Open log folder**.
+
 ### Changed
 - **Easier dashboard sign-in.** Nobody should have to dig out the admin token any more:
   - The first time Stream Core starts (right after the install wizard), it opens the dashboard in your browser already signed in. After that it follows "open the dashboard at start" (`core.open_dashboard`) as before.
