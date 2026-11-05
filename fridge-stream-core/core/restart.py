@@ -24,6 +24,7 @@ CORE_FIELDS = {
     "host": "the address Core listens on (host)",
     "port": "the port (every OBS browser source must use the new address)",
     "log_level": "the log level",
+    "log_files": "saving log files for troubleshooting",
     "watch_config": "noticing hand edits to config.yaml",
 }
 

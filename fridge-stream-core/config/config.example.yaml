@@ -7,6 +7,8 @@ core:
   port: 3850                  # same port the old Minecraft bridge used
   command_prefix: "!"
   log_level: "INFO"
+  # a cleaned log file each run in data/logs_to_share (safe to send to a helper); see README
+  log_files: true
   # Open the admin dashboard, already signed in, in your browser each time Core
   # starts. Either way Core saves a sign-in shortcut: data/Open dashboard.url
   open_dashboard: false

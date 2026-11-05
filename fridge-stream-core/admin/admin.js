@@ -4561,6 +4561,7 @@
     $("cfg-core-port").value = c.port ?? 3850;
     $("cfg-core-prefix").value = c.command_prefix ?? "!";
     $("cfg-core-log").value = (c.log_level || "INFO").toUpperCase();
+    $("cfg-core-logfiles").checked = c.log_files !== false;
 
     $("cfg-kick-enabled").checked = !!k.enabled;
     $("cfg-kick-slug").value = k.channel_slug ?? "";
@@ -4966,6 +4967,7 @@
         port: num($("cfg-core-port").value, 3850),
         command_prefix: $("cfg-core-prefix").value || "!",
         log_level: $("cfg-core-log").value || "INFO",
+        log_files: $("cfg-core-logfiles").checked,
       },
       kick,
       twitch: {
@@ -5084,7 +5086,67 @@
     } catch (e) {
       setCfgStatus(String(e.message || e), false);
     }
+    renderLogFiles();
   }
+
+  // ------------------------------------------------------------------
+  // Log files for troubleshooting (Setup → Advanced card #cfg-logs-card): Core's and Stream
+  // Rooms' cleaned log files, newest first, with Download and Open log folder.
+  // API: api/log_routes.py (/api/admin/logs, /logs/file, /logs/open). Files: core/debug_log.py.
+  // ------------------------------------------------------------------
+  /** Fills both lists. Called when the config form loads, and after an Open / Download error. */
+  async function renderLogFiles() {
+    const coreList = $("logs-core");
+    const roomsList = $("logs-rooms");
+    if (!coreList || !roomsList) return;
+    let data;
+    try {
+      data = await api("/api/admin/logs");
+    } catch (e) {
+      coreList.innerHTML = `<li class="bad">${esc(readableActionError(e))}</li>`;
+      roomsList.innerHTML = "";
+      return;
+    }
+    const size = (b) => (b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB");
+    const when = (t) => new Date(t * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+    const fill = (list, app, files, empty) => {
+      list.innerHTML = files.length
+        ? files.slice(0, 15).map((f) => `<li><span class="logs-when">${esc(when(f.modified))}</span>`
+            + ` <span class="muted">${esc(size(f.size))}${f.name === data.current ? " · this run" : ""}</span>`
+            + ` <button type="button" data-logs-get="${esc(app)}" data-name="${esc(f.name)}">Download</button></li>`).join("")
+        : `<li class="muted">${esc(empty)}</li>`;
+    };
+    fill(coreList, "core", data.core || [], data.enabled ? "No log files yet." : "Saving log files is off.");
+    fill(roomsList, "rooms", data.rooms || [], data.rooms_found
+      ? "No Stream Rooms log files yet."
+      : "Stream Rooms hasn't saved a log on this PC yet (its tick is in the panel footer, under Messages).");
+  }
+
+  $("cfg-logs-card")?.addEventListener("click", async (ev) => {
+    const msg = $("logs-msg");
+    const get = ev.target.closest("[data-logs-get]");
+    const open = ev.target.closest("[data-logs-open]");
+    if (!get && !open) return;
+    try {
+      if (get) {
+        const q = new URLSearchParams({ app: get.dataset.logsGet, name: get.dataset.name });
+        await downloadFile("/api/admin/logs/file?" + q.toString(), get.dataset.name);
+        msg.textContent = "Downloaded " + get.dataset.name + ".";
+      } else {
+        await api("/api/admin/logs/open", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ app: open.dataset.logsOpen }),
+        });
+        msg.textContent = "Opened the folder on this PC.";
+      }
+      msg.classList.remove("bad");
+    } catch (e) {
+      msg.textContent = readableActionError(e);
+      msg.classList.add("bad");
+      renderLogFiles();
+    }
+  });
 
   $("cfg-reload").onclick = () => loadConfigForm();
   $("cfg-reset-defaults").onclick = () => {
