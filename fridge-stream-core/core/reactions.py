@@ -27,7 +27,15 @@ WebSocket protocol (same socket overlays use, ws://127.0.0.1:3850/ws)
     {"type":"say","data":{text}}                                (rate limited)
     {"type":"stage_state","data":{curtain:"open"|"closed"}}    (relayed to overlays / admin)
 
+    {"type":"rooms_state","data":{room, rooms, paused, focus, clean, curtain, playing, views,
+                                   screen, sender, volume, ambience, presenters, costream}}
+        Stream Rooms' summary for the Live page "Stream Rooms" card (stream-rooms
+        core/rooms_remote.gd builds it; clean_rooms_state below keeps only the known keys).
+
   Core → game: {"type":"stage","data":{action:"curtain", value:"open"|"close"|"reveal"|"toggle"}}
+    The Live card's buttons use the same packet with other actions (ROOMS_ACTIONS below):
+    pause / focus / clean (on|off|toggle), room (id), view (camera view id), playpause,
+    volume / ambience (0..1), presenter ("<n>:on"|"<n>:off"), remote (take|ask), refresh.
     {"type":"overlay","data":{...}}                             (relayed as game_overlay)
 
 Only a socket that has sent `hello` may use room_state / reaction_result /
@@ -53,6 +61,42 @@ log = logging.getLogger("core.reactions")
 # Version of the WebSocket protocol above; sent in hello_ok. Bump it (and tell Stream Rooms,
 # the stream-rooms repo) when a message changes shape.
 PROTOCOL = 1
+
+# The Live page "Stream Rooms" card (work list item 13). ROOMS_ACTIONS: the "stage" actions the card
+# may send besides "curtain" (stream-rooms core/rooms_remote.gd run_command runs them; keep in step).
+# Each maps to a check for its value. ROOMS_KEYS: the rooms_state keys kept (anything else is dropped).
+_TOGGLE = ("on", "off", "toggle")
+ROOMS_ACTIONS: Dict[str, Callable[[Any], bool]] = {
+    "pause": lambda v: v in _TOGGLE,
+    "focus": lambda v: v in _TOGGLE,
+    "clean": lambda v: v in _TOGGLE,
+    "room": lambda v: isinstance(v, str) and 0 < len(v) <= 60,
+    "view": lambda v: isinstance(v, str) and 0 < len(v) <= 40,
+    "playpause": lambda v: True,
+    "volume": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1,
+    "ambience": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1,
+    "presenter": lambda v: isinstance(v, str) and bool(re.fullmatch(r"[1-4]:(on|off)", v)),
+    "remote": lambda v: v in ("take", "ask"),
+    "refresh": lambda v: True,
+}
+ROOMS_KEYS = ("room", "rooms", "paused", "focus", "clean", "curtain", "playing", "views", "screen",
+              "sender", "volume", "ambience", "presenters", "costream")
+
+
+def clean_rooms_state(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only ROOMS_KEYS from a rooms_state packet, and cap its size (a game can't flood the
+    dashboard: at most 60 rooms, 20 camera views, 4 presenters)."""
+    out = {k: data[k] for k in ROOMS_KEYS if k in data}
+    for key, cap in (("rooms", 60), ("views", 20), ("presenters", 4)):
+        if not isinstance(out.get(key), list):
+            out[key] = []
+        out[key] = out[key][:cap]
+    for key in ("screen", "sender", "costream"):
+        if not isinstance(out.get(key), dict):
+            out[key] = {}
+    out["ts"] = time.time()
+    return out
+
 
 # ----------------------------------------------------------------------
 # Effect catalog. Stream Rooms reports its own list in `hello`; this is
@@ -722,6 +766,8 @@ class ReactionEngine:
         self._say_times: deque = deque()
         self.recent: deque = deque(maxlen=30)   # admin "last reactions" list
         self.stage_state: Dict[str, Any] = {}    # game's stage (curtain open / closed)
+        # Stream Rooms' summary for the Live card (clean_rooms_state); None while no game is connected
+        self.rooms_state: Optional[Dict[str, Any]] = None
         self.stats = {"fired": 0, "rejected": 0, "refunded": 0, "points_spent": 0}
         # Stream events feed hook: main.py sets this to bus.note(kind, text, platform)
         self.note: Optional[Callable[..., None]] = None
@@ -1299,6 +1345,7 @@ class ReactionEngine:
             log.info("Game client left: %s", info.get("client"))
             if not self.game_clients:
                 self.room_state = None
+                self.rooms_state = None
 
     async def on_client_message(self, ws, msg: Dict[str, Any]) -> None:
         """Handle one JSON message from a socket (protocol in the module docstring).
@@ -1352,13 +1399,18 @@ class ReactionEngine:
             self.stage_state = {k: str(v)[:20] for k, v in data.items() if k in ("curtain",)}
             if self._broadcast:
                 await self._broadcast({"type": "stage_state", "data": dict(self.stage_state)})
+        elif mtype == "rooms_state":
+            self.rooms_state = clean_rooms_state(data)
+            if isinstance(self.rooms_state.get("curtain"), str):
+                self.stage_state["curtain"] = self.rooms_state["curtain"][:20]
         elif mtype == "overlay":
             if self._broadcast:
                 await self._broadcast({"type": "game_overlay", "data": data})
 
-    async def send_stage(self, action: str, value: str) -> bool:
+    async def send_stage(self, action: str, value: Any) -> bool:
         """Stage commands for the game (Stream Rooms): {"type":"stage","data":{action, value}},
-        e.g. action "curtain", value open / close / reveal / toggle. False when no game is connected."""
+        e.g. action "curtain", value open / close / reveal / toggle, or one of ROOMS_ACTIONS from the
+        Live card (value checked by the caller). False when no game is connected."""
         sent = False
         for ws in list(self.game_clients):
             try:

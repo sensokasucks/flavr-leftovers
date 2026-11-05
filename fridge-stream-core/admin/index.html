@@ -145,18 +145,50 @@
           <button data-proxy="crd-live">Live list</button>
         </div>
       </section>
-      <!-- Shown only while Stream Rooms is connected (admin.js loadLiveStatus) -->
-      <section class="live-card" id="live-stage-card" hidden>
+      <!-- Stream Rooms card (work list item 13): shown only while Stream Rooms is connected
+           (admin.js loadLiveStatus hides it; loadRoomsCard fills it from GET /api/admin/rooms every
+           2 s while the Live page shows). Buttons: data-stage = curtain (POST /api/admin/stage),
+           data-rooms = any other action (POST /api/admin/rooms, stream-rooms core/rooms_remote.gd). -->
+      <section class="live-card rooms-card" id="live-stage-card" data-card="rooms" hidden>
         <div class="live-card-head">
-          <h3>Stage curtain</h3>
+          <h3>Stream Rooms</h3>
           <span id="live-stage-state" class="muted"></span>
         </div>
-        <p class="hint">Stream Rooms' curtain in front of the main screen. Closed = your screen, its light and
-          the stream sound are hidden. Mods can also type <code>!curtain open|close|reveal</code> (Chat games on).</p>
+        <div class="rooms-lines" id="rooms-lines" aria-live="polite"></div>
+        <div class="live-buttons">
+          <button data-rooms="pause" data-value="toggle" id="rooms-pause" aria-pressed="false" title="Pause to react: the video stops, lights come up (P in the game)">Pause to react</button>
+          <button data-rooms="focus" data-value="toggle" id="rooms-focus" aria-pressed="false" title="Focus view: the big screen fills the picture">Focus view</button>
+          <button data-rooms="clean" data-value="toggle" id="rooms-clean" aria-pressed="false" title="Clean feed: hide the chat, boards and messages on the picture">Clean feed</button>
+          <button data-rooms="playpause" data-value="" id="rooms-playpause" title="Play or pause the video on the big screen">Play / pause video</button>
+        </div>
+        <h4 class="rooms-sub">Curtain</h4>
+        <p class="hint">Closed = your screen, its light and the stream sound are hidden. Mods can also type
+          <code>!curtain open|close|reveal</code> (Chat games on).</p>
         <div class="live-buttons">
           <button class="primary" data-stage="reveal">Reveal</button>
           <button data-stage="close">Close</button>
           <button data-stage="open">Open</button>
+        </div>
+        <div class="rooms-row">
+          <label>Room <select id="rooms-room" title="Change the room (in a co-stream only the host or a co-host can)"></select></label>
+        </div>
+        <h4 class="rooms-sub">Cameras</h4>
+        <div class="live-buttons" id="rooms-views"><span class="muted">No camera views yet.</span></div>
+        <div class="rooms-row">
+          <label>Stream sound <input type="range" id="rooms-volume" min="0" max="1" step="0.05" title="The big screen's sound (Volume in the game)"></label>
+          <label>Room sound <input type="range" id="rooms-ambience" min="0" max="1" step="0.05" title="The room's background sound"></label>
+        </div>
+        <div id="rooms-presenters-box" hidden>
+          <h4 class="rooms-sub">Presenters on set</h4>
+          <div class="live-buttons" id="rooms-presenters"></div>
+        </div>
+        <div id="rooms-costream-box" hidden>
+          <h4 class="rooms-sub">Co-stream</h4>
+          <p id="rooms-costream" class="muted"></p>
+          <div class="live-buttons">
+            <button data-rooms="remote" data-value="take" id="rooms-remote-take" hidden>Take the big screen remote back</button>
+            <button data-rooms="remote" data-value="ask" id="rooms-remote-ask" hidden>Ask for the big screen remote</button>
+          </div>
         </div>
         <p id="live-stage-msg" class="muted"></p>
       </section>

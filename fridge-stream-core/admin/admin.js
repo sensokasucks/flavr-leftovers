@@ -912,6 +912,102 @@
     }
   }
 
+  // ------------------------------------------------------------------
+  // Live controls: the Stream Rooms card (work list item 13). GET /api/admin/rooms gives
+  // {connected, state}; state is Stream Rooms' rooms_state packet (stream-rooms core/rooms_remote.gd
+  // build_state: room, rooms, paused, focus, clean, curtain, views, screen, sender, volume, ambience,
+  // presenters, costream). Buttons with data-rooms POST {action, value} to /api/admin/rooms
+  // (core/reactions.py ROOMS_ACTIONS). Polled every ROOMS_POLL_MS while the Live page shows.
+  // ------------------------------------------------------------------
+  const ROOMS_POLL_MS = 2000;
+  let roomsTimer = 0;
+  let roomsDragging = false;   // a sound slider is held: don't move it under the mouse
+
+  /** One status line on the card: a coloured dot and text (ok = green, else amber). */
+  function roomsLine(ok, text) {
+    return `<div class="rooms-line"><span class="dot ${ok ? "ok" : "warn"}"></span>${escapeHtml(text)}</div>`;
+  }
+
+  async function loadRoomsCard() {
+    const card = $("live-stage-card");
+    if (!card) return;
+    let r;
+    try {
+      r = await api("/api/admin/rooms");
+    } catch (_) {
+      return;   // Core unreachable: the status card already says so
+    }
+    card.hidden = !r.connected;
+    const st = r.state;
+    if (!r.connected || !st) return;
+    $("live-stage-state").textContent = "curtain " + (st.curtain || "?");
+    const scr = st.screen || {};
+    const snd = st.sender || {};
+    const lines = [roomsLine(!!scr.ok, "Big screen: " + (scr.text || "?"))];
+    if (scr.mode === "capture" || snd.connected) {
+      lines.push(roomsLine(!!snd.connected && !!snd.sharing,
+        !snd.connected ? "Sender page not open" : !snd.sharing ? "Sender open, not sharing yet"
+          : "Sender: " + (snd.label || "tab") + " (" + (snd.fps || 0) + " fps)" + (snd.audio ? "" : ", no sound")));
+    }
+    $("rooms-lines").innerHTML = lines.join("");
+    for (const [id, on] of [["rooms-pause", st.paused], ["rooms-focus", st.focus], ["rooms-clean", st.clean]]) {
+      if ($(id)) $(id).setAttribute("aria-pressed", on ? "true" : "false");
+    }
+    $("rooms-playpause").hidden = scr.mode !== "file";
+    // room list: rebuilt only when it changed, so an open dropdown isn't closed under the mouse
+    const sel = $("rooms-room");
+    const sig = JSON.stringify(st.rooms || []);
+    if (sel.dataset.sig !== sig) {
+      sel.dataset.sig = sig;
+      sel.innerHTML = (st.rooms || []).map(([id, name]) => `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`).join("");
+    }
+    if (document.activeElement !== sel) sel.value = st.room || "";
+    const views = st.views || [];
+    $("rooms-views").innerHTML = views.length
+      ? views.map((v) => `<button data-rooms="view" data-value="${escapeHtml(v.id)}" title="${v.key ? "Number key " + v.key + " in the game" : ""}">` +
+          `${v.key ? "<small>" + v.key + "</small> " : ""}${escapeHtml(v.name || v.id)}</button>`).join("")
+      : '<span class="muted">This room has no camera views.</span>';
+    if (!roomsDragging) {
+      $("rooms-volume").value = st.volume ?? 0.8;
+      $("rooms-ambience").value = st.ambience ?? 0.5;
+    }
+    const pres = st.presenters || [];
+    $("rooms-presenters-box").hidden = !pres.length;
+    $("rooms-presenters").innerHTML = pres.map((p) =>
+      `<button data-rooms="presenter" data-value="${p.n}:${p.on ? "off" : "on"}" aria-pressed="${p.on}" ` +
+      `title="${escapeHtml(p.source || "")}">Presenter ${p.n}</button>`).join("");
+    const co = st.costream || {};
+    $("rooms-costream-box").hidden = !co.role || co.role === "off";
+    $("rooms-costream").textContent = (co.text || "") + (co.remote ? " · remote: " + co.remote : "");
+    $("rooms-remote-take").hidden = co.role !== "host" || !!co.has_remote;
+    $("rooms-remote-ask").hidden = co.role !== "guest" || !!co.has_remote;
+  }
+
+  /** Send one card button / control to Stream Rooms, then refresh the card. */
+  async function roomsSend(action, value, label) {
+    try {
+      await api("/api/admin/rooms", { method: "POST", body: JSON.stringify({ action, value }) });
+      if ($("live-stage-msg")) $("live-stage-msg").textContent = label ? "Sent: " + label : "";
+    } catch (e) {
+      if ($("live-stage-msg")) $("live-stage-msg").textContent = String(e.message || e);
+    }
+    setTimeout(loadRoomsCard, 400);
+  }
+
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-rooms]");
+    if (!b) return;
+    roomsSend(b.dataset.rooms, b.dataset.value || "", b.textContent.trim());
+  });
+  if ($("rooms-room")) $("rooms-room").addEventListener("change", (ev) => roomsSend("room", ev.target.value, "room"));
+  for (const [id, action] of [["rooms-volume", "volume"], ["rooms-ambience", "ambience"]]) {
+    const el = $(id);
+    if (!el) continue;
+    el.addEventListener("pointerdown", () => { roomsDragging = true; });
+    el.addEventListener("pointerup", () => { roomsDragging = false; });
+    el.addEventListener("change", () => { roomsDragging = false; roomsSend(action, Number(el.value), ""); });
+  }
+
   /** Live controls credits card: GET /api/admin/credits, drawn by the Credits page's own render functions. */
   async function loadLiveCredits() {
     try {
@@ -1340,6 +1436,11 @@
     // Highlighted message card: same idea, its own timer
     pollHighlight();
     if (!hlTimer) hlTimer = setInterval(pollHighlight, HL_POLL_MS);
+    // Stream Rooms card: its own quicker timer, only while the Live page shows
+    loadRoomsCard();
+    if (!roomsTimer) roomsTimer = setInterval(() => {
+      if ($("tab-live") && $("tab-live").classList.contains("active")) loadRoomsCard();
+    }, ROOMS_POLL_MS);
     if (liveTimer) clearInterval(liveTimer);
     liveTimer = setInterval(() => {
       if ($("tab-live") && $("tab-live").classList.contains("active")) loadLiveStatus();
@@ -7431,6 +7532,7 @@
         await api("/api/admin/stage", { method: "POST", body: JSON.stringify({ action: "curtain", value: stageBtn.dataset.stage }) });
         if ($("live-stage-msg")) $("live-stage-msg").textContent = "Sent: " + stageBtn.textContent.trim();
         setTimeout(loadLiveStatus, 800);
+        setTimeout(loadRoomsCard, 800);
       } catch (e) {
         if ($("live-stage-msg")) $("live-stage-msg").textContent = String(e.message || e);
       }

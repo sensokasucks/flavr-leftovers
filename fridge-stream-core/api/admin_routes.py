@@ -1552,6 +1552,30 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(409, "Stream Rooms isn't connected")
         return {"ok": True, "stage": eng.stage_state}
 
+    @router.get("/rooms")
+    async def rooms_card(x_admin_token: Optional[str] = Header(None)):
+        """The Live page "Stream Rooms" card: {connected, state} (state = Stream Rooms' last
+        rooms_state packet, core/reactions.py clean_rooms_state; null until it has sent one)."""
+        _auth(x_admin_token)
+        eng = _reactions()
+        return {"connected": bool(eng.game_clients), "state": eng.rooms_state}
+
+    @router.post("/rooms")
+    async def rooms_command(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """A button on the Stream Rooms card: {"action": one of ROOMS_ACTIONS, "value": ...}.
+        Sent to the game as a "stage" packet (stream-rooms core/rooms_remote.gd runs it)."""
+        _auth(x_admin_token)
+        from core.reactions import ROOMS_ACTIONS
+        action = str(body.get("action") or "")
+        value = body.get("value", "")
+        check = ROOMS_ACTIONS.get(action)
+        if check is None or not check(value):
+            raise HTTPException(400, "unknown action or bad value")
+        eng = _reactions()
+        if not await eng.send_stage(action, value):
+            raise HTTPException(409, "Stream Rooms isn't connected")
+        return {"ok": True}
+
     @router.get("/chat_games/moments.csv")
     async def chat_games_moments_csv(x_admin_token: Optional[str] = Header(None)):
         """Download the moments chat marked with !clip / !moment (stream time + note) as CSV."""
