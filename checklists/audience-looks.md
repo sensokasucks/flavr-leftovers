@@ -20,7 +20,7 @@ page **Overlays → Audience looks** (`#looks`, `admin/audience-looks.js`, loade
       classic shape back; Replace re-sends the payload so Stream Rooms downloads the new version.
 - [ ] The page saves on its own (no Save button, so no page-saver section) and the preview copies Stream Rooms'
       drawing (speech_bubble.gd, `_layers`). Every control has a `title`.
-- [ ] Only PNG / JPEG / WebP stored pictures are offered (Stream Rooms can't read GIF).
+- [ ] PNG / JPEG / WebP / GIF stored pictures are offered. Stream Rooms keeps up to 32 frames of an animated GIF and moves them when Paint is the picture itself (since Stream Rooms' Co-stream batch 2; older Stream Rooms builds show a GIF as the classic bust).
 
 ## After-change verify
 

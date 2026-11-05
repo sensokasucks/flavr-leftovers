@@ -22,7 +22,7 @@
   // Wait after the last change before saving (ms), so a dragged slider saves once.
   const SAVE_DELAY_MS = 450;
   // Silhouette pictures Stream Rooms can read (it can't read GIF).
-  const PICTURE_EXTS = ["png", "jpg", "jpeg", "webp"];
+  const PICTURE_EXTS = ["png", "jpg", "jpeg", "webp", "gif"]; // gif: animated silhouettes (Stream Rooms keeps up to 32 frames)
   const MEDIA = "media:";
   const MIX_SEP = "|";
 
@@ -352,7 +352,7 @@
     // Picture: a stored file. Picking or uploading one switches the shape to My own picture.
     pictureSel = el("select");
     pictureSel.addEventListener("change", () => usePicture(pictureSel.value));
-    const one = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp", hidden: true });
+    const one = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", hidden: true });
     one.addEventListener("change", async () => {
       const files = [...one.files];
       one.value = "";
@@ -360,7 +360,7 @@
       const entry = await upload(files[0]);
       if (entry) await usePicture(entry.name);
     });
-    const many = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp", multiple: true, hidden: true });
+    const many = el("input", { type: "file", accept: "image/png,image/jpeg,image/webp,image/gif", multiple: true, hidden: true });
     many.addEventListener("change", async () => {
       const files = [...many.files];
       many.value = "";
@@ -368,7 +368,7 @@
     });
     box.append(row("Picture", pictureSel, "Your own silhouette picture, from Stored files. A see-through PNG works best; a picture with no see-through parts is read as a dark shape on a light background."));
     box.append(el("div", { class: "asset-actions looks-buttons" }, [
-      button("Upload a picture…", "Pick a picture (PNG, JPG or WebP) from this PC. It goes to Stored files and becomes everyone's silhouette.", () => one.click()),
+      button("Upload a picture…", "Pick a picture (PNG, JPG, WebP or an animated GIF) from this PC. It goes to Stored files and becomes everyone's silhouette. A GIF moves in Stream Rooms when Paint is the picture itself.", () => one.click()),
       button("Add many pictures…", "Pick several pictures at once. Each one is saved as a look of your own (named after its file), ready for the Groups page's Random mix. The audience doesn't change until you use them.", () => many.click()),
       button("Back to classic", "The original head-and-shoulders silhouette, in the chatter's colour.", () => {
         looks.silhouette = {};
