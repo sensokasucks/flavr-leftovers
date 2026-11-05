@@ -91,8 +91,8 @@
     if ($("token-change")) $("token-change").hidden = true;
     if (!tokenNag) {
       tokenNag = 1;
-      setStatus("Paste the admin token, or open the dashboard with the \"Open dashboard\" shortcut in Stream Core's data folder (it signs you in). The token is points.admin_token in config.yaml, or data/admin_token.txt.", false);
-      $("token").focus();
+      setStatus("Not signed in. Press \"Sign in on this PC\", or double-click \"Open Stream Core dashboard\" next to START Stream Core.bat.", false);
+      ($("sign-in-here") || $("token")).focus();
     }
   }
 
@@ -233,6 +233,26 @@
     history.replaceState(null, "", location.pathname + location.search + rest);
   })();
   $("token").value = localStorage.getItem(tokenKey) || "";
+
+  // "Sign in on this PC": Core hands its token to its own dashboard page on its own PC
+  // (POST /api/admin/sign-in-here, checks in core/dashboard_signin.py), then the page carries on
+  // as if the token had been pasted and saved. Elsewhere Core says why it can't, in the status line.
+  async function signInHere() {
+    try {
+      const res = await fetch("/api/admin/sign-in-here", { method: "POST" });
+      const text = await res.text();
+      if (!res.ok) throw new Error(readableError(text, res.status, res.statusText));
+      const got = String((JSON.parse(text) || {}).token || "").trim();
+      if (!got) throw new Error("Stream Core sent no token.");
+      $("token").value = got;
+      $("save-token").click();
+      setStatus("Signed in", true);
+    } catch (e) {
+      setStatus(String(e.message || e) + " You can also paste the token from data\\admin_token.txt.", false);
+    }
+  }
+  if ($("sign-in-here")) $("sign-in-here").onclick = signInHere;
+
   $("save-token").onclick = () => {
     localStorage.setItem(tokenKey, $("token").value.trim());
     tokenNag = 0;
@@ -5214,6 +5234,21 @@
       : "Your own token. Saving applies it at once and switches this page to it. Clearing the box keeps it (the token can't be removed from here).";
   }
   if ($("cfg-pts-token")) $("cfg-pts-token").addEventListener("input", syncTokenHint);
+  // "Copy sign-in link": the same link as the "Open Stream Core dashboard" shortcut, for another
+  // browser on this PC (an OBS custom dock). Built from this page's saved token.
+  if ($("cfg-pts-signin-copy")) {
+    $("cfg-pts-signin-copy").onclick = async () => {
+      const t = token();
+      if (!t) { setCfgStatus("Sign in first", false); return; }
+      const link = location.origin + "/admin/#token=" + encodeURIComponent(t);
+      try {
+        await navigator.clipboard.writeText(link);
+        setCfgStatus("Sign-in link copied. It contains the token: don't share it.", true);
+      } catch (_) {
+        window.prompt("Copy this sign-in link (it contains the token: don't share it):", link);
+      }
+    };
+  }
   // hidden by default: streamers often share the dashboard on screen
   if ($("cfg-pts-token-show")) {
     $("cfg-pts-token-show").onclick = () => {

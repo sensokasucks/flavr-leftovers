@@ -42,8 +42,8 @@ if not exist "config\config.yaml" (
 echo.
 echo Starting Fridge Stream Core...
 echo.
-echo   Admin hub:     http://127.0.0.1:3850/admin/
-echo   (signed in:    double-click fridge-stream-core\data\Open dashboard.url)
+echo   Dashboard:     opens by itself the first time. Later: double-click
+echo                  "Open Stream Core dashboard" in this folder (signs you in)
 echo   Chat overlay:  http://127.0.0.1:3850/overlay/chat.html
 echo   Metrics overlay: http://127.0.0.1:3850/overlay/overlay.html
 echo.

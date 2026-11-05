@@ -1937,11 +1937,15 @@ def dashboard_link(host: str, port: int, token: str) -> str:
 
 
 def announce_dashboard(config: dict, host: str, port: int) -> str:
-    """Log the dashboard address (never the whole token) and save a sign-in shortcut.
+    """Log the dashboard address (never the whole token) and save the sign-in shortcuts.
 
-    data/Open dashboard.url opens the dashboard already signed in (the page stores the
-    token and drops it from the address bar). Returns that link, or "" without a token.
+    data/Open dashboard.url, and "Open Stream Core dashboard.url" beside START Stream Core.bat when
+    Core sits in the workshop folder (core/dashboard_signin.write_shortcuts), open the dashboard
+    already signed in (the page stores the token and drops it from the address bar). Returns that
+    link, or "" without a token.
     """
+    from core.dashboard_signin import write_shortcuts
+
     cfg_token = (config.get("points") or {}).get("admin_token")
     token = resolve_admin_token(config, ROOT)
     if not token:
@@ -1949,14 +1953,12 @@ def announce_dashboard(config: dict, host: str, port: int) -> str:
         return ""
     link = dashboard_link(host, port, token)
     where = "points.admin_token in config.yaml" if not is_placeholder_token(cfg_token) else "data/admin_token.txt"
-    shortcut = ROOT / "data" / "Open dashboard.url"
-    try:
-        shortcut.parent.mkdir(parents=True, exist_ok=True)
-        shortcut.write_text(f"[InternetShortcut]\r\nURL={link}\r\n", encoding="utf-8")
-        saved = f'double-click "{shortcut}" to open it signed in'
-    except OSError:
-        log.warning("Could not write %s", shortcut)
-        saved = "paste the admin token when it asks"
+    written = write_shortcuts(ROOT, link)
+    if written:
+        # the one people find first: the workshop folder's, else the data folder's
+        saved = f'double-click "{written[-1]}" to open it signed in'
+    else:
+        saved = 'press "Sign in on this PC" on the page, or paste the admin token'
     log.warning(
         "Admin dashboard: %s — %s (token %s, full token in %s).",
         link.split("#", 1)[0], saved, mask_token(token), where,
@@ -1965,7 +1967,7 @@ def announce_dashboard(config: dict, host: str, port: int) -> str:
 
 
 async def _open_when_up(server, link: str) -> None:
-    """core.open_dashboard: open the signed-in dashboard once the server answers."""
+    """Open the signed-in dashboard once the server answers (when: dashboard_signin.should_open_at_start)."""
     import webbrowser
 
     for _ in range(100):
@@ -2067,7 +2069,10 @@ async def _run() -> None:
         else:
             await core.state.phone_server.start()
     stop_task = asyncio.create_task(stop_event.wait())
-    if signin_link and (config.get("core") or {}).get("open_dashboard"):
+    # core.open_dashboard, or the dashboard has never signed in on this PC (first start after
+    # the install wizard): open it signed in, so nobody has to find the token
+    from core.dashboard_signin import should_open_at_start
+    if signin_link and should_open_at_start(config, ROOT):
         asyncio.create_task(_open_when_up(server, signin_link))
 
     done, pending = await asyncio.wait(

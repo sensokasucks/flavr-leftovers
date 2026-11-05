@@ -16,8 +16,10 @@
     <div id="stats" class="stats"></div>
     <div class="token-row" id="token-row">
       <label for="token">Admin token</label>
-      <input type="password" id="token" placeholder="points.admin_token, or data/admin_token.txt" />
+      <input type="password" id="token" placeholder="paste the token here" />
       <button id="save-token">Save</button>
+      <!-- Gets the token from Core without typing it (admin.js signInHere; works only on Core's own PC) -->
+      <button type="button" id="sign-in-here" title="Works in a browser on the PC that runs Stream Core">Sign in on this PC</button>
       <button type="button" id="token-change" class="link-btn" hidden>Change token</button>
       <button type="button" id="hc-toggle" class="link-btn" aria-pressed="false" title="Brighter text, solid borders and a stronger focus outline">High contrast</button>
       <span id="status" class="muted"></span>
@@ -1861,7 +1863,8 @@
         </label>
         <label>Admin token <span class="field-help">Unlocks this dashboard</span>
           <span style="display:flex;gap:6px;align-items:center"><input id="cfg-pts-token" type="password" autocomplete="off" placeholder="empty = keep the current token" />
-          <button type="button" id="cfg-pts-token-show" aria-pressed="false">Show</button></span>
+          <button type="button" id="cfg-pts-token-show" aria-pressed="false">Show</button>
+          <button type="button" id="cfg-pts-signin-copy" title="A link that opens this dashboard already signed in, for another browser on this PC (an OBS dock, for example). It contains the token: don't share it.">Copy sign-in link</button></span>
         </label>
         <p class="hint" id="cfg-pts-token-hint"></p>
       </fieldset>

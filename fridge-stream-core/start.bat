@@ -37,8 +37,8 @@ if not exist "config\config.yaml" (
 )
 
 echo Starting Fridge Stream Core with .venv...
-echo Admin hub: http://127.0.0.1:3850/admin/
-echo Signed in: double-click data\Open dashboard.url
+echo Dashboard: opens by itself the first time. Later: double-click
+echo            data\Open dashboard.url (signs you in)
 echo Press Ctrl+C to stop.
 echo.
 

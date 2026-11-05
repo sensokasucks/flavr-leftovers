@@ -28,7 +28,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Header, HTTPException, Query
+from fastapi import APIRouter, Body, Header, HTTPException, Query, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -42,6 +42,7 @@ from core.config import (
 )
 from core import plugin_manifest
 from core.command_groups import catalog_status
+from core.dashboard_signin import mark_signed_in, sign_in_here_problem
 from core.local_guard import is_placeholder_token, resolve_admin_token, token_matches
 from core.models import ChatEvent, ChatUser, Platform
 from core.store import NAME_ID_PREFIX
@@ -379,9 +380,28 @@ def create_admin_router(core_state) -> APIRouter:
         if not token_matches(token, expected):
             raise HTTPException(
                 401,
-                "Invalid or missing X-Admin-Token. Use points.admin_token from config.yaml, "
-                "or the generated token in data/admin_token.txt (data/Open dashboard.url signs you in).",
+                "Not signed in (admin token missing or wrong). Press \"Sign in on this PC\", or double-click "
+                "\"Open Stream Core dashboard\" next to START Stream Core.bat (the token itself is "
+                "points.admin_token in config.yaml, or data/admin_token.txt).",
             )
+        # the dashboard works on this PC now: Core stops opening it at every start
+        # (core/dashboard_signin.should_open_at_start; core.open_dashboard still can)
+        mark_signed_in(_CORE_ROOT)
+
+    @router.post("/sign-in-here")
+    async def sign_in_here(request: Request):
+        """The token box's "Sign in on this PC" button (admin.js signInHere): hands the admin token
+        to Core's own dashboard page on this PC, nothing else. No token needed, by design; the
+        checks are core/dashboard_signin.sign_in_here_problem (checklists/admin-hub.md). The phone
+        door never passes it on (not on api/phone_server.py ALLOWED)."""
+        client = request.client.host if request.client else ""
+        why = sign_in_here_problem(client, request.headers)
+        if why:
+            raise HTTPException(403, why)
+        token = resolve_admin_token(core_state.config or {}, _CORE_ROOT)
+        if not token:
+            raise HTTPException(503, "Stream Core has no admin token yet. See the black Stream Core window.")
+        return {"token": token}
 
     # ------------------------------------------------------------------
     # Existing: stats / users / chat

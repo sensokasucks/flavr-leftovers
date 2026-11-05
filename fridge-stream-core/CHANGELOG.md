@@ -12,6 +12,14 @@ Dates are when the work landed in this tree.
 ### Added
 - **Log files for troubleshooting.** Core now saves a detailed log of each run to `data\logs_to_share\` (last 15 kept), cleaned as it is written so it is safe to send to someone helping: IP addresses become numbered tags (`<ip-home#1>`, `<ip-tailscale#2>`), and the Windows user and computer name, personal folders, Cloudflare tunnel names and every token, key and password from `config.yaml` are replaced. The file has DEBUG detail (minus the per-chat-message lines), uvicorn's start-up lines, uncaught errors from any thread, and after a crash a note plus Python's crash stack. Setup → Core → Advanced has a **Log files for troubleshooting** card: on/off tick (`core.log_files`, default on), the files from Core and from Stream Rooms on this PC with **Download**, and **Open log folder**.
 
+### Changed
+- **Easier dashboard sign-in.** Nobody should have to dig out the admin token any more:
+  - The first time Stream Core starts (right after the install wizard), it opens the dashboard in your browser already signed in. After that it follows "open the dashboard at start" (`core.open_dashboard`) as before.
+  - The sign-in shortcut is now also next to `START Stream Core.bat`, as **Open Stream Core dashboard**, instead of only in `fridge-stream-core\data`.
+  - The token box has a **Sign in on this PC** button. It works only in a browser on the PC that runs Stream Core.
+  - Settings › Points has **Copy sign-in link** for another browser on this PC, such as an OBS dock.
+  - The black windows, the installer and the wizard point at these instead of the plain dashboard address, which only shows the token box.
+
 ## [2026.11.4] — 2026-11-04
 
 ### Fixed
