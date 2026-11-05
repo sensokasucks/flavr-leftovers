@@ -71,6 +71,7 @@
 
     <div class="nav-group" data-mode="setup" data-heading="Stream Rooms" hidden>
       <div class="nav-heading">Stream Rooms</div>
+      <button class="tab" data-keywords="stream rooms game settings room sound big screen source chat windows audience seating reactions presenters co-stream together graphics quality volume" data-tab="rooms" data-set="roomset" data-title="Stream Rooms settings">Stream Rooms settings</button>
       <button class="tab" data-keywords="stream rooms audience speech bubble bubbles silhouette silhouettes figure style editor look looks group mods vip subs random mix picture" data-tab="looks">Audience looks</button>
     </div>
 
@@ -1221,6 +1222,37 @@
     <div id="files-list" class="asset-list"></div>
   </section>
 
+  <!-- Stream Rooms settings (work list item 16): every setting of Stream Rooms' in-game panel,
+       drawn by admin/rooms-setup.js from the list the game sends (core/rooms_remote.gd there).
+       The sub-pages here = PAGES in rooms-setup.js = PAGE_SETS.roomset in admin.js. -->
+  <section id="tab-rooms" class="panel" data-menu-subs>
+    <p class="tab-intro">Stream Rooms' own settings, the same ones as its in-game panel. Changes apply in the game
+      at once. <strong>Basics</strong> shows the everyday ones, <strong>More</strong> adds the game's Advanced
+      settings. A dot marks a setting you changed; <strong>Pin</strong> puts it on the Live page.</p>
+    <p id="rooms-setup-off" class="hint">Start Stream Rooms (with chat from Stream Core on) and its settings show up here.</p>
+    <p id="rooms-setup-msg" class="action-msg" role="status" aria-live="polite"></p>
+    <div class="acc-stack" data-acc="rooms">
+      <details class="acc" open data-sub="room"><summary>Room &amp; sound</summary>
+        <div class="acc-body" id="rooms-page-room"></div>
+      </details>
+      <details class="acc" open data-sub="screen"><summary>Big screen</summary>
+        <div class="acc-body" id="rooms-page-screen"></div>
+      </details>
+      <details class="acc" open data-sub="chat"><summary>Chat windows</summary>
+        <div class="acc-body" id="rooms-page-chat"></div>
+      </details>
+      <details class="acc" open data-sub="audience"><summary>Audience</summary>
+        <div class="acc-body" id="rooms-page-audience"></div>
+      </details>
+      <details class="acc" open data-sub="reactions"><summary>Reactions &amp; games</summary>
+        <div class="acc-body" id="rooms-page-reactions"></div>
+      </details>
+      <details class="acc" open data-sub="people"><summary>Presenters &amp; Co-stream</summary>
+        <div class="acc-body" id="rooms-page-people"></div>
+      </details>
+    </div>
+  </section>
+
   <!-- Audience looks: Stream Rooms' speech bubbles and silhouettes (admin/audience-looks.js builds the
        controls; Core keeps them in data/audience_looks.json and sends them to Stream Rooms over /ws) -->
   <section id="tab-looks" class="panel">
@@ -2194,6 +2226,9 @@
   <!-- QR codes for Setup → Phone remote (MIT, Kazuhiko Arase; window.qrcode) -->
   <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
   <script src="/admin/tts.js"></script>
+  <script src="/admin/rooms-setup.js"></script>
   <script src="/admin/admin.js"></script>
+  <!-- Arrange, Pinned + Scenes cards, help panel, Ctrl+K (needs admin.js and rooms-setup.js first) -->
+  <script src="/admin/live-extras.js"></script>
 </body>
 </html>

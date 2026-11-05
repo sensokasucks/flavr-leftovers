@@ -1576,6 +1576,83 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(409, "Stream Rooms isn't connected")
         return {"ok": True}
 
+    @router.get("/rooms/settings")
+    async def rooms_settings(x_admin_token: Optional[str] = Header(None)):
+        """Setup > Stream Rooms pages: {connected, schema, values, defaults} (Stream Rooms' panel
+        settings, core/reactions.py clean_rooms_settings; empty lists until the game has sent them)."""
+        _auth(x_admin_token)
+        eng = _reactions()
+        st = eng.rooms_settings or {}
+        return {"connected": bool(eng.game_clients), "schema": st.get("schema", []),
+                "values": st.get("values", {}), "defaults": st.get("defaults", {}), "ts": st.get("ts", 0)}
+
+    @router.post("/rooms/set")
+    async def rooms_set(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """One Stream Rooms setting from Setup > Stream Rooms or a pinned control: {"key", "value"}."""
+        _auth(x_admin_token)
+        ok, why = await _reactions().send_rooms_setting(str(body.get("key") or ""), body.get("value"))
+        if not ok:
+            raise HTTPException(409 if "connected" in why else 400, why)
+        return {"ok": True}
+
+    def _prefs():
+        """data/dashboard_prefs.json (core/dashboard_prefs.py): the Live layout, pins and scenes.
+        In Core's data folder (the reactions engine's, so tests with a temp folder stay in it)."""
+        from core.dashboard_prefs import DashboardPrefs
+        eng = getattr(core_state, "reactions", None)
+        folder = getattr(eng, "data_dir", None) or (_CORE_ROOT / "data")
+        return DashboardPrefs(folder)
+
+    @router.get("/help")
+    async def help_text(x_admin_token: Optional[str] = Header(None)):
+        """The user manual (docs/manual/MANUAL.md) for the dashboard's help panel and Ctrl+K search
+        (admin/live-extras.js splits it into sections)."""
+        _auth(x_admin_token)
+        path = _CORE_ROOT / "docs" / "manual" / "MANUAL.md"
+        try:
+            return {"markdown": path.read_text(encoding="utf-8")}
+        except OSError:
+            return {"markdown": ""}
+
+    @router.get("/dashboard-prefs")
+    async def dashboard_prefs_get(x_admin_token: Optional[str] = Header(None)):
+        """Live page layout (Arrange), pinned Stream Rooms settings and scenes."""
+        _auth(x_admin_token)
+        return _prefs().load()
+
+    @router.put("/dashboard-prefs")
+    async def dashboard_prefs_put(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Save some of them: only the top-level keys sent change (core/dashboard_prefs.py update)."""
+        _auth(x_admin_token)
+        return _prefs().update(body)
+
+    @router.post("/rooms/scene")
+    async def rooms_scene(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """Run a scene ({"id"}): its steps in order (a Stream Rooms setting, a card action or the
+        curtain). Steps that fail are listed; the rest still run."""
+        _auth(x_admin_token)
+        from core.reactions import ROOMS_ACTIONS
+        sid = str(body.get("id") or "")
+        scene = next((sc for sc in _prefs().load()["scenes"] if sc["id"] == sid), None)
+        if scene is None:
+            raise HTTPException(404, "No such scene")
+        eng = _reactions()
+        if not eng.game_clients:
+            raise HTTPException(409, "Stream Rooms isn't connected")
+        failed = []
+        for i, st in enumerate(scene["steps"]):
+            ok = False
+            if st["kind"] == "set":
+                ok, _why = await eng.send_rooms_setting(st["key"], st["value"])
+            elif st["kind"] == "cmd":
+                check = ROOMS_ACTIONS.get(st["action"])
+                ok = bool(check and check(st["value"]) and await eng.send_stage(st["action"], st["value"]))
+            elif st["kind"] == "curtain":
+                ok = await eng.send_stage("curtain", st["value"])
+            if not ok:
+                failed.append(i + 1)
+        return {"ok": not failed, "failed_steps": failed}
+
     @router.get("/chat_games/moments.csv")
     async def chat_games_moments_csv(x_admin_token: Optional[str] = Header(None)):
         """Download the moments chat marked with !clip / !moment (stream time + note) as CSV."""

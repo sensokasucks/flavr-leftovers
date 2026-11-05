@@ -371,6 +371,9 @@
     cmds: [["config", "commands", "Chat commands"], ["config", "reactions", "Reactions"],
            ["config", "groups", "Command groups"], ["integrations", "tester", "Try a command"]],
     connect: [["config", "core", "Platforms"], ["status", null, "Connection check"]],
+    // Setup > Stream Rooms settings (admin/rooms-setup.js PAGES; tab-rooms sub-pages in index.html)
+    roomset: [["rooms", "room", "Room & sound"], ["rooms", "screen", "Big screen"], ["rooms", "chat", "Chat windows"],
+              ["rooms", "audience", "Audience"], ["rooms", "reactions", "Reactions & games"], ["rooms", "people", "Presenters & Co-stream"]],
   };
   const MODES = ["live", "setup"];
   const modeKey = "stream_core_admin_mode";
@@ -543,6 +546,8 @@
       loadFun();
       // the "Read aloud" card (admin/tts.js), shown only while text-to-speech is on
       if (window.TtsPage) window.TtsPage.openLive();
+      // Arrange, the Pinned and Scenes cards (admin/live-extras.js)
+      if (window.LiveExtras) window.LiveExtras.openLive();
     }
     if (tabId === "fun") loadFun();
     if (tabId === "status") loadStatus();
@@ -557,6 +562,8 @@
     if (tabId === "widgets") loadWidgets();
     // Audience looks lives in its own file (admin/audience-looks.js, loaded before this one)
     if (tabId === "looks" && window.AudienceLooksPage) window.AudienceLooksPage.open();
+    // Stream Rooms settings live in their own file (admin/rooms-setup.js, loaded before this one)
+    if (tabId === "rooms" && window.RoomsSetup) window.RoomsSetup.open(pick);
     // Read aloud (TTS) lives in its own file (admin/tts.js, loaded before this one)
     if (tabId === "tts" && window.TtsPage) window.TtsPage.open();
     if (tabId === "integrations") initIntegrationsTab();
@@ -671,7 +678,8 @@
   /** A label's own text without its inputs, help text and options (for the search index). */
   function cleanText(el) {
     const c = el.cloneNode(true);
-    c.querySelectorAll("input, select, textarea, button, .field-help, option").forEach((n) => n.remove());
+    // (.rs-*: Stream Rooms settings' badge, slider readout and the panel tab name in a legend)
+    c.querySelectorAll("input, select, textarea, button, .field-help, option, output, .rs-badge, .rs-slot, .rs-tab").forEach((n) => n.remove());
     return c.textContent.replace(/\s+/g, " ").trim();
   }
 
@@ -787,6 +795,15 @@
       if (field) setTimeout(() => field.focus({ preventScroll: true }), 350);
     }, 60);
   }
+
+  // For admin/live-extras.js (Ctrl+K and the help panel): the same index and "open this hit" as
+  // the sidebar search, and go() to open a page.
+  window.AdminSearch = {
+    build: () => { buildSearchIndex(); return searchIndex; },
+    open: openHit,
+    go: (tabId, sub) => go(tabId, sub),
+    pageTitle,
+  };
 
   if ($("nav-search")) {
     const input = $("nav-search");
