@@ -41,6 +41,7 @@ Add several alert sources in OBS, each with its own filters and look.
 | `tests` | `tests=0` | Ignore **Fire test** on this source |
 | `duration` | `duration=8` | Seconds on screen, instead of the dashboard setting |
 | `sound` / `volume` | `sound=0`, `volume=40` | Mute, or set this source's volume (%) |
+| `tts` / `tts_volume` | `tts=0`, `tts_volume=60` | Text-to-speech voices (Setup → Read aloud): never play them on this source, or set their volume (%) |
 | `image` / `message` | `image=0`, `message=0` | Hide the picture slot / the viewer's message |
 | `layout` | `layout=side` | `above` (default), `side` or `banner` (text over the picture), the Streamlabs layout names |
 | `align` | `align=left` | `left`, `center` or `right` |

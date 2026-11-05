@@ -16,11 +16,15 @@ Who calls what:
       "highlight"} on /ws; the overlay and Stream Rooms (seat glow) listen for it
   HighlightBoard.on_featured (main.py)                              tells the end credits who
       was highlighted ("Featured" section, core/credits.py CreditsEngine.feature)
+  HighlightBoard.on_shown (main.py)                                 reads it aloud when that
+      text-to-speech trigger is on (core/tts.py TtsEngine.on_highlight)
 
 Settings: the ``highlight:`` block of config.yaml (Chat box page -> Highlighted message):
   hold_sec     seconds a highlight stays before the next one (0 = until Next / Clear)
   show_avatar  draw the chatter's picture
-  read_aloud   reserved for text-to-speech; off by default and nothing reads it yet
+  read_aloud   read the highlight aloud (off by default). The switch itself lives on the
+               Read aloud (TTS) page (tts.triggers.highlight.enabled, core/tts.py); saving
+               there writes this key too, and an older config with only this key still works
 
 Nothing here is saved to disk: the queue starts empty every time Core starts.
 """
@@ -145,6 +149,9 @@ class HighlightBoard:
         self.on_change: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None
         # (platform, username, display_name, quote) -> None: credits "Featured" (main.py)
         self.on_featured: Optional[Callable[[str, str, str, str], None]] = None
+        # (item) -> None: a highlight reached the screen; main.py sets it to core/tts.py
+        # TtsEngine.on_highlight, which reads it aloud when tts.triggers.highlight is on
+        self.on_shown: Optional[Callable[[Dict[str, Any]], Any]] = None
         self.configure(config or {})
 
     # ── settings ──
@@ -244,6 +251,11 @@ class HighlightBoard:
                                  u.get("display_name") or "", quote_of(item))
             except Exception:
                 log.exception("credits featured hook failed")
+        if callable(self.on_shown):
+            try:
+                self.on_shown(item)
+            except Exception:
+                log.exception("read-aloud hook failed")
 
     def _promote(self) -> None:
         """Nothing on screen: show the first one waiting, if any."""

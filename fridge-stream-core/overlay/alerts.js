@@ -7,6 +7,9 @@
  * level, item, image, falls_back, css_classes, duration_ms, is_test.
  * Skin, pictures, sounds, volume, tiers and the custom CSS version come from
  * /api/overlay/alerts-settings, polled every 4 s so dashboard saves apply live.
+ * Text-to-speech lines ("tts" packets, core/tts.py) are played by overlay/tts-player.js
+ * (window.FridgeVoice, loaded first): an alert whose payload has "tts": {"wait_ms"} stays up
+ * until its voice has played after the alert sound, or until no voice is coming.
  *
  * Markup uses Streamlabs Alert Box ids and StreamElements class names so existing alert CSS
  * packs work; every URL switch and selector is documented in overlay/ALERTS.md (keep it, the
@@ -278,10 +281,12 @@
     }
   }
 
-  // one uploaded sound per kind (Admin → Alerts → Pictures and sounds); OBS plays without a click
+  // one uploaded sound per kind (Admin → Alerts → Pictures and sounds); OBS plays without a click.
+  // Returns a promise that settles when the sound has finished (at once when there is none, and
+  // after 15 s at most), so a text-to-speech voice starts after it (tts-player.js forAlert).
   function playSound(kind, data) {
     const url = soundMap[kind] || soundMap[(data && data.falls_back) || ""];
-    if (!url || muted) return;
+    if (!url || muted) return Promise.resolve();
     try {
       let a = sounds[url];
       if (!a) {
@@ -291,14 +296,28 @@
       const vol = volumeParam != null ? volumeParam / 100 : Number(soundVolume);
       a.volume = Math.max(0, Math.min(1, vol || 0));
       a.currentTime = 0;
-      a.play().catch(() => {});
-    } catch (_) {}
+      return new Promise((resolve) => {
+        const done = () => {
+          a.removeEventListener("ended", done);
+          a.removeEventListener("error", done);
+          clearTimeout(cap);
+          resolve();
+        };
+        const cap = setTimeout(done, 15000);
+        a.addEventListener("ended", done);
+        a.addEventListener("error", done);
+        a.play().catch(done);
+      });
+    } catch (_) {
+      return Promise.resolve();
+    }
   }
 
   // Entry point for each /ws alert: filter it for this source, queue it, start the queue.
   function show(data) {
     if (!data || !wanted(data)) return;
     if (queue.length >= queueMax) return;     // a flood past ?queue= is dropped, not stacked up
+    voice.accept(data.id);                    // its text-to-speech voice (if any) plays here
     queue.push(data);
     pump();
   }
@@ -351,7 +370,7 @@
       .join(" · ");
 
     setMedia(kind, data);
-    playSound(kind, data);
+    const soundDone = playSound(kind, data);
     const cls = boxClasses(data, kind, extra);
     setData(data, kind, cls.tier);
     // "animated fadeIn" / "animated fadeOut" are the animate.css names packs override
@@ -364,7 +383,7 @@
     // how long the exit animation gets before the box is cleared: named animate.css exits
     // (?in= / ?out= or the custom skin) take longer than the built-in fade
     const named = document.body.classList.contains("anim-named") || document.body.classList.contains("skin-custom");
-    setTimeout(() => {
+    const hide = () => {
       box.className = cls.names.concat(["hide", "animated", animOut || "fadeOut"]).join(" ");
       setTimeout(() => {
         box.className = "alert-box hidden";
@@ -374,7 +393,18 @@
         if (!queue.length) setIdle(true);
         pump();
       }, named ? 650 : 340);
-    }, ms);
+    };
+    if (data.tts && voice.enabled) {
+      // read aloud: stay up for the normal time AND until the voice is done (+0.4 s)
+      let timeUp = false;
+      let voiceUp = false;
+      const tryHide = () => { if (timeUp && voiceUp) hide(); };
+      setTimeout(() => { timeUp = true; tryHide(); }, ms);
+      voice.forAlert(data.id, soundDone, data.tts.wait_ms)
+        .then(() => setTimeout(() => { voiceUp = true; tryHide(); }, 400));
+    } else {
+      setTimeout(hide, ms);
+    }
   }
 
   // Dashboard settings (core/alerts.py read_alert_settings). URL switches still win.
@@ -404,6 +434,9 @@
   setInterval(loadSettings, 4000);
 
   const hint = window.FridgeHint || { set() {}, count() {} };
+  // tts-player.js (loaded before this file); a stand-in that plays nothing if it is missing
+  const voice = window.FridgeVoice || { onLine() {}, onSkip() {}, onControl() {}, accept() {},
+    forAlert: () => Promise.resolve(), enabled: false };
   let ws;
   let retryMs = 1000;
 
@@ -420,6 +453,12 @@
         if (msg.type === "alert" && msg.data) {
           hint.count("alerts");
           show(msg.data);
+        } else if (msg.type === "tts") {
+          voice.onLine(msg.data);
+        } else if (msg.type === "tts_skip") {
+          voice.onSkip(msg.data);
+        } else if (msg.type === "tts_control") {
+          voice.onControl(msg.data);
         }
       } catch (_) {}
     };

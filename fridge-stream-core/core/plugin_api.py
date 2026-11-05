@@ -109,6 +109,20 @@ class PluginContext:
         if self.bus is not None and hasattr(self.bus, "note"):
             self.bus.note(kind, f"{self.id}: {text}")
 
+    async def say(self, text: str, voice: str = "") -> bool:
+        """Read ``text`` aloud through Core's text-to-speech (core/tts.py TtsEngine.say_plugin):
+        only when the streamer has TTS on with the "Game plugins" trigger switched on, else it
+        does nothing and returns False. ``voice`` "" = the voice picked for game plugins. The
+        line goes through the same blocked-word filters as chat."""
+        fn = getattr(self.bus, "say", None) if self.bus is not None else None
+        if not callable(fn) or not text:
+            return False
+        try:
+            return bool(await fn(self.id, str(text), voice))
+        except Exception:
+            log.exception("[%s] say failed", self.id)
+            return False
+
     async def alert(self, payload: dict) -> None:
         """Show an alert on the alerts overlay; ``payload`` is a core.alerts.build_alert(...) dict."""
         if self.bus is not None:

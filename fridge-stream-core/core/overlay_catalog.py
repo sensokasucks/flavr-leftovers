@@ -113,6 +113,9 @@ OVERLAYS: list[dict[str, Any]] = [
             _num("duration", "Seconds on screen", "", "Empty = dashboard setting", 1.5, 60, 0.5),
             _bool("sound", "Sounds", True),
             _num("volume", "Volume (%)", "", "Empty = dashboard setting", 0, 100, 5),
+            # text-to-speech voices (core/tts.py, overlay/tts-player.js): off per source, own volume
+            _bool("tts", "Read-aloud voices", True, "Untick so text-to-speech only plays on another alerts source"),
+            _num("tts_volume", "Voice volume (%)", "", "Empty = the Read aloud (TTS) page setting", 0, 100, 5),
             _bool("image", "Picture", True),
             _bool("message", "Viewer's message", True),
             _select("layout", "Layout", [["", "Picture above text"], ["side", "Picture beside text"],

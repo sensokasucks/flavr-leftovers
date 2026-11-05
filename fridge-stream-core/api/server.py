@@ -31,6 +31,7 @@ import os
 
 from api.admin_routes import _CORE_ROOT, create_admin_router
 from api.highlight_routes import create_highlight_router
+from api.tts_routes import create_tts_router
 from api.phone_admin_routes import create_phone_admin_router
 from core.local_guard import (
     LOOPBACK_ORIGIN_REGEX,
@@ -626,6 +627,20 @@ def create_app(core_state: "CoreState") -> FastAPI:
         # the URL carries ?v=<time>, so a new picture gets a new URL
         return FileResponse(path, headers={"Cache-Control": "public, max-age=604800"})
 
+    @app.get("/tts/{file_name}")
+    async def tts_file(file_name: str):
+        """Public: a line of speech Core got from the TTS server (core/tts.py, data/tts/). The
+        alerts overlay plays these; only file names Core wrote itself are served."""
+        from core.tts import FORMATS
+
+        engine = getattr(core_state, "tts", None)
+        path = engine.file_path(file_name) if engine else None
+        if path is None:
+            raise HTTPException(404, "No such line")
+        ext = path.suffix.lstrip(".")
+        return FileResponse(path, media_type=FORMATS.get(ext, ("", "audio/mpeg"))[1],
+                            headers={"Cache-Control": "public, max-age=3600"})
+
     @app.get("/api/chatters/avatar")
     async def chatter_avatar(name: str = "", platform: str = "", redirect: int = 0):
         """A chatter's picture by login or display name, for overlays that only know a name
@@ -666,6 +681,8 @@ def create_app(core_state: "CoreState") -> FastAPI:
     app.include_router(create_admin_router(core_state))
     # Highlighted message (core/highlights.py): /api/admin/highlight*
     app.include_router(create_highlight_router(core_state, _CORE_ROOT))
+    # Text-to-speech (core/tts.py): /api/admin/tts* for Setup → Read aloud (TTS) and the Live card
+    app.include_router(create_tts_router(core_state, _CORE_ROOT))
     # Phone remote card (Setup → Phone remote): switch the phone door, pair / remove phones
     app.include_router(create_phone_admin_router(core_state, _CORE_ROOT))
 
@@ -730,6 +747,7 @@ class CoreState:
         self.reactions = None
         self.activity = None     # core.activity.ActivityLog: the Live page Stream events window
         self.highlights = None   # core.highlights.HighlightBoard: the Highlighted message overlay
+        self.tts = None          # core.tts.TtsEngine: text-to-speech queue + server state
         self.phone_remote = None   # core.phone_remote.PhoneRemote: paired phones + pairing codes
         self.phone_server = None   # api.phone_server.PhoneServer: the phone door (made in main.py _run)
         self.chat_games = None

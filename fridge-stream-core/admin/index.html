@@ -63,6 +63,7 @@
       <button class="tab" data-keywords="obs xsplit browser source url webpage overlay links customise customize builder switches options parameters sources shared overlays" data-tab="sources" data-set="links" data-title="Overlay links for OBS">Overlay links for OBS</button>
       <button class="tab" data-keywords="chat overlay css skin look streamlabs streamelements badge picture avatar sound hide fade custom widget custom code html js javascript fields zip import etsy ko-fi theme" data-tab="chatlook" data-set="chatbox">Chat box</button>
       <button class="tab" data-keywords="follow sub resub raid cheer super chat gift test alert css skin look sound picture gif webm upload" data-tab="alerts">Alerts</button>
+      <button class="tab" data-keywords="tts text to speech read aloud voice speak donation super chat kokoro piper xtts chatterbox f5 openai elevenlabs server blocked words" data-tab="tts" data-title="Read aloud (TTS)">Read aloud (TTS)</button>
       <button class="tab" data-keywords="end credits roll crawl star wars matrix typewriter teletype ticker motion preset font letterbox grain movie cast job pin csv" data-tab="credits" data-title="End credits">End credits</button>
     </div>
 
@@ -221,6 +222,22 @@
           <button type="button" id="live-hl-save">Save</button>
           <span id="live-hl-msg" class="muted" role="status"></span>
         </details>
+      </section>
+      <!-- Read aloud (core/tts.py, api/tts_routes.py; admin/tts.js "Live card"). Shown only while
+           text-to-speech is switched on (Setup → Read aloud (TTS)). -->
+      <section class="live-card" id="live-tts-card" hidden>
+        <div class="live-card-head">
+          <h3>Read aloud</h3>
+          <span id="live-tts-state" class="muted"></span>
+          <a href="#tts" class="live-link">Read aloud settings →</a>
+        </div>
+        <p id="live-tts-light" class="live-state"><span class="tts-light" data-state="unknown"></span> —</p>
+        <div class="live-buttons">
+          <button type="button" id="live-tts-skip" class="primary" title="Stop the line playing now; the next one goes on">Skip</button>
+          <button type="button" id="live-tts-clear" title="Stop it and drop every line waiting (!tts points are given back)">Clear queue</button>
+        </div>
+        <div id="live-tts-missed" class="tts-missed" hidden></div>
+        <p id="live-tts-msg" class="muted" role="status"></p>
       </section>
       <!-- Stream events: what just happened (GET /api/admin/activity, core/activity.py). Kept last
            and at a fixed height so new lines never push the buttons above around. -->
@@ -710,6 +727,9 @@
           <label>Optional message
             <input id="alert-message" type="text" placeholder="Thanks for the raid!" />
           </label>
+          <!-- also read it aloud (core/tts.py on_alert; needs Setup → Read aloud (TTS) switched on) -->
+          <label class="check"><input id="alert-read-aloud" type="checkbox" /> Read aloud too
+            <span class="muted">(needs <a href="#tts">Read aloud (TTS)</a> switched on)</span></label>
           <div class="form-row" style="margin-top:12px">
             <button class="primary" id="alert-fire">Fire test alert</button>
             <span id="alert-status" class="muted"></span>
@@ -980,6 +1000,156 @@
           <button type="button" id="phone-pair-cancel">Cancel</button>
         </div>
       </div>
+    </fieldset>
+  </section>
+
+  <!-- Read aloud (TTS): Core sends lines to the streamer's own text-to-speech server and the alerts
+       overlay plays them (core/tts.py, core/tts_text.py, api/tts_routes.py; admin/tts.js builds the
+       trigger rows and runs every button here). Field ids are tts-<setting>; keep them in step with
+       admin/tts.js readForm / fillForm and the tts: block in core/tts.py DEFAULTS. -->
+  <section id="tab-tts" class="panel">
+    <div class="page-head">
+      <h2 class="page-title">Read aloud (TTS)</h2>
+      <p class="tab-intro">Have alerts, paid messages, <code>!tts</code> and chosen chat lines read aloud on stream.
+        Stream Core doesn't include a voice: it sends the text to <strong>your own text-to-speech server</strong>
+        (Kokoro-FastAPI, AllTalk, a Chatterbox server, openedai-speech… or a paid cloud service) that answers
+        OpenAI-style <code>/v1/audio/speech</code> requests, usually on another PC on your home network.
+        The voice plays through your <a href="#sources">alerts overlay</a> in OBS.</p>
+    </div>
+    <div class="config-grid tts-grid">
+      <fieldset class="cfg-card">
+        <legend>Your TTS server</legend>
+        <label class="check"><input id="tts-enabled" type="checkbox" /> <strong>Read aloud on</strong></label>
+        <p id="tts-state" class="live-state"><span class="tts-light" data-state="unknown"></span> —</p>
+        <label>Server address <input id="tts-url" type="text" placeholder="http://192.168.1.50:8880" autocomplete="off" />
+          <span class="hint">Core adds <code>/v1/audio/speech</code> itself; an address ending in <code>/v1</code> works too.</span></label>
+        <label>Backup address <input id="tts-backup-url" type="text" placeholder="optional: tried when the first one doesn't answer" autocomplete="off" /></label>
+        <label>API key <input id="tts-api-key" type="password" autocomplete="new-password" placeholder="most home servers need none" />
+          <span class="hint" id="tts-key-note"></span></label>
+        <label class="check" id="tts-key-clear-row" style="display: none"><input id="tts-api-key-clear" type="checkbox" /> Remove the saved key</label>
+        <div class="row2">
+          <label>Model <input id="tts-model" type="text" placeholder="tts-1" autocomplete="off" /></label>
+          <label>Audio format
+            <select id="tts-format">
+              <option value="mp3">MP3</option><option value="wav">WAV</option><option value="opus">Opus</option>
+              <option value="aac">AAC</option><option value="flac">FLAC</option>
+            </select></label>
+        </div>
+        <label>Wait at most (seconds) <input id="tts-timeout" type="number" min="3" max="120" step="1" />
+          <span class="hint">An alert never waits longer than this for its voice; it shows without one.</span></label>
+        <div class="form-row">
+          <button type="button" id="tts-check">Check connection</button>
+        </div>
+        <p id="tts-check-result" class="hint" role="status"></p>
+        <p class="hint">Cloud services (OpenAI, others with an OpenAI-style address) use the same boxes with an
+          <code>https://</code> address and an API key. They work the same way but haven't been tested.</p>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>Voice</legend>
+        <label>Main voice <input id="tts-voice" type="text" list="tts-voice-list" placeholder="af_bella, alloy …" autocomplete="off" />
+          <span class="hint">The voice name your server uses. Check connection fills the list when your server can list its voices.</span></label>
+        <datalist id="tts-voice-list"></datalist>
+        <div class="row2">
+          <label>Speed <input id="tts-speed" type="number" min="0.5" max="2" step="0.05" /></label>
+          <label>Volume (%) <input id="tts-volume" type="number" min="0" max="100" step="5" /></label>
+        </div>
+        <div class="row2">
+          <label>Longest line (characters) <input id="tts-max-chars" type="number" min="20" max="1000" step="10" /></label>
+          <label>Lines waiting at most <input id="tts-queue-max" type="number" min="1" max="200" step="1" /></label>
+        </div>
+        <h4 class="tts-sub">Test voice</h4>
+        <label>Line <input id="tts-test-text" type="text" value="Thanks for the follow, welcome in!" maxlength="1000" /></label>
+        <label>Voice <input id="tts-test-voice" type="text" list="tts-voice-list" placeholder="empty = main voice" autocomplete="off" /></label>
+        <div class="form-row">
+          <button type="button" id="tts-test-play" title="Plays here in the dashboard, without OBS">Play here</button>
+          <button type="button" id="tts-test-overlay" title="Goes through the filters and the real queue to the alerts overlay">Send to overlay</button>
+        </div>
+        <p id="tts-test-msg" class="hint" role="status"></p>
+      </fieldset>
+    </div>
+
+    <fieldset class="cfg-card tts-wide">
+      <legend>What gets read aloud</legend>
+      <p class="hint">Each one has its own switch and voice (empty = main voice). In the wording, <code>{name}</code> is the
+        chatter, <code>{message}</code> their message, <code>{headline}</code> the alert's own line
+        ("Nova subscribed for 3 months!") and <code>{amount}</code> the amount.</p>
+      <div id="tts-triggers" class="tts-triggers"><span class="muted">Loading…</span></div>
+      <details class="hl-options">
+        <summary>Try !tts or a chat line as a pretend chatter</summary>
+        <p class="hint">Nothing reaches your real chat, and a pretend <code>!tts</code> costs no points (it tells you what it would cost).
+          The cooldown and "who can" rules are the real ones.</p>
+        <div class="row2">
+          <label>Chatter name <input id="tts-fake-name" type="text" value="TestViewer" maxlength="40" /></label>
+          <label>They are
+            <select id="tts-fake-who">
+              <option value="everyone">a viewer</option><option value="sub">a subscriber</option>
+              <option value="vip">a VIP</option><option value="mod">a mod</option>
+            </select></label>
+        </div>
+        <label>Message <input id="tts-fake-text" type="text" value="hello from chat" maxlength="500" /></label>
+        <div class="form-row">
+          <button type="button" id="tts-fake-command">Send as !tts</button>
+          <button type="button" id="tts-fake-chat">Send as a chat line</button>
+        </div>
+        <p id="tts-fake-msg" class="hint" role="status"></p>
+      </details>
+    </fieldset>
+
+    <div class="config-grid tts-grid">
+      <fieldset class="cfg-card">
+        <legend>Blocked words and phrases</legend>
+        <p class="hint">One per line, for example <code>idiot*</code> (any word starting "idiot") or <code>go back to</code>.
+          Whole words only, so blocking "ass" doesn't catch "class". Dodges like <code>1d10t</code>,
+          <code>i.d.i.o.t</code> and <code>iiidiot</code> are caught too. Paid messages still show on screen;
+          only the voice is skipped.</p>
+        <label>Blocked list <textarea id="tts-blocked" rows="8" spellcheck="false"></textarea></label>
+        <label>When a line has one
+          <select id="tts-on-match">
+            <option value="skip">Skip the whole line</option>
+            <option value="beep">Read it, with "beep" instead of the word</option>
+            <option value="remove">Read it, leaving the word out</option>
+          </select></label>
+        <label class="check"><input id="tts-check-names" type="checkbox" /> Check chatter names too (a blocked name is read as "someone")</label>
+        <label class="check"><input id="tts-use-red-flags" type="checkbox" /> Also block the <a href="#redflags">red-flag phrases</a></label>
+        <label class="check"><input id="tts-drop-links" type="checkbox" /> Leave links out</label>
+        <div class="form-row">
+          <button type="button" id="tts-blocked-import">Import…</button>
+          <button type="button" id="tts-blocked-export">Export</button>
+          <input id="tts-blocked-file" type="file" accept=".txt,text/plain" hidden />
+        </div>
+        <h4 class="tts-sub">Test it</h4>
+        <label>Line <input id="tts-filter-text" type="text" placeholder="type a chat line" maxlength="1000" /></label>
+        <label>Chatter name <input id="tts-filter-name" type="text" placeholder="optional" maxlength="60" /></label>
+        <div class="form-row"><button type="button" id="tts-filter-run">What would be read?</button></div>
+        <p id="tts-filter-msg" class="hint" role="status"></p>
+        <p class="hint">Save first: the test uses the saved list.</p>
+      </fieldset>
+
+      <fieldset class="cfg-card">
+        <legend>When the server is down</legend>
+        <p class="hint">Alerts never wait on a voice. After 3 failures in a row Core stops asking, checks again every
+          30 seconds and carries on by itself when the server answers. Paid messages and <code>!tts</code> lines that
+          couldn't be read are kept below; a missed <code>!tts</code> gets its points back.</p>
+        <label class="check"><input id="tts-pretend-down" type="checkbox" /> Pretend the server is down (to test this; not saved)</label>
+        <h4 class="tts-sub">Missed lines <span id="tts-missed-count" class="muted"></span></h4>
+        <div id="tts-missed" class="tts-missed"><span class="muted">Nothing missed.</span></div>
+        <div class="form-row">
+          <button type="button" id="tts-replay-all">Replay all</button>
+          <button type="button" id="tts-forget-all">Remove all</button>
+        </div>
+      </fieldset>
+    </div>
+
+    <div class="form-row tts-save-row">
+      <button type="button" class="primary" id="tts-save">Save</button>
+      <span id="tts-save-msg" class="muted" role="status"></span>
+    </div>
+
+    <fieldset class="cfg-card tts-wide">
+      <legend>Recent lines</legend>
+      <p class="hint">The last 20 lines Core tried to read: what happened, and how long your server took.</p>
+      <div id="tts-recent" class="tts-recent"><span class="muted">Nothing yet.</span></div>
     </fieldset>
   </section>
 
@@ -1975,6 +2145,7 @@
   <script src="/admin/audience-looks.js"></script>
   <!-- QR codes for Setup → Phone remote (MIT, Kazuhiko Arase; window.qrcode) -->
   <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
+  <script src="/admin/tts.js"></script>
   <script src="/admin/admin.js"></script>
 </body>
 </html>

@@ -139,6 +139,9 @@ class AlertTestBody(BaseModel):
     message: str = ""
     duration_ms: Optional[int] = None
     item: str = ""            # a YouTube gift's / Super Sticker's name
+    # also read it aloud through text-to-speech (the Alerts test's "Read aloud" tick, core/tts.py
+    # TtsEngine.on_alert); needs TTS on, works even when that alert's trigger is off
+    read_aloud: bool = False
 
 
 class AlertStyleBody(BaseModel):
@@ -1582,6 +1585,8 @@ def create_admin_router(core_state) -> APIRouter:
             )
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
+        if body.read_aloud:
+            payload["read_aloud"] = True
 
         fire = getattr(core_state, "fire_alert", None)
         if fire:

@@ -21,6 +21,8 @@ Home: `core/alerts.py`, `overlay/alerts.html` + `alerts.js` + `alerts.css`. Note
 - [ ] Saved stylesheets: `OverlayStyle` keeps extra CSS in `overlay/<name>-css/<slot>.css` (git-ignored, max 30), listed as `css_slots` in the settings; `?css=` loads one, an unknown name falls back to the main `alerts-custom.css`.
 - [ ] Template placeholders (`{font_size}`, `{{fontSize}}` …) are filled on save by `core/css_templates.py`; unknown ones are left alone.
 
+- [ ] Read aloud: an alert payload may carry `tts: {wait_ms}`; the overlay (via `overlay/tts-player.js`) keeps that alert up until its voice has played (or `tts_skip` / the wait runs out), after the alert's own sound. `playSound` returns a promise. `?tts=0` / `?tts_volume=` stay in the catalog. See [tts.md](tts.md).
+
 ## Drop risks
 
 - Restyling by changing selector names (breaks existing OBS Custom CSS packs).
