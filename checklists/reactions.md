@@ -22,6 +22,7 @@ Home: `fridge-stream-core/core/reactions.py`. Spec: [docs/REACTIONS.md](../fridg
 - [ ] `{args}` reactions (sign) take all typed words as text (no target / count); `TARGET_REQUIRED` effects (highfive, seat_swap) refuse a missing or self target.
 - [ ] Emote pictures only use https URLs learned from chat (`EmoteBook`); the fallback overlay only loads `/reactions/images/`, `/media/` or https.
 - [ ] Stage frames: Core → game `stage` {action: curtain, value: open|close|reveal|toggle} only to hello'd game sockets (`send_stage`); game → Core `stage_state` {curtain} kept in `status().stage`. `POST /api/admin/stage` and mods' `!curtain` (chat games `stage`) are the only senders.
+- [ ] Stream Rooms card (`rooms_state` / `ROOMS_ACTIONS`, `POST /api/admin/rooms`) and settings (`rooms_settings` / `rooms_values` / `rooms_set`, checked by `check_rooms_value`) only from / to hello'd game sockets; both forgotten when the game leaves. Scenes run in Core (`/api/admin/rooms/scene`).
 - [ ] New built-in entries go in `LATER_DEFAULTS` and are seeded once via `reactions.seeded_defaults`; a deleted entry is never re-added.
 - [ ] Target names compare with `target_key` (no case, spaces, `_ - .` or `@`), so YouTube handles (`@Name`) match however they're typed; opt lists ignore `@`; replies use one `@`.
 

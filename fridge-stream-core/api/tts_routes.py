@@ -14,6 +14,10 @@ Routes:
   POST /api/admin/tts/filter-test     {text, name} -> what would be read, or why not
   POST /api/admin/tts/fake            {kind: "command" | "chat", text, name, who} a pretend chatter
   POST /api/admin/tts/skip            stop the line playing now
+  POST /api/admin/tts/pause           {on} hold the line / let it go on (Live card)
+  POST /api/admin/tts/quiet           {minutes} read aloud off for a while (0 = back on)
+  POST /api/admin/tts/drop            {id} take one waiting line out
+  GET  /api/admin/tts/blocked         blocked chatters;  POST /block {platform, name, for} | /unblock {key}
   POST /api/admin/tts/clear           stop it and drop everything waiting (refunds !tts points)
   POST /api/admin/tts/pretend-down    {on} the "Pretend the server is down" test switch
   POST /api/admin/tts/missed/replay   {id} one missed line back in the queue (no id = all)
@@ -101,7 +105,8 @@ def create_tts_router(core_state, core_root) -> APIRouter:
 
     def _state(engine) -> Dict[str, Any]:
         return {"settings": public_settings(engine.settings), "status": engine.status(),
-                "missed": list(reversed(engine.missed)), "recent": list(reversed(engine.recent))}
+                "missed": list(reversed(engine.missed)), "recent": list(reversed(engine.recent)),
+                "blocked": engine.blocked_list()}
 
     @router.get("")
     async def tts_state(x_admin_token: Optional[str] = Header(None)):
@@ -207,6 +212,61 @@ def create_tts_router(core_state, core_root) -> APIRouter:
         engine = _tts()
         await engine.skip()
         return {"ok": True, "status": engine.status()}
+
+    @router.post("/pause")
+    async def tts_pause(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{"on": true} holds the line (waiting lines stay), false lets it go on (Live card)."""
+        _auth(x_admin_token)
+        engine = _tts()
+        engine.set_paused(bool(body.get("on")))
+        return {"ok": True, "status": engine.status()}
+
+    @router.post("/quiet")
+    async def tts_quiet(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{"minutes": N}: read aloud off for N minutes (0 = back on now). Waiting lines are dropped."""
+        _auth(x_admin_token)
+        engine = _tts()
+        try:
+            minutes = float(body.get("minutes") or 0)
+        except (TypeError, ValueError):
+            raise HTTPException(400, "minutes must be a number")
+        dropped = await engine.quiet_for(minutes)
+        return {"ok": True, "dropped": dropped, "status": engine.status()}
+
+    @router.post("/drop")
+    async def tts_drop(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{"id": N}: take one waiting line out of the queue (Live card ✕)."""
+        _auth(x_admin_token)
+        engine = _tts()
+        try:
+            ok = await engine.drop(int(body.get("id") or 0))
+        except (TypeError, ValueError):
+            ok = False
+        return {"ok": ok, "status": engine.status()}
+
+    @router.get("/blocked")
+    async def tts_blocked(x_admin_token: Optional[str] = Header(None)):
+        """The Blocked tab: chatters who are never read aloud (for this stream, a day or for good)."""
+        _auth(x_admin_token)
+        return {"blocked": _tts().blocked_list()}
+
+    @router.post("/block")
+    async def tts_block(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{"platform", "name", "for": "stream" | "day" | "forever"}."""
+        _auth(x_admin_token)
+        engine = _tts()
+        entry = engine.block(str(body.get("platform") or ""), str(body.get("name") or ""), str(body.get("for") or "stream"))
+        if entry is None:
+            raise HTTPException(400, "Type a chatter name")
+        return {"ok": True, "blocked": engine.blocked_list()}
+
+    @router.post("/unblock")
+    async def tts_unblock(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):
+        """{"key": "<platform>:<name>"} from the Blocked tab's list."""
+        _auth(x_admin_token)
+        engine = _tts()
+        engine.unblock(str(body.get("key") or ""))
+        return {"ok": True, "blocked": engine.blocked_list()}
 
     @router.post("/clear")
     async def tts_clear(x_admin_token: Optional[str] = Header(None)):

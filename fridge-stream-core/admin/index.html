@@ -71,6 +71,7 @@
 
     <div class="nav-group" data-mode="setup" data-heading="Stream Rooms" hidden>
       <div class="nav-heading">Stream Rooms</div>
+      <button class="tab" data-keywords="stream rooms game settings room sound big screen source chat windows audience seating reactions presenters co-stream together graphics quality volume" data-tab="rooms" data-set="roomset" data-title="Stream Rooms settings">Stream Rooms settings</button>
       <button class="tab" data-keywords="stream rooms audience speech bubble bubbles silhouette silhouettes figure style editor look looks group mods vip subs random mix picture" data-tab="looks">Audience looks</button>
     </div>
 
@@ -145,18 +146,50 @@
           <button data-proxy="crd-live">Live list</button>
         </div>
       </section>
-      <!-- Shown only while Stream Rooms is connected (admin.js loadLiveStatus) -->
-      <section class="live-card" id="live-stage-card" hidden>
+      <!-- Stream Rooms card (work list item 13): shown only while Stream Rooms is connected
+           (admin.js loadLiveStatus hides it; loadRoomsCard fills it from GET /api/admin/rooms every
+           2 s while the Live page shows). Buttons: data-stage = curtain (POST /api/admin/stage),
+           data-rooms = any other action (POST /api/admin/rooms, stream-rooms core/rooms_remote.gd). -->
+      <section class="live-card rooms-card" id="live-stage-card" data-card="rooms" hidden>
         <div class="live-card-head">
-          <h3>Stage curtain</h3>
+          <h3>Stream Rooms</h3>
           <span id="live-stage-state" class="muted"></span>
         </div>
-        <p class="hint">Stream Rooms' curtain in front of the main screen. Closed = your screen, its light and
-          the stream sound are hidden. Mods can also type <code>!curtain open|close|reveal</code> (Chat games on).</p>
+        <div class="rooms-lines" id="rooms-lines" aria-live="polite"></div>
+        <div class="live-buttons">
+          <button data-rooms="pause" data-value="toggle" id="rooms-pause" aria-pressed="false" title="Pause to react: the video stops, lights come up (P in the game)">Pause to react</button>
+          <button data-rooms="focus" data-value="toggle" id="rooms-focus" aria-pressed="false" title="Focus view: the big screen fills the picture">Focus view</button>
+          <button data-rooms="clean" data-value="toggle" id="rooms-clean" aria-pressed="false" title="Clean feed: hide the chat, boards and messages on the picture">Clean feed</button>
+          <button data-rooms="playpause" data-value="" id="rooms-playpause" title="Play or pause the video on the big screen">Play / pause video</button>
+        </div>
+        <h4 class="rooms-sub">Curtain</h4>
+        <p class="hint">Closed = your screen, its light and the stream sound are hidden. Mods can also type
+          <code>!curtain open|close|reveal</code> (Chat games on).</p>
         <div class="live-buttons">
           <button class="primary" data-stage="reveal">Reveal</button>
           <button data-stage="close">Close</button>
           <button data-stage="open">Open</button>
+        </div>
+        <div class="rooms-row">
+          <label>Room <select id="rooms-room" title="Change the room (in a co-stream only the host or a co-host can)"></select></label>
+        </div>
+        <h4 class="rooms-sub">Cameras</h4>
+        <div class="live-buttons" id="rooms-views"><span class="muted">No camera views yet.</span></div>
+        <div class="rooms-row">
+          <label>Stream sound <input type="range" id="rooms-volume" min="0" max="1" step="0.05" title="The big screen's sound (Volume in the game)"></label>
+          <label>Room sound <input type="range" id="rooms-ambience" min="0" max="1" step="0.05" title="The room's background sound"></label>
+        </div>
+        <div id="rooms-presenters-box" hidden>
+          <h4 class="rooms-sub">Presenters on set</h4>
+          <div class="live-buttons" id="rooms-presenters"></div>
+        </div>
+        <div id="rooms-costream-box" hidden>
+          <h4 class="rooms-sub">Co-stream</h4>
+          <p id="rooms-costream" class="muted"></p>
+          <div class="live-buttons">
+            <button data-rooms="remote" data-value="take" id="rooms-remote-take" hidden>Take the big screen remote back</button>
+            <button data-rooms="remote" data-value="ask" id="rooms-remote-ask" hidden>Ask for the big screen remote</button>
+          </div>
         </div>
         <p id="live-stage-msg" class="muted"></p>
       </section>
@@ -234,10 +267,22 @@
           <a href="#tts" class="live-link">Read aloud settings →</a>
         </div>
         <p id="live-tts-light" class="live-state"><span class="tts-light" data-state="unknown"></span> —</p>
+        <!-- the line reading now and the next ones (admin/tts.js renderLive) -->
+        <div id="live-tts-now" class="tts-now"></div>
         <div class="live-buttons">
+          <button type="button" id="live-tts-pause" aria-pressed="false" title="Hold the line: nothing new starts, waiting lines stay">Pause</button>
           <button type="button" id="live-tts-skip" class="primary" title="Stop the line playing now; the next one goes on">Skip</button>
           <button type="button" id="live-tts-clear" title="Stop it and drop every line waiting (!tts points are given back)">Clear queue</button>
         </div>
+        <div class="live-buttons tts-quiet">
+          <label>Off for
+            <select id="live-tts-quiet-min" title="Nothing is read for this long; paid lines and !tts go to Missed">
+              <option value="5">5 min</option><option value="15" selected>15 min</option><option value="30">30 min</option><option value="60">1 hour</option>
+            </select></label>
+          <button type="button" id="live-tts-quiet">Turn off</button>
+          <span id="live-tts-quiet-left" class="muted"></span>
+        </div>
+        <div id="live-tts-switches" class="tts-switches"></div>
         <div id="live-tts-missed" class="tts-missed" hidden></div>
         <p id="live-tts-msg" class="muted" role="status"></p>
       </section>
@@ -1018,8 +1063,18 @@
         OpenAI-style <code>/v1/audio/speech</code> requests, usually on another PC on your home network.
         The voice plays through your <a href="#sources">alerts overlay</a> in OBS.</p>
     </div>
+    <!-- Status strip + tabs (work list item 19; admin/tts.js showTab, TABS). Each block below says
+         its tab in data-tts-tab. -->
+    <div id="tts-strip" class="tts-strip" role="status" aria-live="polite"></div>
+    <div class="tts-tabs" role="tablist" aria-label="Read aloud settings">
+      <button type="button" role="tab" data-tts-show="server">Server</button>
+      <button type="button" role="tab" data-tts-show="voice">Voice</button>
+      <button type="button" role="tab" data-tts-show="read">What's read</button>
+      <button type="button" role="tab" data-tts-show="blocked">Blocked</button>
+      <button type="button" role="tab" data-tts-show="test">Test</button>
+    </div>
     <div class="config-grid tts-grid">
-      <fieldset class="cfg-card">
+      <fieldset class="cfg-card" data-tts-tab="server">
         <legend>Your TTS server</legend>
         <label class="check"><input id="tts-enabled" type="checkbox" /> <strong>Read aloud on</strong></label>
         <p id="tts-state" class="live-state"><span class="tts-light" data-state="unknown"></span> —</p>
@@ -1047,7 +1102,7 @@
           <code>https://</code> address and an API key. They work the same way but haven't been tested.</p>
       </fieldset>
 
-      <fieldset class="cfg-card">
+      <fieldset class="cfg-card" data-tts-tab="voice">
         <legend>Voice</legend>
         <label>Main voice <input id="tts-voice" type="text" list="tts-voice-list" placeholder="af_bella, alloy …" autocomplete="off" />
           <span class="hint">The voice name your server uses. Check connection fills the list when your server can list its voices.</span></label>
@@ -1058,8 +1113,13 @@
         </div>
         <div class="row2">
           <label>Longest line (characters) <input id="tts-max-chars" type="number" min="20" max="1000" step="10" /></label>
-          <label>Lines waiting at most <input id="tts-queue-max" type="number" min="1" max="200" step="1" /></label>
+          <label>A longer line is
+            <select id="tts-long-lines">
+              <option value="cut">Cut there (at a word)</option>
+              <option value="skip">Not read at all</option>
+            </select></label>
         </div>
+        <label>Lines waiting at most <input id="tts-queue-max" type="number" min="1" max="200" step="1" /></label>
         <h4 class="tts-sub">Test voice</h4>
         <label>Line <input id="tts-test-text" type="text" value="Thanks for the follow, welcome in!" maxlength="1000" /></label>
         <label>Voice <input id="tts-test-voice" type="text" list="tts-voice-list" placeholder="empty = main voice" autocomplete="off" /></label>
@@ -1071,7 +1131,7 @@
       </fieldset>
     </div>
 
-    <fieldset class="cfg-card tts-wide">
+    <fieldset class="cfg-card tts-wide" data-tts-tab="read">
       <legend>What gets read aloud</legend>
       <p class="hint">Each one has its own switch and voice (empty = main voice). In the wording, <code>{name}</code> is the
         chatter, <code>{message}</code> their message, <code>{headline}</code> the alert's own line
@@ -1099,7 +1159,28 @@
     </fieldset>
 
     <div class="config-grid tts-grid">
-      <fieldset class="cfg-card">
+      <fieldset class="cfg-card" data-tts-tab="blocked">
+        <legend>Blocked chatters</legend>
+        <p class="hint">Never read these chatters aloud: their <code>!tts</code> is refused and their chat lines,
+          highlights and waiting lines are skipped. In Stream Rooms, Shift+click a chatter, then Read aloud ▸ Block.</p>
+        <div class="row2">
+          <label>Chatter name <input id="tts-block-name" type="text" maxlength="60" placeholder="their user name" /></label>
+          <label>Platform
+            <select id="tts-block-platform">
+              <option value="twitch">Twitch</option><option value="kick">Kick</option><option value="youtube">YouTube</option>
+            </select></label>
+        </div>
+        <label>For
+          <select id="tts-block-for">
+            <option value="stream">This stream (until Core restarts)</option>
+            <option value="day">A day</option>
+            <option value="forever">Until I unblock them</option>
+          </select></label>
+        <div class="form-row"><button type="button" id="tts-block-add">Block</button></div>
+        <div id="tts-blocked-people" class="tts-missed"><span class="muted">Nobody blocked.</span></div>
+      </fieldset>
+
+      <fieldset class="cfg-card" data-tts-tab="blocked">
         <legend>Blocked words and phrases</legend>
         <p class="hint">One per line, for example <code>idiot*</code> (any word starting "idiot") or <code>go back to</code>.
           Whole words only, so blocking "ass" doesn't catch "class". Dodges like <code>1d10t</code>,
@@ -1128,7 +1209,7 @@
         <p class="hint">Save first: the test uses the saved list.</p>
       </fieldset>
 
-      <fieldset class="cfg-card">
+      <fieldset class="cfg-card" data-tts-tab="server">
         <legend>When the server is down</legend>
         <p class="hint">Alerts never wait on a voice. After 3 failures in a row Core stops asking, checks again every
           30 seconds and carries on by itself when the server answers. Paid messages and <code>!tts</code> lines that
@@ -1148,7 +1229,7 @@
       <span id="tts-save-msg" class="muted" role="status"></span>
     </div>
 
-    <fieldset class="cfg-card tts-wide">
+    <fieldset class="cfg-card tts-wide" data-tts-tab="test">
       <legend>Recent lines</legend>
       <p class="hint">The last 20 lines Core tried to read: what happened, and how long your server took.</p>
       <div id="tts-recent" class="tts-recent"><span class="muted">Nothing yet.</span></div>
@@ -1187,6 +1268,37 @@
       <button type="button" id="files-refresh">Refresh list</button>
     </div>
     <div id="files-list" class="asset-list"></div>
+  </section>
+
+  <!-- Stream Rooms settings (work list item 16): every setting of Stream Rooms' in-game panel,
+       drawn by admin/rooms-setup.js from the list the game sends (core/rooms_remote.gd there).
+       The sub-pages here = PAGES in rooms-setup.js = PAGE_SETS.roomset in admin.js. -->
+  <section id="tab-rooms" class="panel" data-menu-subs>
+    <p class="tab-intro">Stream Rooms' own settings, the same ones as its in-game panel. Changes apply in the game
+      at once. <strong>Basics</strong> shows the everyday ones, <strong>More</strong> adds the game's Advanced
+      settings. A dot marks a setting you changed; <strong>Pin</strong> puts it on the Live page.</p>
+    <p id="rooms-setup-off" class="hint">Start Stream Rooms (with chat from Stream Core on) and its settings show up here.</p>
+    <p id="rooms-setup-msg" class="action-msg" role="status" aria-live="polite"></p>
+    <div class="acc-stack" data-acc="rooms">
+      <details class="acc" open data-sub="room"><summary>Room &amp; sound</summary>
+        <div class="acc-body" id="rooms-page-room"></div>
+      </details>
+      <details class="acc" open data-sub="screen"><summary>Big screen</summary>
+        <div class="acc-body" id="rooms-page-screen"></div>
+      </details>
+      <details class="acc" open data-sub="chat"><summary>Chat windows</summary>
+        <div class="acc-body" id="rooms-page-chat"></div>
+      </details>
+      <details class="acc" open data-sub="audience"><summary>Audience</summary>
+        <div class="acc-body" id="rooms-page-audience"></div>
+      </details>
+      <details class="acc" open data-sub="reactions"><summary>Reactions &amp; games</summary>
+        <div class="acc-body" id="rooms-page-reactions"></div>
+      </details>
+      <details class="acc" open data-sub="people"><summary>Presenters &amp; Co-stream</summary>
+        <div class="acc-body" id="rooms-page-people"></div>
+      </details>
+    </div>
   </section>
 
   <!-- Audience looks: Stream Rooms' speech bubbles and silhouettes (admin/audience-looks.js builds the
@@ -2162,6 +2274,9 @@
   <!-- QR codes for Setup → Phone remote (MIT, Kazuhiko Arase; window.qrcode) -->
   <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
   <script src="/admin/tts.js"></script>
+  <script src="/admin/rooms-setup.js"></script>
   <script src="/admin/admin.js"></script>
+  <!-- Arrange, Pinned + Scenes cards, help panel, Ctrl+K (needs admin.js and rooms-setup.js first) -->
+  <script src="/admin/live-extras.js"></script>
 </body>
 </html>

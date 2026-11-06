@@ -27,7 +27,20 @@ WebSocket protocol (same socket overlays use, ws://127.0.0.1:3850/ws)
     {"type":"say","data":{text}}                                (rate limited)
     {"type":"stage_state","data":{curtain:"open"|"closed"}}    (relayed to overlays / admin)
 
+    {"type":"rooms_state","data":{room, rooms, paused, focus, clean, curtain, playing, views,
+                                   screen, sender, volume, ambience, presenters, costream}}
+        Stream Rooms' summary for the Live page "Stream Rooms" card (stream-rooms
+        core/rooms_remote.gd builds it; clean_rooms_state below keeps only the known keys).
+    {"type":"rooms_settings","data":{schema:[{key,label,tip,tab,group,adv,type,...}], values, defaults}}
+    {"type":"rooms_values","data":{key: value, ...}}             (only the ones that changed)
+        Every setting Stream Rooms' panel has a control for, for Setup > Stream Rooms
+        (admin/rooms-setup.js). Core → game: {"type":"rooms_set","data":{key, value}}
+        (check_rooms_value below decides what may be sent).
+
   Core → game: {"type":"stage","data":{action:"curtain", value:"open"|"close"|"reveal"|"toggle"}}
+    The Live card's buttons use the same packet with other actions (ROOMS_ACTIONS below):
+    pause / focus / clean (on|off|toggle), room (id), view (camera view id), playpause,
+    volume / ambience (0..1), presenter ("<n>:on"|"<n>:off"), remote (take|ask), refresh.
     {"type":"overlay","data":{...}}                             (relayed as game_overlay)
 
 Only a socket that has sent `hello` may use room_state / reaction_result /
@@ -53,6 +66,81 @@ log = logging.getLogger("core.reactions")
 # Version of the WebSocket protocol above; sent in hello_ok. Bump it (and tell Stream Rooms,
 # the stream-rooms repo) when a message changes shape.
 PROTOCOL = 1
+
+# The Live page "Stream Rooms" card (work list item 13). ROOMS_ACTIONS: the "stage" actions the card
+# may send besides "curtain" (stream-rooms core/rooms_remote.gd run_command runs them; keep in step).
+# Each maps to a check for its value. ROOMS_KEYS: the rooms_state keys kept (anything else is dropped).
+_TOGGLE = ("on", "off", "toggle")
+ROOMS_ACTIONS: Dict[str, Callable[[Any], bool]] = {
+    "pause": lambda v: v in _TOGGLE,
+    "focus": lambda v: v in _TOGGLE,
+    "clean": lambda v: v in _TOGGLE,
+    "room": lambda v: isinstance(v, str) and 0 < len(v) <= 60,
+    "view": lambda v: isinstance(v, str) and 0 < len(v) <= 40,
+    "playpause": lambda v: True,
+    "volume": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1,
+    "ambience": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool) and 0 <= v <= 1,
+    "presenter": lambda v: isinstance(v, str) and bool(re.fullmatch(r"[1-4]:(on|off)", v)),
+    "remote": lambda v: v in ("take", "ask"),
+    "refresh": lambda v: True,
+}
+ROOMS_KEYS = ("room", "rooms", "paused", "focus", "clean", "curtain", "playing", "views", "screen",
+              "sender", "volume", "ambience", "presenters", "costream")
+
+
+def clean_rooms_state(data: Dict[str, Any]) -> Dict[str, Any]:
+    """Keep only ROOMS_KEYS from a rooms_state packet, and cap its size (a game can't flood the
+    dashboard: at most 60 rooms, 20 camera views, 4 presenters)."""
+    out = {k: data[k] for k in ROOMS_KEYS if k in data}
+    for key, cap in (("rooms", 60), ("views", 20), ("presenters", 4)):
+        if not isinstance(out.get(key), list):
+            out[key] = []
+        out[key] = out[key][:cap]
+    for key in ("screen", "sender", "costream"):
+        if not isinstance(out.get(key), dict):
+            out[key] = {}
+    out["ts"] = time.time()
+    return out
+
+
+ROOMS_SCHEMA_MAX = 1000     # settings entries kept from one rooms_settings packet
+ROOMS_TEXT_MAX = 500        # longest text setting the dashboard may send
+
+
+def clean_rooms_settings(data: Dict[str, Any]) -> Dict[str, Any]:
+    """A rooms_settings packet, kept to well-formed entries (a dict with a string key and type)."""
+    schema = []
+    for e in (data.get("schema") or [])[:ROOMS_SCHEMA_MAX]:
+        if isinstance(e, dict) and isinstance(e.get("key"), str) and e.get("type") in ("bool", "range", "choice", "text", "color"):
+            schema.append(e)
+    keys = {e["key"] for e in schema}
+    values = data.get("values") if isinstance(data.get("values"), dict) else {}
+    defaults = data.get("defaults") if isinstance(data.get("defaults"), dict) else {}
+    return {"schema": schema, "values": {k: v for k, v in values.items() if k in keys},
+            "defaults": {k: v for k, v in defaults.items() if k in keys}, "ts": time.time()}
+
+
+def check_rooms_value(entry: Dict[str, Any], value: Any) -> Tuple[bool, Any]:
+    """(ok, value to send) for a Setup > Stream Rooms change: the value must fit the entry's type
+    (bool; a number inside min..max; one of the choices; short text; a #rrggbb colour)."""
+    t = entry.get("type")
+    if t == "bool":
+        return isinstance(value, bool), value
+    if t == "range":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False, value
+        lo, hi = float(entry.get("min", 0)), float(entry.get("max", 0))
+        if not lo - 1e-6 <= value <= hi + 1e-6:
+            return False, value
+        return True, int(round(value)) if entry.get("int") else float(value)
+    if t == "choice":
+        return any(o == value for o, _label in (opt[:2] for opt in entry.get("options") or [] if isinstance(opt, list) and len(opt) >= 2)), value
+    if t == "text":
+        return isinstance(value, str) and len(value) <= ROOMS_TEXT_MAX, value
+    if t == "color":
+        return isinstance(value, str) and bool(re.fullmatch(r"#[0-9a-fA-F]{6}", value)), value
+    return False, value
+
 
 # ----------------------------------------------------------------------
 # Effect catalog. Stream Rooms reports its own list in `hello`; this is
@@ -722,6 +810,10 @@ class ReactionEngine:
         self._say_times: deque = deque()
         self.recent: deque = deque(maxlen=30)   # admin "last reactions" list
         self.stage_state: Dict[str, Any] = {}    # game's stage (curtain open / closed)
+        # Stream Rooms' summary for the Live card (clean_rooms_state); None while no game is connected
+        self.rooms_state: Optional[Dict[str, Any]] = None
+        # Stream Rooms' settings for Setup > Stream Rooms (clean_rooms_settings); None without a game
+        self.rooms_settings: Optional[Dict[str, Any]] = None
         self.stats = {"fired": 0, "rejected": 0, "refunded": 0, "points_spent": 0}
         # Stream events feed hook: main.py sets this to bus.note(kind, text, platform)
         self.note: Optional[Callable[..., None]] = None
@@ -1299,6 +1391,8 @@ class ReactionEngine:
             log.info("Game client left: %s", info.get("client"))
             if not self.game_clients:
                 self.room_state = None
+                self.rooms_state = None
+                self.rooms_settings = None
 
     async def on_client_message(self, ws, msg: Dict[str, Any]) -> None:
         """Handle one JSON message from a socket (protocol in the module docstring).
@@ -1352,13 +1446,27 @@ class ReactionEngine:
             self.stage_state = {k: str(v)[:20] for k, v in data.items() if k in ("curtain",)}
             if self._broadcast:
                 await self._broadcast({"type": "stage_state", "data": dict(self.stage_state)})
+        elif mtype == "rooms_state":
+            self.rooms_state = clean_rooms_state(data)
+            if isinstance(self.rooms_state.get("curtain"), str):
+                self.stage_state["curtain"] = self.rooms_state["curtain"][:20]
+        elif mtype == "rooms_settings":
+            self.rooms_settings = clean_rooms_settings(data)
+        elif mtype == "rooms_values":
+            if self.rooms_settings:
+                vals = self.rooms_settings["values"]
+                for k, v in data.items():
+                    if k in vals:
+                        vals[k] = v
+                self.rooms_settings["ts"] = time.time()
         elif mtype == "overlay":
             if self._broadcast:
                 await self._broadcast({"type": "game_overlay", "data": data})
 
-    async def send_stage(self, action: str, value: str) -> bool:
+    async def send_stage(self, action: str, value: Any) -> bool:
         """Stage commands for the game (Stream Rooms): {"type":"stage","data":{action, value}},
-        e.g. action "curtain", value open / close / reveal / toggle. False when no game is connected."""
+        e.g. action "curtain", value open / close / reveal / toggle, or one of ROOMS_ACTIONS from the
+        Live card (value checked by the caller). False when no game is connected."""
         sent = False
         for ws in list(self.game_clients):
             try:
@@ -1367,6 +1475,30 @@ class ReactionEngine:
             except Exception:
                 self.detach(ws)
         return sent
+
+    async def send_rooms_setting(self, key: str, value: Any) -> Tuple[bool, str]:
+        """A Setup > Stream Rooms change: checked against the game's own list (check_rooms_value),
+        sent as {"type":"rooms_set"}, and the stored value updated at once (the game confirms it
+        with rooms_values). (False, why) when it can't be sent."""
+        st = self.rooms_settings
+        if not self.game_clients or not st:
+            return False, "Stream Rooms isn't connected"
+        entry = next((e for e in st["schema"] if e["key"] == key), None)
+        if entry is None:
+            return False, "Stream Rooms has no setting " + key
+        ok, value = check_rooms_value(entry, value)
+        if not ok:
+            return False, "That value doesn't fit " + str(entry.get("label") or key)
+        sent = False
+        for ws in list(self.game_clients):
+            try:
+                await ws.send_json({"type": "rooms_set", "data": {"key": key, "value": value}})
+                sent = True
+            except Exception:
+                self.detach(ws)
+        if sent and self.rooms_settings:
+            self.rooms_settings["values"][key] = value
+        return sent, "" if sent else "Stream Rooms isn't connected"
 
     async def game_say(self, text: str) -> bool:
         """The game's "say": post it as Core, at most ``say_per_minute`` times a minute, cut to say_max_chars."""

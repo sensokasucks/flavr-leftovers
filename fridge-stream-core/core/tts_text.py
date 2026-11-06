@@ -222,6 +222,8 @@ class TextFilter:
             self.max_chars = max(20, min(1000, int(settings.get("max_chars") or 300)))
         except (TypeError, ValueError):
             self.max_chars = 300
+        # a line longer than max_chars: "cut" (read up to there, at a word) or "skip" (not read)
+        self.long_lines = "skip" if settings.get("long_lines") == "skip" else "cut"
 
     def clean_name(self, name: str) -> str:
         """A chatter name to read aloud: "someone" when it holds a blocked word, else as is
@@ -257,6 +259,8 @@ class TextFilter:
             out = " ".join("".join(parts).split())
         out = _LONG_LETTERS.sub(lambda m: m.group(1) * 3, out)
         out = _LONG_PUNCT.sub(r"\1", out)
+        if self.long_lines == "skip" and len(out) > self.max_chars:
+            return "", "too long"
         out = _cut(out, self.max_chars)
         if not re.search(r"\w", out):
             return "", "nothing left to read"

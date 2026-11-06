@@ -18,10 +18,13 @@ Core ships **no voice**. It talks to the streamer's own OpenAI-style server (`PO
 - [ ] Audio files live in `data/tts/` (git-ignored with `data/`), last `KEEP_FILES` kept, served at `/tts/<file>` only when the name matches `FILE_RE`.
 - [ ] Overlay plays one line at a time; alert-tied lines wait for that alert to show and its sound to end; lines for alerts a source filtered out never play there. `?tts=0`, `?tts_volume=` (catalog + ALERTS.md). A line is cut at 2 minutes.
 - [ ] Plugins: `await ctx.say(text, voice)` (docs/PLUGINS.md) goes through the filters and the "Game plugins" trigger.
-- [ ] Dashboard: settings page lives under Setup → Stream look; the Live card shows only while TTS is on (Skip, Clear queue, missed list).
+- [ ] Dashboard: settings page lives under Setup → Stream look, split into tabs (Server, Voice, What's read, Blocked, Test; last one kept in localStorage `stream_core_tts_tab`); the Live card shows only while TTS is on (reading now, next lines with ✕ drop, Pause/Resume, Off for N min, trigger switches, Skip, Clear queue, missed list).
+- [ ] Blocked chatters (`who_key` platform:name): `!tts` refused, chat / highlight lines skipped, waiting lines dropped. "stream" blocks are memory only; "day" / "forever" saved in `data/tts/blocked_people.json` (capped `BLOCK_MAX`). Stream Rooms sends `tts_block` only from a hello'd game socket.
+- [ ] Pause holds the queue (nothing dropped); Off for N min (`QUIET_MAX_MIN`) refuses and drops waiting lines (`!tts` refunded). Long lines: `long_lines` cut (default) or skip.
+- [ ] While a chatter's line plays Core sends `tts_speaking {platform, username, seconds}` to game sockets (Stream Rooms seat glow).
 
 ## After-change verify
 
 - [ ] `python -m pytest tests/test_tts.py tests/test_overlay_compat.py -q`
-- [ ] Setup → Read aloud (TTS): Check connection, Play here, Send to overlay, Blocked words "What would be read?", pretend chatter, pretend down → missed list → Replay.
+- [ ] Setup → Read aloud (TTS): Check connection, Play here, Send to overlay, Blocked words "What would be read?", pretend chatter, pretend down → missed list → Replay. Block a chatter (Blocked tab), Pause, Off for 1 min.
 - [ ] Alert test with "Read aloud too": the alert stays up until its voice ends.

@@ -88,6 +88,8 @@ Same socket as overlays: `ws://127.0.0.1:3850/ws`. JSON text frames. `"ping"` st
 Core → game: `{"type":"stage","data":{"action":"curtain","value":"open"|"close"|"reveal"|"toggle"}}` (Admin → Live controls → Stage curtain, `POST /api/admin/stage`, mods' `!curtain` from chat games).
 Game → Core: `{"type":"stage_state","data":{"curtain":"open"|"closed"}}` on connect and on every change; Core keeps it in `status().stage` and relays it to overlays as `stage_state`.
 
+**Live page "Stream Rooms" card.** Game → Core: `{"type":"rooms_state","data":{room, rooms, paused, focus, clean, curtain, playing, views, screen, sender, volume, ambience, presenters, costream}}` on connect and on every change (at most every 0.3 s; stream-rooms `core/rooms_remote.gd`). Core keeps only those keys (`clean_rooms_state` in `core/reactions.py`) and serves them at `GET /api/admin/rooms`. The card's buttons (`POST /api/admin/rooms`) reach the game as the same `stage` packet with other actions (`ROOMS_ACTIONS`): `pause` / `focus` / `clean` (`on`|`off`|`toggle`), `room` (id), `view` (camera view id), `playpause`, `volume` / `ambience` (0..1), `presenter` (`"<n>:on"`|`"<n>:off"`), `remote` (`take`|`ask`), `refresh`. An older Stream Rooms ignores the new actions.
+
 ### Core → game
 
 ```jsonc
