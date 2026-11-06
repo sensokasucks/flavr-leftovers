@@ -1297,22 +1297,22 @@
     <p id="rooms-setup-msg" class="action-msg" role="status" aria-live="polite"></p>
     <div class="acc-stack" data-acc="rooms">
       <details class="acc" open data-sub="room"><summary>Room &amp; sound</summary>
-        <div class="acc-body" id="rooms-page-room"></div>
+        <div class="acc-body" id="rooms-page-room" data-fc-scope></div>
       </details>
       <details class="acc" open data-sub="screen"><summary>Big screen</summary>
-        <div class="acc-body" id="rooms-page-screen"></div>
+        <div class="acc-body" id="rooms-page-screen" data-fc-scope></div>
       </details>
       <details class="acc" open data-sub="chat"><summary>Chat windows</summary>
-        <div class="acc-body" id="rooms-page-chat"></div>
+        <div class="acc-body" id="rooms-page-chat" data-fc-scope></div>
       </details>
       <details class="acc" open data-sub="audience"><summary>Audience</summary>
-        <div class="acc-body" id="rooms-page-audience"></div>
+        <div class="acc-body" id="rooms-page-audience" data-fc-scope></div>
       </details>
       <details class="acc" open data-sub="reactions"><summary>Reactions &amp; games</summary>
-        <div class="acc-body" id="rooms-page-reactions"></div>
+        <div class="acc-body" id="rooms-page-reactions" data-fc-scope></div>
       </details>
       <details class="acc" open data-sub="people"><summary>Presenters &amp; Co-stream</summary>
-        <div class="acc-body" id="rooms-page-people"></div>
+        <div class="acc-body" id="rooms-page-people" data-fc-scope></div>
       </details>
     </div>
   </section>
@@ -2290,6 +2290,8 @@
   <!-- QR codes for Setup → Phone remote (MIT, Kazuhiko Arase; window.qrcode) -->
   <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
   <script src="/admin/tts.js"></script>
+  <!-- folding cards on every page; before rooms-setup.js, which uses window.FoldCards -->
+  <script src="/admin/fold-cards.js"></script>
   <script src="/admin/rooms-setup.js"></script>
   <script src="/admin/admin.js"></script>
   <!-- Arrange, Pinned + Scenes cards, help panel, Ctrl+K (needs admin.js and rooms-setup.js first) -->

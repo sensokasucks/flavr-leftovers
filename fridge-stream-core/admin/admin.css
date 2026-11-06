@@ -1582,25 +1582,14 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
      help text                            (.field-help, full width)
      ⚠ warning           Reset  Add to Live   (.rs-actions)
    Every flex child has min-width: 0 so nothing pushes the card wider than its grid column. */
-/* Cards sit in a grid in reading order, like the Live page (rooms-setup.js). They start folded
-   (title + summary line); .rs-open shows the body. Open .rs-wide cards (rooms-setup.js WIDE_AT
-   settings or more: chat windows, presenters, graphics) take the whole row and put their settings in columns. */
+/* Cards sit in a grid in reading order, like the Live page (rooms-setup.js). They fold like every
+   other card (see "Folding cards" below); open .fc-wide cards take the whole row. */
 .rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; margin-bottom: 16px; }
 .rs-grid > .rs-card { margin: 0; box-sizing: border-box; }
 .rs-grid > .rs-card[hidden] { display: none; }
-.rs-grid > .rs-card.rs-wide.rs-open { grid-column: 1 / -1; }   /* folded, a big card is as small as the rest */
-.rs-card { padding-top: 6px; padding-bottom: 8px; }
-.rs-card .rs-fold { background: none; border: 0; padding: 2px 4px; min-height: 0; font: inherit; font-weight: 700;
-  color: var(--accent); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
-.rs-card .rs-fold:hover { text-decoration: underline; }
-.rs-chev { display: inline-block; width: 1em; color: var(--muted); }
-.rs-sum { margin: 0; font-size: .8rem; }
-.rs-card .rs-body { display: none; }
-.rs-card.rs-open .rs-body { display: block; margin-top: 6px; }
-.rs-card.rs-open .rs-sum { display: none; }
-.rs-wide.rs-open .rs-body { columns: 300px; column-gap: 28px; }
-.rs-wide .rs-body > .rs-note { column-span: all; }
-.rs-wide .rs-row { break-inside: avoid; }
+.rs-card.fc-wide.fc-open > .fc-body { columns: 300px; column-gap: 28px; }
+.rs-card.fc-wide > .fc-body > .rs-note { column-span: all; }
+.rs-card.fc-wide .rs-row { break-inside: avoid; }
 .rs-folds { margin-left: auto; display: inline-flex; gap: 12px; }
 .rs-folds .link-btn { font-size: .85rem; }
 .rs-page-note { margin: 0 0 10px; font-size: .85rem; }
@@ -1702,3 +1691,39 @@ body.arranging #tab-live .live-grid > .live-card.dragging { opacity: .5; }
 .tts-quiet { align-items: center; margin-top: 8px; }
 .tts-switches { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; }
 .tts-switches label.check { display: flex; gap: 6px; align-items: center; font-size: .85rem; }
+
+/* ── Folding cards (admin/fold-cards.js; Stream Rooms cards from rooms-setup.js use the same classes) ──
+   A folded card is its title (the .fc-fold button, with a ▸ / ▾ arrow drawn here) and one summary
+   line (.fc-sum); .fc-open shows .fc-body instead of the summary. A folded body is
+   hidden="until-found" (no display rule here, or the browser's Ctrl+F couldn't find text in it).
+   .fc-grid: a plain stack of cards (.acc-body) turned into a grid so folded cards sit side by side,
+   like the Live page; anything that isn't a card spans the whole row. Open .fc-wide cards (fold-cards.js
+   WIDE_AT settings or more) take the whole row too. .fc-bar holds Open all / Fold all. */
+.fc-card { padding-top: 6px; padding-bottom: 8px; }
+.fc-card.fc-open { padding-bottom: 14px; }
+.fc-card > legend, .fc-card > .card-legend { display: flex; align-items: center; gap: 6px; }
+.fc-card .fc-fold { background: none; border: 0; padding: 2px 4px; min-height: 0; font: inherit; font-weight: 700;
+  color: var(--accent); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; text-align: left; }
+.fc-card .fc-fold:hover { text-decoration: underline; }
+.fc-card .fc-fold::before { content: "▸"; display: inline-block; width: 1em; color: var(--muted); text-decoration: none; }
+.fc-card.fc-open .fc-fold::before { content: "▾"; }
+.fc-card .fc-fold-arrow { padding: 2px 0; }
+.fc-sum { margin: 0; font-size: .8rem; overflow-wrap: anywhere; }
+.fc-sum:empty { display: none; }
+.fc-card.fc-open > .fc-sum { display: none; }
+.fc-card.fc-open > .fc-body { margin-top: 6px; }
+.fc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; align-items: start; }
+.fc-grid > * { grid-column: 1 / -1; }
+.fc-grid > .fc-card { grid-column: auto; margin: 0 !important; min-width: 0; }
+.fc-grid > .fc-card[hidden] { display: none; }
+.fc-grid > .fc-card.fc-wide.fc-open, .config-grid > .fc-card.fc-wide.fc-open { grid-column: 1 / -1; }
+.config-grid { align-items: start; }
+/* an open wide card puts its settings in columns instead of stretching each box across the page;
+   not when it holds a table, preview or code box, which need the whole width */
+.fc-card.fc-wide.fc-open:not(.rs-card):not(:has(table, iframe, textarea)) > .fc-body { columns: 300px; column-gap: 28px; }
+.fc-card.fc-wide:not(.rs-card) > .fc-body > * { break-inside: avoid; }
+.fc-card.fc-wide:not(.rs-card) > .fc-body > p:first-child { column-span: all; margin-top: 0; }
+.fc-card.fc-wide:not(.rs-card) > .fc-body > label:first-of-type { margin-top: 0; }
+.fc-bar { display: flex; justify-content: flex-end; gap: 12px; margin: 0 0 6px; }
+.fc-bar .link-btn { font-size: .85rem; }
+html.hc .fc-card .fc-fold:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }

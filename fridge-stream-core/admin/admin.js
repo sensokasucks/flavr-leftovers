@@ -422,6 +422,31 @@
     return best;
   }
 
+  /**
+   * "live" or "setup": which menu mode a page (and sub-page) belongs to, whatever mode is showing
+   * now. The best-matching entry wins (exact sub-page over whole page); on a tie Live wins, so a
+   * page used mid-stream is never treated as set-once. For admin/fold-cards.js, which starts cards
+   * folded on Setup pages and open on Live pages.
+   */
+  function pageMode(tabId, sub) {
+    let bestScore = 0;
+    let mode = "setup";
+    document.querySelectorAll(".admin-nav .tab").forEach((b) => {
+      let score = 0;
+      navCovers(b).forEach(([t, sb]) => {
+        if (t !== tabId) return;
+        if (sb && sb === sub) score = Math.max(score, 3);
+        else if (!sb) score = Math.max(score, 2);
+      });
+      if (!score || score < bestScore) return;
+      const m = navModeOf(b);
+      if (score > bestScore || m === "live") mode = m;
+      bestScore = score;
+    });
+    return mode;
+  }
+  window.AdminNav = { modeOf: pageMode };
+
   /** Show one mode's menu groups (the switch at the top of the sidebar). Remembered in this browser. */
   function setMode(mode) {
     if (!MODES.includes(mode)) mode = "live";
@@ -679,6 +704,9 @@
   function cleanText(el) {
     const c = el.cloneNode(true);
     // (.rs-*: Stream Rooms settings' badge, slider readout and the panel tab name in a legend)
+    // a folding card's title is a button (admin/fold-cards.js .fc-fold): keep its words, drop the button
+    c.querySelectorAll(".fc-fold").forEach((b) => b.replaceWith(...b.childNodes));
+    c.querySelectorAll(".fc-sum").forEach((n) => n.remove());
     c.querySelectorAll("input, select, textarea, button, .field-help, option, output, .rs-badge, .rs-slot, .rs-tab").forEach((n) => n.remove());
     return c.textContent.replace(/\s+/g, " ").trim();
   }
@@ -785,6 +813,8 @@
     input.blur();
     go(it.tabId, it.sub || undefined);
     if (!it.el) return;
+    // a hit inside a folded card (admin/fold-cards.js) opens that card first, so there is something to scroll to
+    if (window.FoldCards) window.FoldCards.reveal(it.el);
     const target = it.el.closest(".acc > summary") ? it.el.closest(".acc") : it.el;
     setTimeout(() => {
       target.scrollIntoView({ behavior: "smooth", block: "center" });
