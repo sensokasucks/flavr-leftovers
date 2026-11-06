@@ -18,9 +18,15 @@
  * The page's tabs: PAGES maps each of Core's sub-pages to the game panel's tabs. Keep it in step
  * with PAGE_SETS.roomset in admin.js and the .acc[data-sub] blocks in index.html.
  *
+ * Cards and wording: the game's list follows its in-game panel (tabs, headings, "the Co-stream
+ * tab"...). CARDS below regroups the settings into cards for this browser page and WORDS rewrites the
+ * labels and help texts that only make sense inside the game; anything they don't name keeps the
+ * game's own heading and words, so a new game setting still shows up.
+ *
  * On each page: Basics / More (More shows the game's Advanced ▸ settings too), a filter box, a dot
  * and Reset on every setting that differs from its default ("changed" marks), a warning mark on a
- * few risky values (WARN), the pin button, and on the first page a Start here checklist.
+ * few risky values (WARN), "Add to Live" (pins it to the Live page's Pinned card), and on the first
+ * page a Start here checklist.
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
  */
 (() => {
@@ -49,6 +55,147 @@
     messages_on_picture: (v) => (v === true ? "Status messages show on stream." : ""),
     volume: (v) => (Number(v) === 0 ? "The big screen is muted." : ""),
   };
+
+  // ── How this page groups and words the game's settings ─────────────────
+  // The game describes its settings the way its in-game panel shows them (that panel's tabs and
+  // headings, "the Co-stream tab", key letters...). This page is a browser page, so CARDS regroups
+  // them into cards that make sense here and WORDS rewrites the labels and help texts that only make
+  // sense inside the game. Both go by setting key, so:
+  //  - a key the game doesn't have is skipped (an older Stream Rooms still works),
+  //  - a new setting the game adds and this list doesn't know still shows, in a card named after
+  //    the game's own heading (the old behaviour), with the game's own wording.
+  // A card is [title, keys or a RegExp over keys, optional one-line note under the title]. A key
+  // goes in the first card on its page that lists it. Keep a card to roughly 12 rows: the More
+  // view shows them all.
+  const CARDS = {
+    room: [
+      ["Room", ["house_lights", "sun_rays", "camera_see_through"]],
+      ["Stage curtain", /^curtain_/, "The curtain buttons are on the Live page's Stream Rooms card."],
+      ["Camera moves", ["camera_glide", "camera_fov"], "Camera views are picked on the Live page; new ones are saved in the game."],
+      ["Big screen light", ["screen_light", "screen_glow"]],
+      ["Sound", ["volume", "ambience_volume", "room_acoustics", "room_speaker", "audio_delay_ms", "video_delay_ms"]],
+      ["Graphics and speed", ["graphics_quality", "gfx_gi", "gfx_ssao", "gfx_ssr", "gfx_fog", "gfx_shadows", "gfx_msaa", "gfx_render_scale", "fps_cap", "vsync"],
+        "For the PC Stream Rooms runs on. Lower these on a slower PC."],
+      ["Game window", ["panel_small", "panel_scale", "messages_on_picture", "debug_log"]],
+    ],
+    screen: [
+      ["Video files and links", ["loop_files"]],
+      ["NDI (from OBS or NDI Tools)", ["ndi_auto", "ndi_audio_buffer_ms"]],
+      ["Spout (programs on the same PC)", ["spout_auto"]],
+      ["Co-stream avatar on the big screen", ["screen_peer"]],
+    ],
+    chat: [
+      ["Chat from Stream Core", ["chat_enabled"]],
+      ["All chat windows", ["chat_screen_pictures", "chat_screen_hide_commands", "reply_screen_hold_s"]],
+      ["Left of the screen", /^chat_left/],
+      ["Right of the screen", /^chat_right/],
+      ["Under the screen", /^chat_screen/],
+      ["Above the screen (replies)", /^reply_screen/],
+      ["Chat box on the picture", /^chat_hud/, "A chat box in a corner of the picture, in every room and from every camera."],
+    ],
+    audience: [
+      ["Audience", ["audience_enabled", "audience_seating", "audience_bubble_size", "audience_bubble_s", "audience_bubble_tints"]],
+      ["Speech bubbles show", ["audience_bubble_text", "audience_bubble_emotes", "audience_bubble_paid", "audience_bubble_highlighted",
+        "audience_bubble_replies", "audience_bubble_animated", "audience_hide_commands"]],
+      ["Names and glows", ["audience_names", "audience_titles", "audience_highlight_glow", "audience_tts_glow"]],
+      ["Chatter pictures", ["audience_avatars", "audience_hide_avatars"]],
+      ["Seats", ["audience_idle_min", "audience_seat_gap", "audience_show_empty", "audience_ignore", "audience_reserved_hold"]],
+      ["Seating by platform", ["seating_by_platform", "seating_strict"], "The seating plan itself is drawn in the game (its Seating tab)."],
+      ["Colours", ["audience_color_by", /^platform_color_/]],
+      ["Crowd (Lecture Hall tiers, balcony, gallery)", /^audience_(crowd|fill_main)/],
+    ],
+    reactions: [
+      ["Chat reactions", ["reactions_enabled", "reaction_size", "reaction_camera_shake"]],
+      ["Flashing lights", ["flash_strength", "photosensitive_safe"], "For viewers sensitive to flashing light."],
+      ["Pause to react", ["react_lights_up", "react_camera", "auto_dim_house", "webcam_in_room"]],
+      ["Lower the video when I talk", /^duck_/],
+      ["Chat games boards", ["board_hud", "board_hud_scale"]],
+    ],
+    people: [
+      ["Who's on set", /^presenter_\d_on$/],
+      ["Presenter 1", /^presenter_1_/],
+      ["Presenter 2", /^presenter_2_/],
+      ["Presenter 3", /^presenter_3_/],
+      ["Presenter 4", /^presenter_4_/],
+      ["You in a co-stream", ["together_name", "together_avatar_source", "together_avatar_url"]],
+      ["Hosting", ["together_hide_address", "together_bind", "together_live_relay", "together_live_feed"],
+        "Starting, joining and leaving a co-stream happen in the game (Esc menu > Co-stream)."],
+      ["Shared with guests", /^together_(share|shared|audience_areas|streamer_looks|show_cameras)/],
+      ["Co-stream video quality", /^together_(screen|avatar)_(height|fps|kbps)$/],
+    ],
+  };
+
+  // Labels and help texts for this page, by key (presenter keys once, as presenter_N_...).
+  // Only what the game's own wording gets wrong here: in-game tabs and buttons, key letters,
+  // "this panel", or a label that only made sense under an in-game heading.
+  const WORDS = {
+    ndi_auto: { tip: "When the NDI source shown last comes back (OBS restarted, for example), show it again by itself." },
+    spout_auto: { tip: "When the last Spout sender starts again (and nothing else is on the big screen), show it again by itself." },
+    screen_peer: { label: "Show the avatar of", tip: "In a co-stream: put someone's avatar (what they set up as their avatar for co-streams) on the big screen. Pick (nobody) to go back to the shared tab. The host's choice goes to every PC in the session." },
+    curtain_sign: { label: "Sign on the curtain" },
+    curtain_show_lights: { tip: "Reveal dims the room lights while the curtain opens, like a show starting." },
+    gfx_render_scale: { tip: "Draws the 3D room at a lower resolution and scales it up with AMD FSR. Text and chat windows stay sharp. 75% is a big saving on a laptop." },
+    graphics_quality: { tip: "One switch for the expensive effects. Applies right away and is kept for every room." },
+    panel_small: { label: "Small in-game panel", tip: "While Stream Core is connected, the game's own control panel keeps only what has to be done in the game (picking a video, the seating chart, saving a camera view, co-stream). Everything else is set here. Off: the in-game panel shows every setting too." },
+    panel_scale: { label: "In-game panel size", tip: "How big the game's own control panel is (text, buttons, sliders)." },
+    messages_on_picture: { label: "Show messages on stream", tip: "Also show each status message for a few seconds at the bottom of the room picture (the window OBS captures), so they would show on your stream. Off by default." },
+    chat_enabled: { label: "Get chat from Stream Core", tip: "Stream Rooms takes chat, reactions and these settings from Stream Core. Off: no audience, chat windows or reactions in the room." },
+    chat_screen_pictures: { tip: "Chatters' profile pictures next to their names in the chat windows. Turning off Chatter pictures (Audience page) hides them here too." },
+    chat_screen_hide_commands: { label: "Hide !commands", tip: "Chat commands (!points, !throw ...) don't show in the chat windows." },
+    chat_left: { label: "Show this window" },
+    chat_right: { label: "Show this window" },
+    chat_screen: { label: "Show this window", tip: "The chat window under the big screen, in rooms that have one (Lecture Hall (Panel)). Key C in the game turns it on and off too." },
+    reply_screen: { label: "Show this window", tip: "The reply window above the big screen, in rooms that have one (Lecture Hall (Panel)). Key R in the game turns it on and off too." },
+    chat_hud: { label: "Show the chat box" },
+    audience_seating: { tip: "Where someone who starts chatting sits down. Seating by platform (below) can keep platforms apart on top of this." },
+    audience_avatars: { label: "Chatter pictures", tip: "Chatters' profile pictures (Kick, Twitch, YouTube) as their heads and in the chat windows. Off: no pictures anywhere. Stream Core finds and saves them; Twitch pictures need Twitch connected under Connect platforms." },
+    audience_hide_avatars: { tip: "Never show a picture for these people. A name matches the display name or the login; write kick:name, twitch:name or youtube:name for one platform only. The names are also added to Stream Core's own list (Chat box > Chatter profile pictures), so the chat overlay hides them too." },
+    audience_bubble_text: { tip: "Ordinary messages with words in them (emotes inside are fine). Off: only the kinds ticked below get a bubble." },
+    seating_by_platform: { tip: "Seat chatters by the seating plan: each section only seats the platforms ticked for it. The plan is drawn on the seating chart in the game." },
+    together_name: { tip: "The name the others in a co-stream see next to your camera and in the people list." },
+    together_hide_address: { tip: "On (recommended, especially for VTubers): guests join through a one-off Cloudflare address and the video goes through VDO.Ninja's relay, so nobody in the session learns where you are. It overrides Listen on and Relay the live feed (except This PC only, for testing). Needs cloudflared.exe in Stream Rooms' tools folder." },
+    together_avatar_source: { label: "My avatar comes from" },
+    together_screen_height: { tip: "The size of the shared tab as the guests get it. Your own stream keeps the sender page's quality." },
+    presenter_N_on: { label: "On set" },
+    presenter_N_source: { label: "Shows", tip: "What this podium shows. Someone's avatar: what a person in your co-stream set up as their avatar, yours included." },
+    presenter_N_peer: { tip: "Whose avatar this podium shows: a person in the co-stream session." },
+  };
+
+  /** The label and help text this page uses for a schema entry (WORDS over the game's own). */
+  function wording(e) {
+    const w = WORDS[e.key] || WORDS[String(e.key).replace(/^presenter_\d_/, "presenter_N_")] || {};
+    let label = w.label || e.label || e.key;
+    // the four "on set" ticks are labelled 1-4 in the game; here they need the podium's name
+    const n = /^presenter_(\d)_on$/.exec(e.key);
+    if (n) label = "Presenter " + n[1];
+    // every chat window has a "Header" text and a "Show" tick for it; in one card they need telling apart
+    if (/_header_on$/.test(e.key) && !w.label) label = "Show the header";
+    else if (/_header$/.test(e.key) && !w.label) label = "Header text";
+    return { label, tip: w.tip != null ? w.tip : e.tip || "" };
+  }
+
+  /** "Card title: label", for places that show a setting out of its card (the Live page's Pinned card). */
+  function fullLabel(key) {
+    const e = byKey[key];
+    if (!e) return key;
+    const { label } = wording(e);
+    const card = cardOf(e);
+    return card && !label.toLowerCase().includes(card.toLowerCase()) && /^(show|show this window|on set|shows|header|text size|width|height|background|columns)/i.test(label)
+      ? card + ": " + label : label;
+  }
+
+  /** Whether a CARDS entry's keys (an array of keys / RegExps, or one RegExp) take this key. */
+  function takes(spec, key) {
+    const list = Array.isArray(spec) ? spec : [spec];
+    return list.some((k) => (k instanceof RegExp ? k.test(key) : k === key));
+  }
+
+  /** The title of the card a schema entry goes in on its page (CARDS, else the game's heading). */
+  function cardOf(e) {
+    const page = PAGES.find(([, , tabs]) => tabs.includes(e.tab));
+    const card = page && (CARDS[page[0]] || []).find(([, spec]) => takes(spec, e.key));
+    return card ? card[0] : e.group || e.tab;
+  }
 
   let data = { connected: false, schema: [], values: {}, defaults: {} };
   let byKey = {};
@@ -179,36 +326,47 @@
       const box = pageBox(sub);
       if (!box) return;
       const entries = data.schema.filter((e) => tabs.includes(e.tab));
-      // group cards: "<panel tab> › <heading>" in the game's order
-      const groups = [];
+      // cards in CARDS order (each keeps the game's order inside); settings CARDS doesn't know
+      // go after them, in cards named after the game's heading
+      const known = (CARDS[sub] || []).map(([name, , note]) => ({ name, note: note || "", items: [] }));
+      const groups = known.slice();
       entries.forEach((e) => {
-        const name = e.group || e.tab;
-        let g = groups.find((x) => x.name === name && x.tab === e.tab);
-        if (!g) groups.push((g = { name, tab: e.tab, items: [] }));
+        const name = cardOf(e);
+        let g = groups.find((x) => x.name === name);
+        if (!g) groups.push((g = { name, note: "", items: [] }));
         g.items.push(e);
       });
+      const cardsNow = groups.filter((g) => g.items.length);
       box.innerHTML =
         (sub === "room" ? '<div class="rs-start" id="rooms-start" hidden></div>' : "") +
         `<div class="rs-bar">
           <div class="rs-mode" role="group" aria-label="How many settings to show">
             <button type="button" data-rs-more="0" title="The settings you'd change most">Basics</button>
-            <button type="button" data-rs-more="1" title="Also the ones under Advanced ▸ in the game">More</button>
+            <button type="button" data-rs-more="1" title="Every setting, including the set-once ones">More</button>
           </div>
           <label class="rs-filter">Find <input type="search" data-rs-filter placeholder="setting name or help text" /></label>
           <label class="check rs-only"><input type="checkbox" data-rs-changed /> Changed only</label>
           <span class="muted rs-count" data-rs-count></span>
         </div>` +
         `<div class="config-grid rs-grid">` +
-        groups.map((g) => `<fieldset class="cfg-card rs-card" data-rs-group><legend>${esc(g.name)}${g.name !== g.tab ? ` <small class="muted rs-tab">${esc(g.tab)}</small>` : ""}</legend>` +
-          g.items.map((e) => `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
-              <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(e.label || e.key)}</span>${e.adv ? '<span class="rs-badge" title="Under Advanced ▸ in the game">More</span>' : ""}<span class="rs-slot"></span></label>
-              <span class="rs-warn" hidden title=""></span>
+        // one card per group: title, an optional note, then one row per setting:
+        //   [dot] name ............ control
+        //   help text
+        //   ⚠ warning (WARN)                Reset · Add to Live
+        cardsNow.map((g) => `<fieldset class="cfg-card rs-card" data-rs-group><legend>${esc(g.name)}</legend>` +
+          (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
+          g.items.map((e) => {
+            const w = wording(e);
+            return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
+              <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
+              ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
               <div class="rs-actions">
-                ${e.tip ? `<p class="field-help">${esc(e.tip)}</p>` : '<span></span>'}
+                <span class="rs-warn" hidden title=""></span>
                 <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
-                <button type="button" class="rs-pin" aria-pressed="false" title="Pin to the Live page">Pin</button>
+                <button type="button" class="rs-pin link-btn" aria-pressed="false" title="Show this setting on the Live page's Pinned card">Add to Live</button>
               </div>
-            </div>`).join("") + "</fieldset>").join("") +
+            </div>`;
+          }).join("") + "</fieldset>").join("") +
         "</div>" +
         (entries.length ? "" : '<p class="muted">Nothing here from Stream Rooms yet.</p>');
       box.querySelectorAll(".rs-row").forEach((row) => {
@@ -249,7 +407,8 @@
     const pin = row.querySelector(".rs-pin");
     const on = pins.some((p) => p.key === key);
     pin.setAttribute("aria-pressed", on ? "true" : "false");
-    pin.textContent = on ? "Pinned" : "Pin";
+    pin.textContent = on ? "On Live ✓" : "Add to Live";
+    pin.title = on ? "On the Live page's Pinned card: press to take it off" : "Show this setting on the Live page's Pinned card";
   }
 
   /** Basics / More, the filter box and Changed only, on every page. */
@@ -267,7 +426,8 @@
       box.querySelectorAll(".rs-row").forEach((row) => {
         markRow(row);
         const e = byKey[row.dataset.key];
-        const hay = ((e.label || "") + " " + (e.tip || "") + " " + (e.group || "") + " " + e.key).toLowerCase();
+        const w = wording(e);
+        const hay = (w.label + " " + w.tip + " " + cardOf(e) + " " + (e.label || "") + " " + e.key).toLowerCase();
         const ch = changed(e.key);
         if (ch) changedCount++;
         // a search or "Changed only" also finds Advanced settings, so nothing is out of reach
@@ -339,11 +499,11 @@
     const e = byKey[key];
     if (!e) return;
     const on = pins.some((p) => p.key === key);
-    const next = on ? pins.filter((p) => p.key !== key) : [...pins, { key, label: e.label || key }];
+    const next = on ? pins.filter((p) => p.key !== key) : [...pins, { key, label: fullLabel(key) }];
     try {
       const saved = await call("/api/admin/dashboard-prefs", { method: "PUT", body: JSON.stringify({ pins: next }) });
       pins = saved.pins || [];
-      say(on ? "Unpinned " + (e.label || key) : "Pinned " + (e.label || key) + " to the Live page", false);
+      say(on ? "Took " + fullLabel(key) + " off the Live page" : "Added " + fullLabel(key) + " to the Live page's Pinned card", false);
       applyView();
     } catch (err) {
       say(String(err.message || err), true);
@@ -370,7 +530,7 @@
           data.values[key] = data.defaults[key];
           setControl(row.querySelector("[data-rs-key]"), e, data.defaults[key]);
           applyView();
-          say("Reset " + (e.label || key), false);
+          say("Reset " + fullLabel(key), false);
         })
         .catch((err) => say(String(err.message || err), true));
     } else if (t.closest(".rs-pin")) togglePin(key);
@@ -400,6 +560,7 @@
     makeControl,
     setControl,
     entry: (key) => byKey[key],
+    fullLabel,
     data: () => data,
     pins: () => pins,
     setPins: (p) => { pins = p || []; applyView(); },
