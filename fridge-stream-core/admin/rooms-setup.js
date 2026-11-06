@@ -39,8 +39,10 @@
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";   // same key as admin.js
   const moreKey = "stream_core_rooms_more";      // Basics / More, remembered in this browser
-  const openKey = "stream_core_rooms_open";      // which cards are unfolded ("page:card title"), this browser
-  const WIDE_AT = 9;                             // a card with this many settings (all of them, More included) is full width
+  // Folding: admin/fold-cards.js remembers which cards are open (ids "page:card title") and handles
+  // the fold button and Open all / Fold all. A card with FoldCards.WIDE_AT settings or more (all of
+  // them, More included) is full width once open.
+  const Fold = window.FoldCards;
   const POLL_MS = 3000;
 
   // [sub-page id, title, the game panel tabs it shows]
@@ -394,14 +396,14 @@
       //   [dot] name ............ control
       //   help text
       //   ⚠ warning (WARN)                Reset · Add to Live
-      // folded card: the legend is a button (▸ / ▾ title), the summary line says how many settings
-      // and how many changed (applyView fills it); .rs-body holds the note and the rows
+      // folded card, in admin/fold-cards.js markup: the legend is the fold button, the summary line
+      // says how many settings and how many changed (applyView fills it); .fc-body holds the note and
+      // the rows. hidden="until-found" lets the browser's Ctrl+F find text in a folded card.
       const card = (g) => {
         const id = sub + ":" + g.name;
-        return `<fieldset class="cfg-card rs-card${g.items.length >= WIDE_AT ? " rs-wide" : ""}" data-rs-group data-card-id="${esc(id)}">` +
-        `<legend><button type="button" class="rs-fold" aria-expanded="false" title="Open or fold this card">` +
-        `<span class="rs-chev" aria-hidden="true">▸</span>${esc(g.name)}</button></legend>` +
-        `<p class="rs-sum muted" data-rs-sum></p><div class="rs-body">` +
+        return `<fieldset class="cfg-card rs-card fc-card${g.items.length >= Fold.WIDE_AT ? " fc-wide" : ""}" data-rs-group data-fc-id="${esc(id)}">` +
+        `<legend><button type="button" class="fc-fold" aria-expanded="false" title="Open or fold this card">${esc(g.name)}</button></legend>` +
+        `<p class="fc-sum muted" data-rs-sum></p><div class="fc-body" hidden="until-found">` +
         (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
         g.items.map((e) => {
           const w = wording(e);
@@ -426,8 +428,8 @@
           <label class="rs-filter">Find <input type="search" data-rs-filter placeholder="setting name or help text" /></label>
           <label class="check rs-only"><input type="checkbox" data-rs-changed /> Changed only</label>
           <span class="muted rs-count" data-rs-count></span>
-          <span class="rs-folds"><button type="button" class="link-btn" data-rs-openall="1">Open all</button>
-            <button type="button" class="link-btn" data-rs-openall="0">Fold all</button></span>
+          <span class="rs-folds"><button type="button" class="link-btn" data-fc-all="1">Open all</button>
+            <button type="button" class="link-btn" data-fc-all="0">Fold all</button></span>
         </div>` +
         (sub === "screen" ? '<p class="rs-note muted rs-page-note">To pick what the big screen shows (a browser tab, NDI, Spout or a video link), use ' +
           '<a href="#live">the Live page</a> (Stream Rooms card, Big screen). This page holds the set-once settings.</p>' : "") +
@@ -503,7 +505,6 @@
         row.hidden = !on;
         if (on) shownCount++;
       });
-      const opened = openCards();
       box.querySelectorAll("[data-rs-group]").forEach((fs) => {
         const rows = [...fs.querySelectorAll(".rs-row")];
         const vis = rows.filter((r) => !r.hidden);
@@ -512,7 +513,7 @@
         fs.querySelector("[data-rs-sum]").textContent =
           vis.length + (vis.length === 1 ? " setting" : " settings") + (nCh ? " · " + nCh + " changed" : "");
         // a search or Changed only opens every card it found something in (without remembering it)
-        setOpen(fs, opened.has(fs.dataset.cardId) || words.length > 0 || only);
+        Fold.setOpen(fs, Fold.isOpen(fs.dataset.fcId, false) || words.length > 0 || only);
       });
       // a section with no card left (Basics, a search, Changed only) hides with its heading
       box.querySelectorAll("[data-rs-section]").forEach((sec) => {
@@ -524,23 +525,10 @@
   }
 
   // ── Folding cards ───────────────────────────────────────────────────────
-  // Every card starts folded: its title (a button) and "N settings · M changed". A click opens it;
-  // which cards are open is remembered in this browser (openKey), per page and card title. Open all /
-  // Fold all do the whole page. While Find has text or Changed only is ticked, every card with a
-  // match is shown open, so a search never hides its own results.
-  function openCards() {
-    try { return new Set(JSON.parse(localStorage.getItem(openKey) || "[]")); } catch (_) { return new Set(); }
-  }
-  function saveOpen(set) {
-    try { localStorage.setItem(openKey, JSON.stringify([...set])); } catch (_) { /* private window */ }
-  }
-  /** Show one card open or folded (the button's arrow and aria-expanded follow). */
-  function setOpen(fs, on) {
-    fs.classList.toggle("rs-open", on);
-    const b = fs.querySelector(".rs-fold");
-    b.setAttribute("aria-expanded", String(on));
-    b.querySelector(".rs-chev").textContent = on ? "▾" : "▸";
-  }
+  // Every card starts folded: its title (a button) and "N settings · M changed". admin/fold-cards.js
+  // handles the click, remembers it in this browser, and does Open all / Fold all for the page (the
+  // page box is a data-fc-scope). While Find has text or Changed only is ticked, applyView shows every
+  // card with a match open (without remembering it), so a search never hides its own results.
 
   /** New values from the game (it may have changed them itself): controls and marks follow. */
   function refreshValues() {
@@ -617,28 +605,6 @@
     const more = t.closest("[data-rs-more]");
     if (more) {
       try { localStorage.setItem(moreKey, more.dataset.rsMore); } catch (_) { /* private window */ }
-      applyView();
-      return;
-    }
-    const fold = t.closest(".rs-fold");
-    if (fold) {
-      const fs = fold.closest("[data-rs-group]");
-      const set = openCards();
-      if (fs.classList.contains("rs-open")) set.delete(fs.dataset.cardId);
-      else set.add(fs.dataset.cardId);
-      saveOpen(set);
-      setOpen(fs, set.has(fs.dataset.cardId));
-      return;
-    }
-    const all = t.closest("[data-rs-openall]");
-    if (all) {
-      const set = openCards();
-      const page = all.closest("[id^='rooms-page-']");
-      (page ? page.querySelectorAll("[data-rs-group]") : []).forEach((fs) => {
-        if (all.dataset.rsOpenall === "1") set.add(fs.dataset.cardId);
-        else set.delete(fs.dataset.cardId);
-      });
-      saveOpen(set);
       applyView();
       return;
     }
