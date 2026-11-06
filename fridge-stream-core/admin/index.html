@@ -286,9 +286,10 @@
         <div id="live-tts-missed" class="tts-missed" hidden></div>
         <p id="live-tts-msg" class="muted" role="status"></p>
       </section>
-      <!-- Stream events: what just happened (GET /api/admin/activity, core/activity.py). Kept last
-           and at a fixed height so new lines never push the buttons above around. -->
-      <section class="live-card live-feed-card" id="live-feed-card">
+      <!-- Stream events: what just happened (GET /api/admin/activity, core/activity.py). Starts last
+           and full width; Arrange can move, narrow or hide it like any card (live-extras.js). Its
+           window has a fixed height, so new lines never push the cards around it. -->
+      <section class="live-card live-feed-card live-wide" id="live-feed-card">
         <div class="live-card-head">
           <h3>Stream events</h3>
           <span id="live-feed-state" class="muted"></span>
@@ -1271,12 +1272,15 @@
   </section>
 
   <!-- Stream Rooms settings (work list item 16): every setting of Stream Rooms' in-game panel,
-       drawn by admin/rooms-setup.js from the list the game sends (core/rooms_remote.gd there).
+       drawn by admin/rooms-setup.js from the list the game sends (core/rooms_remote.gd there), regrouped
+       and reworded for this page (CARDS / WORDS in rooms-setup.js).
        The sub-pages here = PAGES in rooms-setup.js = PAGE_SETS.roomset in admin.js. -->
   <section id="tab-rooms" class="panel" data-menu-subs>
-    <p class="tab-intro">Stream Rooms' own settings, the same ones as its in-game panel. Changes apply in the game
-      at once. <strong>Basics</strong> shows the everyday ones, <strong>More</strong> adds the game's Advanced
-      settings. A dot marks a setting you changed; <strong>Pin</strong> puts it on the Live page.</p>
+    <p class="tab-intro">How Stream Rooms looks and behaves. Changes reach the game straight away while it runs.
+      <strong>Basics</strong> shows the everyday settings, <strong>More</strong> adds the set-once ones. A green dot
+      marks a setting you changed (<strong>Reset</strong> puts the default back), and <strong>Add to Live</strong>
+      puts a setting on the Live page's Pinned card. Picking a video file, the seating chart and starting a
+      co-stream stay in the game.</p>
     <p id="rooms-setup-off" class="hint">Start Stream Rooms (with chat from Stream Core on) and its settings show up here.</p>
     <p id="rooms-setup-msg" class="action-msg" role="status" aria-live="polite"></p>
     <div class="acc-stack" data-acc="rooms">

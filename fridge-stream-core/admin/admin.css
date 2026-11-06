@@ -520,12 +520,17 @@ tbody tr:hover, tbody tr.selected { background: #1e2533; }
   border-radius: 10px;
   padding: 12px 14px 14px;
   margin: 0;
+  /* A fieldset is as wide as its widest content by default (min-width: min-content), so in a grid
+     column a long label or a slider row pushed the card over its neighbour. 0 keeps it in its column. */
+  min-width: 0;
 }
 .cfg-card legend {
   padding: 0 6px;
   font-weight: 700;
   color: var(--accent);
   font-size: 0.95rem;
+  max-width: 100%;          /* a long card title wraps inside the card instead of running past its edge */
+  overflow-wrap: anywhere;
 }
 .cfg-card label {
   display: block;
@@ -1436,7 +1441,7 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .top-light.off { color: var(--text); }
 
 /* ---- Live controls: Stream events window (admin.js "Stream events") ---- */
-.live-feed-card { grid-column: 1 / -1; }
+/* full width comes from .live-wide (index.html starts it wide; Arrange can make it half width) */
 .live-feed-card .live-card-head .link-btn:first-of-type { margin-left: auto; }
 .feed-filters { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .feed-filters button {
@@ -1567,26 +1572,38 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-mode button[aria-pressed="true"] { background: var(--accent); color: #0b0e13; font-weight: 700; }
 .rs-filter { display: flex; align-items: center; gap: 6px; color: var(--muted); }
 .rs-filter input { width: 220px; }
-.rs-card .rs-row { padding: 6px 0; border-top: 1px solid var(--border); }
+/* Stream Rooms settings cards (admin/rooms-setup.js build()). One row per setting:
+     [dot] name ............ control      (.rs-label: the name wraps, the control keeps its side)
+     help text                            (.field-help, full width)
+     ⚠ warning           Reset  Add to Live   (.rs-actions)
+   Every flex child has min-width: 0 so nothing pushes the card wider than its grid column. */
+/* Cards flow down columns (like a pin board) instead of grid rows, so one tall card (a chat window
+   with More on) doesn't leave a big empty gap beside the short ones. */
+.rs-grid { display: block; columns: 320px; column-gap: 12px; }
+.rs-grid > .rs-card { break-inside: avoid; margin: 0 0 12px; width: 100%; box-sizing: border-box; }
+.rs-grid > .rs-card[hidden] { display: none; }
+.rs-note { margin: 0 0 6px; font-size: .78rem; line-height: 1.35; }
+.rs-card .rs-row { padding: 8px 0 6px; border-top: 1px solid var(--border); min-width: 0; }
 .rs-card .rs-row:first-of-type { border-top: 0; }
-.rs-card label.rs-label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: .9rem; }
-.rs-label .rs-name { flex: 0 1 auto; }
-.rs-label .rs-slot { margin-left: auto; display: inline-flex; align-items: center; flex: 0 1 55%; justify-content: flex-end; min-width: 0; }
-.rs-label .rs-slot input[type="text"], .rs-label .rs-slot select { width: 100%; max-width: 220px; display: inline-block; margin: 0; }
-.rs-range { display: flex; align-items: center; gap: 6px; width: 100%; }
-.rs-range input[type="range"] { flex: 1; min-width: 60px; }
-.rs-range output { min-width: 48px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: .82rem; }
+.rs-card label.rs-label { display: flex; align-items: center; gap: 8px; margin: 0; color: var(--text); font-size: .9rem; min-width: 0; }
+.rs-label .rs-name { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+.rs-label .rs-slot { display: inline-flex; align-items: center; flex: 0 1 50%; justify-content: flex-end; min-width: 0; }
+.rs-label .rs-slot:has(input[type="checkbox"]), .rs-label .rs-slot:has(input[type="color"]) { flex: none; }
+.rs-label .rs-slot input[type="text"], .rs-label .rs-slot select { width: 100%; max-width: 220px; min-width: 0; display: inline-block; margin: 0; }
+.rs-range { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
+.rs-range input[type="range"] { flex: 1; min-width: 50px; width: 100%; }
+.rs-range output { flex: none; min-width: 44px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: .82rem; }
 .rs-dot { width: 8px; height: 8px; border-radius: 50%; background: transparent; flex: none; }
 .rs-changed .rs-dot { background: var(--accent); }
-.rs-badge { font-size: .68rem; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; flex: none; }
-.rs-actions { display: flex; align-items: flex-start; gap: 6px; margin-top: 3px; }
-.rs-actions .field-help { flex: 1; margin: 0; }
-.rs-actions > span { flex: 1; }
-.rs-row .rs-reset, .rs-row .rs-pin { font-size: .72rem; padding: 1px 7px; min-height: 0; flex: none; }
-.rs-row .rs-pin { opacity: .6; }
-.rs-row:hover .rs-pin, .rs-row .rs-pin:focus, .rs-row .rs-pin[aria-pressed="true"] { opacity: 1; }
-.rs-row .rs-pin[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
-.rs-warn { display: block; color: #f0b44a; font-size: .8rem; margin-top: 4px; }
+.rs-row .field-help { margin: 4px 0 0 16px; overflow-wrap: anywhere; }
+.rs-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 2px; min-height: 18px; }
+.rs-row .rs-reset, .rs-row .rs-pin { font-size: .74rem; padding: 0; min-height: 0; flex: none; }
+/* "Add to Live" only shows on the row under the mouse / keyboard focus, or once it is on Live */
+.rs-row .rs-pin { visibility: hidden; }
+.rs-row:hover .rs-pin, .rs-row:focus-within .rs-pin, .rs-row .rs-pin[aria-pressed="true"] { visibility: visible; }
+.rs-row .rs-pin[aria-pressed="true"] { color: var(--accent); }
+@media (hover: none) { .rs-row .rs-pin { visibility: visible; } }
+.rs-warn { flex: 1; min-width: 0; color: #f0b44a; font-size: .8rem; }
 .rs-warn[hidden] { display: none; }
 .rs-start { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
 .rs-start h3 { margin: 0 0 6px; }

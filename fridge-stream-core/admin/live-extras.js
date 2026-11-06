@@ -5,7 +5,9 @@
  *
  *  - Arrange (item 14): an "Arrange" button on the Live page. While arranging, every card gets a
  *    small bar: move earlier / later (or drag it), Wide / Half, Hide. Hidden cards wait in a tray
- *    above the grid with Show. Stream events (#live-feed-card) always stays last. Done saves the
+ *    above the grid with Show. Stream events (#live-feed-card) starts last and full width, but moves,
+ *    narrows and hides like any other card (Sen, 2026-11-06); its window has a fixed height, so new
+ *    lines never push the cards around it. Done saves the
  *    layout in Core (data/dashboard_prefs.json, core/dashboard_prefs.py), one for the PC and one for
  *    the phone (a screen narrower than PHONE_PX), so both stay tidy their own way. Reset forgets it.
  *    A card that is hidden because it doesn't apply (Stream Rooms not running, TTS off...) uses the
@@ -27,7 +29,7 @@
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";   // same key as admin.js
   const PHONE_PX = 700;                          // narrower than this = the phone's layout
-  const FEED_ID = "live-feed-card";              // Stream events: always last
+  const FEED_ID = "live-feed-card";              // Stream events: last and wide until it is arranged
   const POLL_MS = 5000;
 
   // Manual section (the number in "## 17. Stream Rooms") for each page; "page/sub" beats "page".
@@ -86,20 +88,26 @@
     return { order: lay.order || [], wide: lay.wide || [], hidden: lay.hidden || [] };
   }
 
-  /** Put the cards in the saved order (unknown ones keep their place after them), feed last. */
+  /**
+   * Put the cards in the saved order (unknown ones keep their place after them). Stream events goes
+   * last and full width while the saved layout doesn't mention it (no layout yet, or one saved before
+   * it could move); once it has been arranged it follows the layout like every other card.
+   */
   function applyLayout() {
     const g = grid();
     if (!g) return;
     const lay = layoutNow();
     const all = cards();
+    const feedArranged = lay.order.includes(FEED_ID);
     const rank = (c) => {
       const i = lay.order.indexOf(c.dataset.card);
-      return c.id === FEED_ID ? 1e6 : i >= 0 ? i : 1000 + all.indexOf(c);
+      return i >= 0 ? i : c.id === FEED_ID ? 1e6 : 1000 + all.indexOf(c);
     };
     all.slice().sort((a, b) => rank(a) - rank(b)).forEach((c) => g.appendChild(c));
     all.forEach((c) => {
-      c.classList.toggle("live-wide", lay.wide.includes(c.dataset.card));
-      c.classList.toggle("live-user-hidden", lay.hidden.includes(c.dataset.card) && c.id !== FEED_ID);
+      const wide = c.id === FEED_ID && !feedArranged ? true : lay.wide.includes(c.dataset.card);
+      c.classList.toggle("live-wide", wide);
+      c.classList.toggle("live-user-hidden", lay.hidden.includes(c.dataset.card));
     });
     renderTray();
   }
@@ -108,7 +116,7 @@
   function readLayout() {
     const all = cards();
     return {
-      order: all.filter((c) => c.id !== FEED_ID).map((c) => c.dataset.card),
+      order: all.map((c) => c.dataset.card),
       wide: all.filter((c) => c.classList.contains("live-wide")).map((c) => c.dataset.card),
       hidden: all.filter((c) => c.classList.contains("live-user-hidden")).map((c) => c.dataset.card),
     };
@@ -150,15 +158,12 @@
       bar.className = "arrange-bar";
       c.prepend(bar);
     }
-    const fixed = c.id === FEED_ID;
-    bar.innerHTML = fixed
-      ? '<span class="muted">Stream events stays last</span>'
-      : '<span class="arrange-grip" aria-hidden="true" title="Drag to move">⠿</span>' +
+    bar.innerHTML = '<span class="arrange-grip" aria-hidden="true" title="Drag to move">⠿</span>' +
         '<button type="button" data-arr="up" title="Move earlier">◀</button>' +
         '<button type="button" data-arr="down" title="Move later">▶</button>' +
         `<button type="button" data-arr="wide" aria-pressed="${c.classList.contains("live-wide")}" title="Full width or half">${c.classList.contains("live-wide") ? "Half" : "Wide"}</button>` +
         '<button type="button" data-arr="hide" title="Tuck it into the tray above">Hide</button>';
-    c.draggable = !fixed;
+    c.draggable = true;
   }
 
   function setArranging(on) {
@@ -220,7 +225,8 @@
       if (!b) return;
       const c = b.closest(".live-card");
       const g = grid();
-      const visible = cards().filter((x) => x.id !== FEED_ID);
+      // only cards on screen count, so one press always moves past a card you can see
+      const visible = cards().filter((x) => !x.hidden && !x.classList.contains("live-user-hidden"));
       const i = visible.indexOf(c);
       if (b.dataset.arr === "up" && i > 0) g.insertBefore(c, visible[i - 1]);
       if (b.dataset.arr === "down" && i < visible.length - 1) g.insertBefore(visible[i + 1], c);
@@ -245,7 +251,7 @@
     document.addEventListener("dragover", (ev) => {
       if (!dragged) return;
       const over = ev.target.closest && ev.target.closest("#tab-live .live-card");
-      if (!over || over === dragged || over.id === FEED_ID) return;
+      if (!over || over === dragged) return;
       ev.preventDefault();
       const r = over.getBoundingClientRect();
       const after = ev.clientY > r.top + r.height / 2 || ev.clientX > r.left + r.width * 0.75;
@@ -254,8 +260,6 @@
     document.addEventListener("dragend", () => {
       if (dragged) dragged.classList.remove("dragging");
       dragged = null;
-      const feed = $(FEED_ID);
-      if (feed) grid().appendChild(feed);
     });
   }
 
@@ -301,7 +305,8 @@
         const e = RS.entry(p.key);
         const row = document.createElement("label");
         row.className = "pin-row";
-        row.innerHTML = `<span>${esc(p.label)}</span>`;
+        // the page's current name for it ("Left of the screen: Show this window"), else the saved one
+        row.innerHTML = `<span>${esc(e && RS.fullLabel ? RS.fullLabel(p.key) : p.label)}</span>`;
         if (e) {
           row.appendChild(RS.makeControl(e, (ok, msg) => {
             $("live-pins-msg").textContent = ok ? "" : msg;
