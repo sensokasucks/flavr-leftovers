@@ -27,8 +27,10 @@
  * and Reset on every setting that differs from its default ("changed" marks), a warning mark on a
  * few risky values (WARN), "Add to Live" (pins it to the Live page's Pinned card), and on the first
  * page a Start here checklist.
- * Layout: each page is split into headed sections (SECTIONS), and layout() spreads each section's
- * cards over columns in reading order (see "Card layout").
+ * Layout: each page is split into headed sections (SECTIONS); inside a section the cards sit in a
+ * grid in reading order, like the Live page. Cards start folded (title and a "N settings · M
+ * changed" line) and open with a click; big cards (WIDE_AT settings or more) take the full width once open
+ * and put their settings in columns. See "Folding cards".
  * What the big screen shows is picked on the Live page's Stream Rooms card (admin.js
  * renderRoomsSources); the Big screen page only links there.
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
@@ -37,6 +39,8 @@
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";   // same key as admin.js
   const moreKey = "stream_core_rooms_more";      // Basics / More, remembered in this browser
+  const openKey = "stream_core_rooms_open";      // which cards are unfolded ("page:card title"), this browser
+  const WIDE_AT = 9;                             // a card with this many settings (all of them, More included) is full width
   const POLL_MS = 3000;
 
   // [sub-page id, title, the game panel tabs it shows]
@@ -390,7 +394,14 @@
       //   [dot] name ............ control
       //   help text
       //   ⚠ warning (WARN)                Reset · Add to Live
-      const card = (g, i) => `<fieldset class="cfg-card rs-card" data-rs-group data-order="${i}"><legend>${esc(g.name)}</legend>` +
+      // folded card: the legend is a button (▸ / ▾ title), the summary line says how many settings
+      // and how many changed (applyView fills it); .rs-body holds the note and the rows
+      const card = (g) => {
+        const id = sub + ":" + g.name;
+        return `<fieldset class="cfg-card rs-card${g.items.length >= WIDE_AT ? " rs-wide" : ""}" data-rs-group data-card-id="${esc(id)}">` +
+        `<legend><button type="button" class="rs-fold" aria-expanded="false" title="Open or fold this card">` +
+        `<span class="rs-chev" aria-hidden="true">▸</span>${esc(g.name)}</button></legend>` +
+        `<p class="rs-sum muted" data-rs-sum></p><div class="rs-body">` +
         (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
         g.items.map((e) => {
           const w = wording(e);
@@ -403,7 +414,8 @@
               <button type="button" class="rs-pin link-btn" aria-pressed="false" title="Show this setting on the Live page's Pinned card">Add to Live</button>
             </div>
           </div>`;
-        }).join("") + "</fieldset>";
+        }).join("") + "</div></fieldset>";
+      };
       box.innerHTML =
         (sub === "room" ? '<div class="rs-start" id="rooms-start" hidden></div>' : "") +
         `<div class="rs-bar">
@@ -414,15 +426,16 @@
           <label class="rs-filter">Find <input type="search" data-rs-filter placeholder="setting name or help text" /></label>
           <label class="check rs-only"><input type="checkbox" data-rs-changed /> Changed only</label>
           <span class="muted rs-count" data-rs-count></span>
+          <span class="rs-folds"><button type="button" class="link-btn" data-rs-openall="1">Open all</button>
+            <button type="button" class="link-btn" data-rs-openall="0">Fold all</button></span>
         </div>` +
         (sub === "screen" ? '<p class="rs-note muted rs-page-note">To pick what the big screen shows (a browser tab, NDI, Spout or a video link), use ' +
           '<a href="#live">the Live page</a> (Stream Rooms card, Big screen). This page holds the set-once settings.</p>' : "") +
-        // one block per section: a heading, its note, and its own grid; each grid's cards start in
-        // one column and layout() spreads them over columns in reading order
+        // one block per section: a heading, its note, and its own grid of cards (reading order)
         secs.map((x) => `<section class="rs-section" data-rs-section>
           <h3 class="rs-section-title">${esc(x.title)}</h3>` +
           (x.note ? `<p class="rs-note muted rs-section-note">${esc(x.note)}</p>` : "") +
-          `<div class="rs-grid"><div class="rs-col">${x.cards.map(card).join("")}</div></div></section>`).join("") +
+          `<div class="rs-grid">${x.cards.map(card).join("")}</div></section>`).join("") +
         (entries.length ? "" : '<p class="muted">Nothing here from Stream Rooms yet.</p>');
       box.querySelectorAll(".rs-row").forEach((row) => {
         const e = byKey[row.dataset.key];
@@ -435,7 +448,6 @@
         });
         row.querySelector(".rs-slot").appendChild(ctl);
       });
-      if (resizeWatch) box.querySelectorAll(".rs-grid").forEach((grid) => resizeWatch.observe(grid));   // see "Card layout"
     });
     applyView();
   }
@@ -491,76 +503,44 @@
         row.hidden = !on;
         if (on) shownCount++;
       });
+      const opened = openCards();
       box.querySelectorAll("[data-rs-group]").forEach((fs) => {
-        fs.hidden = !fs.querySelector(".rs-row:not([hidden])");
+        const rows = [...fs.querySelectorAll(".rs-row")];
+        const vis = rows.filter((r) => !r.hidden);
+        fs.hidden = !vis.length;
+        const nCh = vis.filter((r) => r.classList.contains("rs-changed")).length;
+        fs.querySelector("[data-rs-sum]").textContent =
+          vis.length + (vis.length === 1 ? " setting" : " settings") + (nCh ? " · " + nCh + " changed" : "");
+        // a search or Changed only opens every card it found something in (without remembering it)
+        setOpen(fs, opened.has(fs.dataset.cardId) || words.length > 0 || only);
       });
       // a section with no card left (Basics, a search, Changed only) hides with its heading
       box.querySelectorAll("[data-rs-section]").forEach((sec) => {
         sec.hidden = !sec.querySelector(".rs-card:not([hidden])");
       });
-      layout(box);
       const count = box.querySelector("[data-rs-count]");
       if (count) count.textContent = `${shownCount} shown · ${changedCount} changed from default`;
     });
   }
 
-  // ── Card layout ─────────────────────────────────────────────────────────
-  // Each section (SECTIONS) has its own grid, laid out on its own. Inside it the cards read in the
-  // order SECTIONS lists them, left to right: the first ones go across the top row, and each next
-  // card goes under the column that is shortest so far (ties: the leftmost). So the page reads like
-  // text and still has no big empty gaps beside one tall card. CSS columns (the old way) read top to
-  // bottom instead, which scattered related cards. Cards are only moved when the plan changes, so a
-  // control being used isn't pulled out from under the mouse on the 3-second refresh.
-  const CARD_MIN_W = 340;   // narrowest column in px (keep in step with .rs-col's look in admin.css)
-  const CARD_GAP = 12;      // px between cards (admin.css .rs-grid / .rs-col gap)
-
-  /** Lay out every section grid on one page (applyView, and the ResizeObserver below). */
-  function layout(box) {
-    box.querySelectorAll(".rs-grid").forEach(layoutGrid);
+  // ── Folding cards ───────────────────────────────────────────────────────
+  // Every card starts folded: its title (a button) and "N settings · M changed". A click opens it;
+  // which cards are open is remembered in this browser (openKey), per page and card title. Open all /
+  // Fold all do the whole page. While Find has text or Changed only is ticked, every card with a
+  // match is shown open, so a search never hides its own results.
+  function openCards() {
+    try { return new Set(JSON.parse(localStorage.getItem(openKey) || "[]")); } catch (_) { return new Set(); }
   }
-
-  /** Spread one section's cards over as many columns as fit (skipped while the page or section is hidden). */
-  function layoutGrid(grid) {
-    if (!grid || !grid.clientWidth) return;
-    const n = Math.max(1, Math.floor((grid.clientWidth + CARD_GAP) / (CARD_MIN_W + CARD_GAP)));
-    let cols = [...grid.querySelectorAll(":scope > .rs-col")];
-    while (cols.length < n) {
-      const c = document.createElement("div");
-      c.className = "rs-col";
-      grid.appendChild(c);
-      cols.push(c);
-    }
-    const cards = [...grid.querySelectorAll(".rs-card")].sort((a, b) => a.dataset.order - b.dataset.order);
-    const heights = new Array(n).fill(0);
-    const plan = Array.from({ length: n }, () => []);
-    cards.forEach((card) => {
-      if (card.hidden) {
-        plan[0].push(card);   // takes no room; parked in the first column
-        return;
-      }
-      const c = heights.indexOf(Math.min(...heights));
-      plan[c].push(card);
-      heights[c] += card.offsetHeight + CARD_GAP;
-    });
-    plan.forEach((want, i) => {
-      const have = [...cols[i].children];
-      if (have.length !== want.length || have.some((el, k) => el !== want[k])) want.forEach((el) => cols[i].appendChild(el));
-    });
-    // columns past n are empty now: drop them so the rest share the width
-    cols.slice(n).forEach((c) => c.remove());
+  function saveOpen(set) {
+    try { localStorage.setItem(openKey, JSON.stringify([...set])); } catch (_) { /* private window */ }
   }
-
-  // Lay a page out again when its width changes: the page tab opening (0 -> full width) or the
-  // window being resized. Only width counts; cards growing (More, a filter) go through applyView.
-  const gridWidth = new WeakMap();
-  const resizeWatch = typeof ResizeObserver === "function" ? new ResizeObserver((entries) => {
-    entries.forEach((en) => {
-      const w = Math.round(en.contentRect.width);
-      if (gridWidth.get(en.target) === w) return;
-      gridWidth.set(en.target, w);
-      layoutGrid(en.target);
-    });
-  }) : null;
+  /** Show one card open or folded (the button's arrow and aria-expanded follow). */
+  function setOpen(fs, on) {
+    fs.classList.toggle("rs-open", on);
+    const b = fs.querySelector(".rs-fold");
+    b.setAttribute("aria-expanded", String(on));
+    b.querySelector(".rs-chev").textContent = on ? "▾" : "▸";
+  }
 
   /** New values from the game (it may have changed them itself): controls and marks follow. */
   function refreshValues() {
@@ -637,6 +617,28 @@
     const more = t.closest("[data-rs-more]");
     if (more) {
       try { localStorage.setItem(moreKey, more.dataset.rsMore); } catch (_) { /* private window */ }
+      applyView();
+      return;
+    }
+    const fold = t.closest(".rs-fold");
+    if (fold) {
+      const fs = fold.closest("[data-rs-group]");
+      const set = openCards();
+      if (fs.classList.contains("rs-open")) set.delete(fs.dataset.cardId);
+      else set.add(fs.dataset.cardId);
+      saveOpen(set);
+      setOpen(fs, set.has(fs.dataset.cardId));
+      return;
+    }
+    const all = t.closest("[data-rs-openall]");
+    if (all) {
+      const set = openCards();
+      const page = all.closest("[id^='rooms-page-']");
+      (page ? page.querySelectorAll("[data-rs-group]") : []).forEach((fs) => {
+        if (all.dataset.rsOpenall === "1") set.add(fs.dataset.cardId);
+        else set.delete(fs.dataset.cardId);
+      });
+      saveOpen(set);
       applyView();
       return;
     }
