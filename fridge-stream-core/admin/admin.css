@@ -1641,3 +1641,16 @@ body.arranging #tab-live .live-grid > .live-card.dragging { opacity: .5; }
 .ck-foot { margin: 6px 0 0; font-size: .75rem; }
 .help-table { border-collapse: collapse; font-size: .85rem; margin: 8px 0; }
 .help-table td, .help-table th { border: 1px solid var(--border); padding: 4px 6px; text-align: left; vertical-align: top; }
+/* Read aloud page tabs + strip, Live card lines (admin/tts.js) */
+.tts-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 8px 12px; margin: 4px 0 10px;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--panel); }
+.tts-strip .tts-light { margin-right: 4px; }
+.tts-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.tts-tabs button.active { background: var(--accent); color: #0b0e13; font-weight: 700; }
+#tab-tts [data-tts-tab][hidden] { display: none; }
+.tts-now { margin: 6px 0 10px; }
+.tts-reading { padding: 6px 10px; border-left: 3px solid var(--accent); background: rgba(83,252,24,.06); border-radius: 4px; }
+.tts-next { margin: 6px 0 0; padding-left: 22px; font-size: .88rem; color: var(--muted); }
+.tts-quiet { align-items: center; margin-top: 8px; }
+.tts-switches { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 10px; }
+.tts-switches label.check { display: flex; gap: 6px; align-items: center; font-size: .85rem; }

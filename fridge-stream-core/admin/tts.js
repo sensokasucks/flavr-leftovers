@@ -11,6 +11,12 @@
  *   POST /api/admin/tts/fake           pretend !tts / chat line  POST /api/admin/tts/skip | clear
  *   POST /api/admin/tts/pretend-down   POST /api/admin/tts/missed/replay | remove
  *
+ * Work list item 19 added: tabs across the page (Server, Voice, What's read, Blocked, Test; each
+ * block says its tab in data-tts-tab), a status strip, Blocked chatters (GET /tts/blocked, POST
+ * /tts/block | /tts/unblock), "A longer line is" cut / not read (long_lines), and on the Live card
+ * the line reading now and the next ones (✕ = POST /tts/drop), Pause (POST /tts/pause), "Off for N
+ * min" with its countdown (POST /tts/quiet) and quick on/off switches for each trigger.
+ *
  * admin.js calls window.TtsPage.open() when the page opens and window.TtsPage.openLive() when
  * Live controls opens (activateTab). Both refresh every POLL_MS while their page is showing.
  * TRIGGERS below must match core/tts.py DEFAULTS["triggers"] (names and fields).
@@ -137,6 +143,7 @@
     setVal("tts-speed", s.speed);
     setVal("tts-volume", s.volume);
     setVal("tts-max-chars", s.max_chars);
+    setVal("tts-long-lines", s.long_lines || "cut");
     setVal("tts-queue-max", s.queue_max);
     const f = s.filters || {};
     setVal("tts-blocked", Array.isArray(f.blocked) ? f.blocked.join("\n") : (f.blocked || ""));
@@ -175,6 +182,7 @@
     return {
       enabled: $("tts-enabled").checked, server, voice: $("tts-voice").value.trim(), speed: num("tts-speed"),
       volume: num("tts-volume"), max_chars: num("tts-max-chars"), queue_max: num("tts-queue-max"),
+      long_lines: $("tts-long-lines").value,
       filters: {
         blocked: $("tts-blocked").value.split("\n").map((l) => l.trim()).filter(Boolean),
         on_match: $("tts-on-match").value, check_names: $("tts-check-names").checked,
@@ -199,10 +207,46 @@
         `<td class="tts-r-${esc(r.result)}">${esc(r.result)}${r.why ? ": " + esc(r.why) : ""}</td>` +
         `<td>${r.seconds ? esc(Number(r.seconds).toFixed(2)) + " s" : ""}</td></tr>`).join("") + "</tbody></table>";
   }
+  const FOR_WORDS = { stream: "this stream", day: "a day", forever: "until unblocked" };
+  function blockedHtml(rows) {
+    if (!rows || !rows.length) return '<span class="muted">Nobody blocked.</span>';
+    return "<ul>" + rows.map((b) => `<li><b>${esc(b.name)}</b> <span class="muted">${esc(b.platform || "any")} · ${esc(FOR_WORDS[b.for] || b.for)}` +
+      `${b.until ? " · until " + esc(new Date(b.until * 1000).toLocaleString()) : ""}</span> ` +
+      `<button type="button" class="link-btn" data-tts-unblock="${esc(b.key)}">Unblock</button></li>`).join("") + "</ul>";
+  }
+  /** "12:30 left" for the Off for N min countdown. */
+  function left(until) {
+    const sec = Math.max(0, Math.round(until - Date.now() / 1000));
+    return Math.floor(sec / 60) + ":" + String(sec % 60).padStart(2, "0");
+  }
+  /** The strip over the page: the light, the line, paused / off, blocked count. */
+  function stripHtml(data) {
+    const st = data.status || {};
+    const bits = [lightHtml(st)];
+    if (st.queue_len) bits.push(`${st.queue_len} waiting`);
+    if (st.paused) bits.push("<b>Paused</b>");
+    if (st.quiet_until) bits.push(`<b>Off</b> for ${left(st.quiet_until)} more`);
+    if (data.missed && data.missed.length) bits.push(`${data.missed.length} missed`);
+    if (data.blocked && data.blocked.length) bits.push(`${data.blocked.length} chatter${data.blocked.length === 1 ? "" : "s"} blocked`);
+    return bits.join(" <span class=\"muted\">·</span> ");
+  }
+  // Tabs across the page; the open one is remembered in this browser.
+  const TABS = ["server", "voice", "read", "blocked", "test"];
+  function showTab(name) {
+    if (!TABS.includes(name)) name = "server";
+    document.querySelectorAll("#tab-tts [data-tts-tab]").forEach((el) => { el.hidden = el.dataset.ttsTab !== name; });
+    document.querySelectorAll("#tab-tts [data-tts-show]").forEach((b) => {
+      b.classList.toggle("active", b.dataset.ttsShow === name);
+      b.setAttribute("aria-selected", String(b.dataset.ttsShow === name));
+    });
+    try { localStorage.setItem("stream_core_tts_tab", name); } catch (_) { /* private window */ }
+  }
   function renderState(data) {
     loaded = data;
     const st = data.status || {};
     if ($("tts-state")) $("tts-state").innerHTML = lightHtml(st);
+    if ($("tts-strip")) $("tts-strip").innerHTML = stripHtml(data);
+    if ($("tts-blocked-people")) $("tts-blocked-people").innerHTML = blockedHtml(data.blocked);
     setVal("tts-pretend-down", st.pretend_down);
     if ($("tts-missed")) $("tts-missed").innerHTML = missedHtml(data.missed);
     if ($("tts-missed-count")) $("tts-missed-count").textContent = data.missed && data.missed.length ? `(${data.missed.length})` : "";
@@ -233,6 +277,27 @@
     if (!st.enabled) return;
     $("live-tts-light").innerHTML = lightHtml(st);
     $("live-tts-state").textContent = st.queue_len ? `${st.queue_len} waiting` : "";
+    // reading now + the next lines, each with ✕
+    const now = st.now;
+    $("live-tts-now").innerHTML =
+      (now ? `<div class="tts-reading"><span class="muted">Reading now</span> ${esc(now.text)}</div>` : "") +
+      ((st.next || []).length ? '<ol class="tts-next">' + st.next.map((j) =>
+        `<li>${esc(j.text)} <button type="button" class="link-btn" data-tts-drop="${j.id}" title="Take this line out">✕</button></li>`).join("") + "</ol>" : "");
+    const pause = $("live-tts-pause");
+    pause.textContent = st.paused ? "Resume" : "Pause";
+    pause.setAttribute("aria-pressed", String(!!st.paused));
+    $("live-tts-quiet").textContent = st.quiet_until ? "Back on now" : "Turn off";
+    $("live-tts-quiet").dataset.on = st.quiet_until ? "1" : "";
+    $("live-tts-quiet-left").textContent = st.quiet_until ? `off, ${left(st.quiet_until)} left` : "";
+    // quick switches: each trigger on / off (saved at once, like the settings page's Save)
+    const trig = ((data.settings || {}).triggers) || {};
+    const sw = $("live-tts-switches");
+    const sig = JSON.stringify(TRIGGERS.map(([k]) => !!(trig[k] || {}).enabled));
+    if (sw.dataset.sig !== sig) {
+      sw.dataset.sig = sig;
+      sw.innerHTML = TRIGGERS.map(([key, title]) =>
+        `<label class="check"><input type="checkbox" data-tts-switch="${key}"${(trig[key] || {}).enabled ? " checked" : ""} /> ${esc(title)}</label>`).join("");
+    }
     const m = $("live-tts-missed");
     m.hidden = !(data.missed && data.missed.length);
     m.innerHTML = m.hidden ? "" : `<h4>Missed (${data.missed.length}) <button type="button" class="link-btn" data-tts-replay="">Replay all</button></h4>` + missedHtml(data.missed, 5);
@@ -240,7 +305,10 @@
   async function refreshLive() {
     if (!token()) return;
     try {
-      renderLive(await call("/api/admin/tts"));
+      const data = await call("/api/admin/tts");
+      loaded = loaded || data;
+      loaded.status = data.status;
+      renderLive(data);
     } catch (_) { /* the status line already says when Core can't be reached */ }
   }
 
@@ -346,6 +414,46 @@
         renderState(await post(rep ? "/api/admin/tts/missed/replay" : "/api/admin/tts/missed/remove", id ? { id: Number(id) } : {}));
       } catch (e) { say("live-tts-msg", String(e.message || e), true); say("tts-save-msg", String(e.message || e), true); }
     });
+    // tabs across the page
+    document.querySelectorAll("#tab-tts [data-tts-show]").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.ttsShow)));
+    let saved = "server";
+    try { saved = localStorage.getItem("stream_core_tts_tab") || "server"; } catch (_) { /* private window */ }
+    showTab(saved);
+    // Blocked chatters
+    on("tts-block-add", () => run("tts-block-add", "tts-save-msg", async () => {
+      const r = await post("/api/admin/tts/block", { name: $("tts-block-name").value.trim(), platform: $("tts-block-platform").value, for: $("tts-block-for").value });
+      $("tts-blocked-people").innerHTML = blockedHtml(r.blocked);
+      say("tts-save-msg", "Blocked " + $("tts-block-name").value.trim() + ".");
+      $("tts-block-name").value = "";
+    }));
+    document.addEventListener("click", async (ev) => {
+      const un = ev.target.closest("[data-tts-unblock]");
+      const drop = ev.target.closest("[data-tts-drop]");
+      const sw = ev.target.closest("[data-tts-switch]");
+      try {
+        if (un) {
+          const r = await post("/api/admin/tts/unblock", { key: un.dataset.ttsUnblock });
+          $("tts-blocked-people").innerHTML = blockedHtml(r.blocked);
+        } else if (drop) {
+          await post("/api/admin/tts/drop", { id: Number(drop.dataset.ttsDrop) });
+          refreshLive();
+        } else if (sw) {
+          await call("/api/admin/tts/settings", { method: "PUT", body: JSON.stringify({ triggers: { [sw.dataset.ttsSwitch]: { enabled: sw.checked } } }) });
+          say("live-tts-msg", (sw.checked ? "On: " : "Off: ") + sw.parentElement.textContent.trim());
+        }
+      } catch (e) { say("live-tts-msg", String(e.message || e), true); }
+    });
+    on("live-tts-pause", () => run("live-tts-pause", "live-tts-msg", async () => {
+      const r = await post("/api/admin/tts/pause", { on: $("live-tts-pause").getAttribute("aria-pressed") !== "true" });
+      say("live-tts-msg", r.status.paused ? "Paused: lines wait until Resume." : "Going on.");
+      refreshLive();
+    }));
+    on("live-tts-quiet", () => run("live-tts-quiet", "live-tts-msg", async () => {
+      const off = $("live-tts-quiet").dataset.on === "1";
+      const r = await post("/api/admin/tts/quiet", { minutes: off ? 0 : Number($("live-tts-quiet-min").value) });
+      say("live-tts-msg", off ? "Read aloud is back on." : `Off for ${$("live-tts-quiet-min").value} min` + (r.dropped ? ` (${r.dropped} waiting dropped).` : "."));
+      refreshLive();
+    }));
     on("live-tts-skip", () => run("live-tts-skip", "live-tts-msg", async () => { await post("/api/admin/tts/skip"); say("live-tts-msg", "Skipped."); }));
     on("live-tts-clear", () => run("live-tts-clear", "live-tts-msg", async () => {
       const r = await post("/api/admin/tts/clear");

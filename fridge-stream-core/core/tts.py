@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import itertools
+import json
 import logging
 import re
 import time
@@ -90,6 +91,23 @@ TRIGGERS = ("alerts", "paid", "command", "chat", "highlight", "plugins")
 # Words a template may use; anything else in {braces} is left as typed.
 _FIELD_RE = re.compile(r"\{(name|headline|message|amount)\}")
 
+# Blocked chatters (work list item 19): "stream" lasts until Core restarts, "day" 24 hours,
+# "forever" until unblocked. Saved in data/tts/blocked_people.json (the "stream" ones aren't).
+BLOCK_FOR = {"stream": 0, "day": 24 * 3600, "forever": 0}
+BLOCK_MAX = 500
+# Read aloud "off for N minutes": the longest pause the Live card offers.
+QUIET_MAX_MIN = 240
+# How long a chatter's silhouette glows per character read (Stream Rooms), and the bounds.
+GLOW_SEC_PER_CHAR = 0.07
+GLOW_MIN_SEC, GLOW_MAX_SEC = 2.0, 30.0
+
+
+def who_key(platform: Any, username: Any) -> str:
+    """The key a blocked chatter is known by: "<platform>:<username>", lower case."""
+    plat = str(getattr(platform, "value", platform) or "").lower().strip()
+    return plat + ":" + str(username or "").lower().strip().lstrip("@")
+
+
 DEFAULTS: Dict[str, Any] = {
     "enabled": False,
     "server": {
@@ -110,8 +128,9 @@ DEFAULTS: Dict[str, Any] = {
     "speed": 1.0,
     # 0 .. 100, applied by the overlay
     "volume": 80,
-    # longest line read (characters); longer ones are cut at a word
+    # longest line read (characters); longer ones are cut at a word ("cut") or not read ("skip")
     "max_chars": 300,
+    "long_lines": "cut",
     # lines waiting to be read; past this, new lines are dropped (paid / !tts go to missed)
     "queue_max": 20,
     "filters": {
@@ -165,6 +184,7 @@ def read_settings(config: Optional[dict]) -> Dict[str, Any]:
     out["volume"] = int(_num(raw.get("volume"), 80, 0, 100))
     out["max_chars"] = int(_num(raw.get("max_chars"), 300, 20, 1000))
     out["queue_max"] = int(_num(raw.get("queue_max"), 20, 1, 200))
+    out["long_lines"] = "skip" if raw.get("long_lines") == "skip" else "cut"
     flt = raw.get("filters") or {}
     f = out["filters"]
     if isinstance(flt.get("blocked"), (list, str)):
@@ -260,6 +280,8 @@ class Job:
     platform: str = ""
     name: str = ""
     alert_id: str = ""
+    # "<platform>:<username>" in lower case, for blocking a chatter ("" = not a chatter's line)
+    who: str = ""
     keep: bool = False
     refund: Optional[Dict[str, int]] = None
     created: float = field(default_factory=time.time)
@@ -317,6 +339,14 @@ class TtsEngine:
         self._chat_last = 0.0
         self._filter_key: Any = None
         self._filter: Optional[TextFilter] = None
+        # Live card controls (item 19): paused = hold the line (waiting lines stay), quiet_until =
+        # "off for N minutes" (new lines are not read until then; paid / !tts go to missed)
+        self.paused = False
+        self.quiet_until = 0.0
+        # the line playing now (sent to the overlays last), for the Live card
+        self.now: Optional[Dict[str, Any]] = None
+        # blocked chatters: who_key -> {platform, name, for, until, at}; until 0 = no end
+        self.blocked_people: Dict[str, Dict[str, Any]] = self._load_blocked()
 
     # ── settings ──
 
@@ -328,7 +358,7 @@ class TtsEngine:
         """The TextFilter for the current settings (rebuilt only when they change)."""
         s = settings or self.settings
         extra = list(self.red_flag_phrases() or []) if s["filters"]["use_red_flags"] else []
-        key = (repr(s["filters"]), s["max_chars"], tuple(extra))
+        key = (repr(s["filters"]), s["max_chars"], s["long_lines"], tuple(extra))
         if key != self._filter_key or self._filter is None:
             self._filter = TextFilter(s, extra)
             self._filter_key = key
@@ -375,23 +405,34 @@ class TtsEngine:
         await self._refund(job, why)
 
     def _queue(self, job: Job, s: dict) -> bool:
-        """Put a job in line. False when the line is full (the caller gives up on it)."""
-        if len(self.pending) >= s["queue_max"]:
+        """Put a job in line. False when the line is full, read aloud is off for a while
+        (quiet_until) or the chatter is blocked (the caller gives up on it)."""
+        if len(self.pending) >= s["queue_max"] or self.is_quiet() or (job.who and self.is_blocked(job.who)):
             return False
         self.pending.append(job)
         self._wake.set()
         return True
 
+    def _refused_why(self, job: Job) -> str:
+        """Why _queue said no, in words for the Recent lines list and the missed list."""
+        if job.who and self.is_blocked(job.who):
+            return "chatter blocked"
+        if self.is_quiet():
+            return "read aloud off for a while"
+        return "queue full"
+
     async def enqueue(self, text: str, trigger: str, *, voice: str = "", platform: str = "", name: str = "",
-                      alert_id: str = "", keep: bool = False, refund: Optional[dict] = None) -> Optional[Job]:
-        """Queue an already-cleaned line. Returns the job, or None when the queue was full."""
+                      alert_id: str = "", keep: bool = False, refund: Optional[dict] = None,
+                      who: str = "") -> Optional[Job]:
+        """Queue an already-cleaned line. Returns the job, or None when it wasn't taken (_queue)."""
         s = self.settings
         job = Job(id=next(self._ids), text=text, voice=voice or s["voice"], trigger=trigger, platform=platform,
-                  name=name, alert_id=alert_id, keep=keep, refund=refund)
+                  name=name, alert_id=alert_id, keep=keep, refund=refund, who=who)
         if self._queue(job, s):
             return job
-        self._log(trigger, text, "skipped", "queue full", job.voice, name=name)
-        await self._give_up(job, "queue full")
+        why = self._refused_why(job)
+        self._log(trigger, text, "skipped", why, job.voice, name=name)
+        await self._give_up(job, why)
         return None
 
     def _queue_now(self, text: str, trigger: str, **kw) -> Optional[Job]:
@@ -401,9 +442,10 @@ class TtsEngine:
         job = Job(id=next(self._ids), text=text, voice=kw.pop("voice", "") or s["voice"], trigger=trigger, **kw)
         if self._queue(job, s):
             return job
-        self._log(trigger, text, "skipped", "queue full", job.voice, name=job.name)
+        why = self._refused_why(job)
+        self._log(trigger, text, "skipped", why, job.voice, name=job.name)
         if job.keep:
-            self._add_missed(job, "queue full")
+            self._add_missed(job, why)
         return None
 
     # ── triggers ──
@@ -477,6 +519,9 @@ class TtsEngine:
         if not rest:
             return True, f"@{who} type {head} and your message to have it read aloud."
         admin = bool(self.is_admin(user))
+        wkey = who_key(user.platform, user.username)
+        if not admin and self.is_blocked(wkey):
+            return True, f"@{who} {head} isn't available to you right now."
         if not admin and not who_ok(user, trig["who"]):
             return True, f"@{who} {head} is only for {trig['who']} right now."
         key = f"tts|{user.platform.value if hasattr(user.platform, 'value') else user.platform}|{user.username}"
@@ -505,7 +550,7 @@ class TtsEngine:
             refund = {"uid": int(uid), "amount": cost}
         self.gate.touch(key)
         job = await self.enqueue(text, "command", voice=trig["voice"], platform=plat, name=spoken,
-                                 keep=True, refund=refund)
+                                 keep=True, refund=refund, who=wkey)
         if job is None:
             return True, f"@{who} the read-aloud line is full, try again soon" + (" (points given back)." if refund else ".")
         return True, answer
@@ -522,7 +567,7 @@ class TtsEngine:
         if raw.startswith(self.prefix() or "!"):
             return False
         user = event.user
-        if not (self.is_admin(user) or who_ok(user, trig["who"])):
+        if not (self.is_admin(user) or who_ok(user, trig["who"])) or self.is_blocked(who_key(user.platform, user.username)):
             return False
         self._chat_seen += 1
         if (self._chat_seen - 1) % trig["every_nth"]:
@@ -540,7 +585,8 @@ class TtsEngine:
             return False
         self._chat_last = now
         return self._queue_now(text, "chat", voice=trig["voice"],
-                               platform=getattr(user.platform, "value", user.platform) or "", name=spoken) is not None
+                               platform=getattr(user.platform, "value", user.platform) or "", name=spoken,
+                               who=who_key(user.platform, user.username)) is not None
 
     def on_highlight(self, item: dict) -> bool:
         """A Highlighted message reached the screen (HighlightBoard.on_shown, main.py)."""
@@ -549,6 +595,9 @@ class TtsEngine:
         if trig is None:
             return False
         user = item.get("user") or {}
+        hwho = who_key(item.get("platform"), user.get("username"))
+        if self.is_blocked(hwho):
+            return False
         flt = self.text_filter(s)
         spoken = flt.clean_name(user.get("display_name") or user.get("username") or "")
         message, _ = strip_emotes(str(item.get("message") or ""), item.get("emotes"))
@@ -557,7 +606,7 @@ class TtsEngine:
             self._log("highlight", message, "skipped", why, name=spoken)
             return False
         return self._queue_now(text, "highlight", voice=trig["voice"], platform=str(item.get("platform") or ""),
-                               name=spoken) is not None
+                               name=spoken, who=hwho) is not None
 
     async def say_plugin(self, plugin_id: str, text: str, voice: str = "") -> bool:
         """A game plugin asks Core to say something (PluginContext.say). Read when the plugins
@@ -679,6 +728,112 @@ class TtsEngine:
         self.missed = [m for m in self.missed if missed_id is not None and m["id"] != missed_id]
         return before - len(self.missed)
 
+    # ── Live card controls and blocked chatters (work list item 19) ──
+
+    def is_quiet(self) -> bool:
+        """True while "off for N minutes" runs."""
+        return self.quiet_until > time.time()
+
+    def set_paused(self, on: bool) -> None:
+        """Pause: nothing new starts; the waiting lines stay in line until Resume."""
+        self.paused = bool(on)
+        if not on:
+            self._wake.set()
+
+    async def quiet_for(self, minutes: float) -> int:
+        """Read aloud off for ``minutes`` (0 = back on now). New lines aren't read meanwhile and the
+        waiting ones are dropped (paid / !tts to the missed list, points given back). Returns how
+        many waiting lines were dropped."""
+        minutes = max(0.0, min(float(minutes or 0), QUIET_MAX_MIN))
+        self.quiet_until = time.time() + minutes * 60 if minutes else 0.0
+        dropped = 0
+        if minutes:
+            for job in list(self.pending):
+                self.pending.remove(job)
+                await self._give_up(job, "read aloud off for a while")
+                dropped += 1
+            self._log("quiet", "", "skipped", f"Off for {minutes:g} min ({dropped} waiting dropped)")
+        else:
+            self._wake.set()
+        return dropped
+
+    async def drop(self, job_id: int) -> bool:
+        """Take one waiting line out (the Live card's ✕). Its points are given back."""
+        for job in list(self.pending):
+            if job.id == job_id:
+                self.pending.remove(job)
+                await self._give_up(job, "removed")
+                self._log(job.trigger, job.text, "skipped", "removed from the line", job.voice, name=job.name)
+                return True
+        return False
+
+    def _blocked_file(self) -> Path:
+        return self.dir / "blocked_people.json"
+
+    def _load_blocked(self) -> Dict[str, Dict[str, Any]]:
+        """The saved blocks ("day" and "forever"); ones that ran out are left behind."""
+        try:
+            raw = json.loads(self._blocked_file().read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
+        now = time.time()
+        out = {}
+        for k, v in (raw.items() if isinstance(raw, dict) else []):
+            if isinstance(v, dict) and (not v.get("until") or float(v["until"]) > now):
+                out[str(k)[:120]] = v
+        return out
+
+    def _save_blocked(self) -> None:
+        keep = {k: v for k, v in self.blocked_people.items() if v.get("for") != "stream"}
+        try:
+            self.dir.mkdir(parents=True, exist_ok=True)
+            self._blocked_file().write_text(json.dumps(keep, indent=1), encoding="utf-8")
+        except OSError:
+            log.warning("couldn't save the blocked chatters list")
+
+    def is_blocked(self, key: str) -> bool:
+        """True while that chatter (who_key) is blocked from being read aloud."""
+        b = self.blocked_people.get(key)
+        if not b:
+            return False
+        if b.get("until") and float(b["until"]) <= time.time():
+            self.blocked_people.pop(key, None)
+            return False
+        return True
+
+    def block(self, platform: str, name: str, for_: str = "stream") -> Optional[Dict[str, Any]]:
+        """Block a chatter from read aloud for this stream / a day / for good. Their waiting lines
+        go too. Called from the Blocked tab, the Live card and Stream Rooms' people menu
+        ("tts_block" packet). Returns the entry, or None for an empty name."""
+        name = str(name or "").strip().lstrip("@")[:60]
+        if not name:
+            return None
+        for_ = for_ if for_ in BLOCK_FOR else "stream"
+        key = who_key(platform, name)
+        now = time.time()
+        entry = {"platform": str(platform or "")[:20].lower(), "name": name, "for": for_,
+                 "until": now + BLOCK_FOR[for_] if BLOCK_FOR[for_] else 0, "at": now}
+        self.blocked_people[key] = entry
+        while len(self.blocked_people) > BLOCK_MAX:
+            self.blocked_people.pop(next(iter(self.blocked_people)))
+        for job in list(self.pending):
+            if job.who == key:
+                self.pending.remove(job)
+        self._save_blocked()
+        self._log("block", "", "skipped", f"Blocked {name} ({for_})", name=name)
+        return entry
+
+    def unblock(self, key: str) -> bool:
+        gone = self.blocked_people.pop(str(key or ""), None) is not None
+        if gone:
+            self._save_blocked()
+        return gone
+
+    def blocked_list(self) -> List[Dict[str, Any]]:
+        """For the Blocked tab: [{key, platform, name, for, until, at}], newest first."""
+        out = [{"key": k, **v} for k, v in self.blocked_people.items() if self.is_blocked(k)]
+        return sorted(out, key=lambda b: -float(b.get("at") or 0))
+
     def set_pretend_down(self, on: bool) -> None:
         """The settings page's "Pretend the server is down" switch (not saved). Turning it off lets
         the next check bring the server back."""
@@ -705,7 +860,12 @@ class TtsEngine:
         return {"state": state, "enabled": s["enabled"], "fails": self.fails, "down": self.down,
                 "down_since": self.down_since, "last_error": self.last_error, "last_ok_at": self.last_ok_at,
                 "last_seconds": self.last_seconds, "pretend_down": self.pretend_down,
-                "queue_len": len(self.pending), "missed": len(self.missed)}
+                "queue_len": len(self.pending), "missed": len(self.missed),
+                "paused": self.paused, "quiet_until": self.quiet_until if self.is_quiet() else 0,
+                "now": self.now if self.now and time.time() - self.now["at"] < self.now["sec"] + 2 else None,
+                "next": [{"id": j.id, "text": j.text[:160], "name": j.name, "trigger": j.trigger}
+                         for j in list(self.pending)[:5]],
+                "blocked": len(self.blocked_people)}
 
     # ── talking to the server ──
 
@@ -850,6 +1010,15 @@ class TtsEngine:
         await self._send({"type": "tts", "data": {"id": job.id, "url": f"/tts/{name}", "alert_id": job.alert_id,
                                                   "platform": job.platform, "volume": s["volume"],
                                                   "trigger": job.trigger}})
+        # roughly how long it plays (the audio's own length isn't read): for the Live card's
+        # "Reading now" and the chatter's glowing silhouette in Stream Rooms ("tts_speaking")
+        sec = max(GLOW_MIN_SEC, min(GLOW_MAX_SEC, len(job.text) * GLOW_SEC_PER_CHAR / max(s["speed"], 0.5)))
+        self.now = {"id": job.id, "text": job.text[:200], "name": job.name, "trigger": job.trigger,
+                    "at": time.time(), "sec": round(sec, 1)}
+        if job.who:
+            plat, _, uname = job.who.partition(":")
+            await self._send({"type": "tts_speaking", "data": {"platform": plat, "username": uname,
+                                                               "seconds": round(sec, 1)}})
         self._log(job.trigger, job.text, "played", voice=job.voice, seconds=seconds, name=job.name)
         return True
 
@@ -872,7 +1041,7 @@ class TtsEngine:
             self._wake.clear()
             if self.down and self.settings["enabled"] and time.time() - self.last_try_at >= RECHECK_SEC:
                 await self.recheck()
-            while self.pending and not (stop and stop.is_set()):
+            while self.pending and not self.paused and not (stop and stop.is_set()):
                 job = self.pending.popleft()
                 try:
                     await self.process(job)

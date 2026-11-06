@@ -376,6 +376,74 @@ class TriggerTests(Base):
         self.assertFalse(run(PluginContext(id="x", folder=self.root, root=self.root, data_dir=self.root).say("no bus")))
 
 
+class LiveControlTests(Base):
+    """Work list item 19: blocked chatters, pause, off for N minutes, drop, long lines, glow."""
+
+    def test_blocked_chatter_is_not_read(self):
+        self.engine.on_chat(chat("first", name="loudguy"))
+        self.assertEqual(len(self.engine.pending), 1)
+        self.assertIsNotNone(self.engine.block("twitch", "LoudGuy", "day"))
+        self.assertEqual(len(self.engine.pending), 0)                 # their waiting line went too
+        self.assertFalse(self.engine.on_chat(chat("again", name="loudguy")))
+        taken, answer = run(self.engine.handle_command(chat("!tts hi", name="loudguy")))
+        self.assertTrue(taken)
+        self.assertIn("isn't available", answer)
+        self.assertTrue(self.engine.on_chat(chat("fine", name="nova")))  # others still read
+        # "day" and "forever" are saved, "stream" isn't
+        self.engine.block("kick", "streamonly", "stream")
+        again = TtsEngine(get_config=lambda: self.cfg, data_dir=self.root)
+        self.assertTrue(again.is_blocked("twitch:loudguy"))
+        self.assertFalse(again.is_blocked("kick:streamonly"))
+        self.assertTrue(self.engine.unblock("twitch:loudguy"))
+        self.assertTrue(self.engine.on_chat(chat("back", name="loudguy")))
+        self.assertIsNone(self.engine.block("twitch", "  ", "day"))
+
+    def test_day_block_runs_out(self):
+        self.engine.block("twitch", "nova", "day")
+        self.engine.blocked_people["twitch:nova"]["until"] = time.time() - 1
+        self.assertFalse(self.engine.is_blocked("twitch:nova"))
+
+    def test_quiet_drops_and_refuses_then_comes_back(self):
+        self.engine.on_chat(chat("one", name="a"))
+        dropped = run(self.engine.quiet_for(15))
+        self.assertEqual(dropped, 1)
+        self.assertTrue(self.engine.status()["quiet_until"] > time.time() + 800)
+        self.assertFalse(self.engine.on_chat(chat("two", name="b")))
+        taken, _answer = run(self.engine.handle_command(chat("!tts hello", name="streamer")))   # free
+        self.assertTrue(taken)
+        self.assertEqual(self.engine.missed[-1]["why"], "read aloud off for a while")
+        run(self.engine.quiet_for(0))
+        self.assertTrue(self.engine.on_chat(chat("three", name="d")))
+
+    def test_pause_holds_and_drop(self):
+        self.engine.set_paused(True)
+        self.engine.on_chat(chat("one", name="a"))
+        self.engine.on_chat(chat("two", name="b"))
+        st = self.engine.status()
+        self.assertTrue(st["paused"])
+        self.assertEqual(len(st["next"]), 2)
+        self.assertTrue(run(self.engine.drop(st["next"][0]["id"])))
+        self.assertEqual(len(self.engine.pending), 1)
+        self.assertFalse(run(self.engine.drop(9999)))
+
+    def test_long_lines_cut_or_skip(self):
+        self.cfg["tts"]["max_chars"] = 40
+        self.assertTrue(self.engine.on_chat(chat("word " * 30, name="a")))
+        self.assertLessEqual(len(self.engine.pending[-1].text), 40)
+        self.cfg["tts"]["long_lines"] = "skip"
+        self.assertFalse(self.engine.on_chat(chat("word " * 30, name="b")))
+        self.assertTrue(self.engine.on_chat(chat("short", name="c")))
+
+    def test_speaking_packet_for_stream_rooms(self):
+        self.engine.on_chat(chat("hello there", name="Nova"))
+        self.drain()
+        sp = self.sent_of("tts_speaking")
+        self.assertEqual(sp[0]["platform"], "twitch")
+        self.assertEqual(sp[0]["username"], "nova")
+        self.assertGreaterEqual(sp[0]["seconds"], 2.0)
+        self.assertEqual(self.engine.status()["now"]["trigger"], "chat")
+
+
 class RouteTests(Base):
     def setUp(self):
         super().setUp()

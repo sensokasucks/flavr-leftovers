@@ -484,6 +484,15 @@ def create_app(core_state: "CoreState") -> FastAPI:
                             log.exception("avatar hide import failed")
                     continue
                 reactions = getattr(core_state, "reactions", None)
+                if msg.get("type") == "tts_block":
+                    # Stream Rooms' people menu > Read aloud > Block (core/people_picker.gd there):
+                    # {platform, name, for: stream | day | forever}. Only from a socket that said
+                    # hello as the game, so an overlay page can't block anyone.
+                    tts = getattr(core_state, "tts", None)
+                    data = msg.get("data") if isinstance(msg.get("data"), dict) else {}
+                    if tts is not None and reactions is not None and ws in reactions.game_clients:
+                        tts.block(str(data.get("platform") or ""), str(data.get("name") or ""), str(data.get("for") or "stream"))
+                    continue
                 if reactions is not None:
                     try:
                         await reactions.on_client_message(ws, msg)
