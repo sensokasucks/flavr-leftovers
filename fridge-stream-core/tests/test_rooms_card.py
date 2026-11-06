@@ -138,6 +138,85 @@ class RouteTests(unittest.TestCase):
 
 
 
+class SenderPageTests(unittest.TestCase):
+    """The Live page's "Share to the big screen" card (admin/rooms-sender.js): Core reads the game's
+    sender page and key server side (GET /api/admin/rooms/sender-page, /sender-key)."""
+
+    def setUp(self):
+        import http.server
+        import threading
+
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from api.admin_routes import create_admin_router
+        from api.server import CoreState
+
+        # a stand-in for the game's capture server: "/" = the page (key filled in), "/key" = the key
+        class Game(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = {"/": b"<!doctype html><html><head><title>sender</title></head><body>KEY-1</body></html>",
+                        "/key": b"KEY-2\n"}.get(self.path)
+                self.send_response(200 if body else 404)
+                self.end_headers()
+                self.wfile.write(body or b"")
+
+            def log_message(self, *a):
+                pass
+
+        self.game = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Game)
+        threading.Thread(target=self.game.serve_forever, daemon=True).start()
+        self.addCleanup(self.game.server_close)
+        self.addCleanup(self.game.shutdown)
+        self.url = "http://127.0.0.1:%d/" % self.game.server_address[1]
+
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.h = Harness(Path(tmp.name))
+        disk = {"points": {"admin_token": TOKEN}}
+        state = CoreState()
+        state.config = json.loads(json.dumps(disk))
+        state.reactions = self.h.eng
+        app = FastAPI()
+        app.include_router(create_admin_router(state))
+        p = mock.patch("api.admin_routes.load_config", lambda: json.loads(json.dumps(disk)))
+        p.start()
+        self.addCleanup(p.stop)
+        self.client = TestClient(app)
+
+    def link_game(self, sender_url):
+        ws = FakeWS()
+        run(self.h.eng.on_client_message(ws, {"type": "hello", "data": {}}))
+        run(self.h.eng.on_client_message(ws, {"type": "rooms_state", "data": {**STATE, "sources": {"sender_url": sender_url}}}))
+        return ws
+
+    def test_needs_token_and_a_linked_game(self):
+        self.assertEqual(self.client.get("/api/admin/rooms/sender-page").status_code, 401)
+        self.assertEqual(self.client.get("/api/admin/rooms/sender-page", headers=HEAD).status_code, 409)
+        self.assertEqual(self.client.get("/api/admin/rooms/sender-key", headers=HEAD).status_code, 409)
+
+    def test_page_gets_a_base_to_the_game(self):
+        self.link_game(self.url)
+        got = self.client.get("/api/admin/rooms/sender-page", headers=HEAD).json()
+        self.assertEqual(got["base"], self.url)
+        self.assertIn('<head><base href="%s"><title>' % self.url, got["html"])
+        self.assertIn("KEY-1", got["html"])
+        self.assertEqual(self.client.get("/api/admin/rooms/sender-key", headers=HEAD).json(), {"key": "KEY-2"})
+
+    def test_game_gone_is_a_502(self):
+        import socket
+        with socket.socket() as sock:              # a port nothing listens on any more
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        self.link_game("http://127.0.0.1:%d/" % port)
+        self.assertEqual(self.client.get("/api/admin/rooms/sender-page", headers=HEAD).status_code, 502)
+
+    def test_only_the_local_sender_address_is_fetched(self):
+        """clean_rooms_state drops any other address, so Core never fetches elsewhere for the game."""
+        self.link_game("http://example.com/")
+        self.assertEqual(self.client.get("/api/admin/rooms/sender-page", headers=HEAD).status_code, 409)
+
+
 class SettingsAndPrefsTests(unittest.TestCase):
     """Setup > Stream Rooms settings (rooms_settings / rooms_set), dashboard prefs and scenes."""
 

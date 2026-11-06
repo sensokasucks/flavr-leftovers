@@ -298,6 +298,22 @@
         <div id="live-tts-missed" class="tts-missed" hidden></div>
         <p id="live-tts-msg" class="muted" role="status"></p>
       </section>
+      <!-- Share to the big screen (admin/rooms-sender.js): Stream Rooms' sender page run inside this
+           dashboard, in a frame. Hidden until it's opened (the Stream Rooms card's Big screen picker,
+           "Browser tab or window" + Show, or the address #live/sender, which the game opens while it's
+           linked to Core). It sits just above Stream events because it grows when a share starts. -->
+      <section class="live-card sender-card" id="live-sender-card" data-card="sender" hidden>
+        <div class="live-card-head">
+          <h3>Share to the big screen</h3>
+          <a href="#" id="sender-own-page" class="live-link" hidden
+            title="The game's own sender page in a browser tab of its own (the old way; it takes over from this card)">Game's own page</a>
+          <button type="button" id="sender-close" class="link-btn" title="Close the sender (stops what it shares)">Close</button>
+        </div>
+        <p class="hint">Click Share and pick the tab or window; it goes on Stream Rooms' big screen. Keep this
+          dashboard tab open while sharing (other dashboard pages are fine).</p>
+        <p id="sender-msg" class="muted" role="status"></p>
+        <div id="sender-frame-box"></div>
+      </section>
       <!-- Stream events: what just happened (GET /api/admin/activity, core/activity.py). Starts last
            and full width; Arrange can move, narrow or hide it like any card (live-extras.js). Its
            window has a fixed height, so new lines never push the cards around it. -->
@@ -2293,6 +2309,8 @@
   <!-- folding cards on every page; before rooms-setup.js, which uses window.FoldCards -->
   <script src="/admin/fold-cards.js"></script>
   <script src="/admin/rooms-setup.js"></script>
+  <!-- the "Share to the big screen" card (window.RoomsSender, used by admin.js) -->
+  <script src="/admin/rooms-sender.js"></script>
   <script src="/admin/admin.js"></script>
   <!-- Arrange, Pinned + Scenes cards, help panel, Ctrl+K (needs admin.js and rooms-setup.js first) -->
   <script src="/admin/live-extras.js"></script>

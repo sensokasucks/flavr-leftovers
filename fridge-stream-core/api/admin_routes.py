@@ -1576,6 +1576,61 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(409, "Stream Rooms isn't connected")
         return {"ok": True}
 
+    # ── Share to the big screen (the sender page inside the dashboard) ──
+    # The Live page's "Share to the big screen" card (admin/rooms-sender.js) runs Stream Rooms' sender
+    # page inside the dashboard. The game serves that page only to 127.0.0.1 and writes its stream key
+    # into it (stream-rooms core/capture_server.gd), and other web pages may not read it (no CORS). So
+    # Core reads it server side from the address the game gave in its rooms_state ("sources" ->
+    # "sender_url", which clean_rooms_state only keeps when it is http://127.0.0.1:<port>/) and hands
+    # it to the signed-in dashboard. Nothing new is exposed: the dashboard can already put anything on
+    # the big screen through the rooms actions.
+    SENDER_FETCH_TIMEOUT_S = 4.0
+    SENDER_PAGE_MAX_BYTES = 2 * 1024 * 1024   # the page is ~80 KB; anything far bigger isn't it
+
+    def _sender_url() -> str:
+        """The game's sender page address from its last rooms_state, or 409 while no game is linked."""
+        eng = _reactions()
+        url = ((eng.rooms_state or {}).get("sources") or {}).get("sender_url") or ""
+        if not eng.game_clients or not url:
+            raise HTTPException(409, "Stream Rooms isn't connected")
+        return url
+
+    async def _sender_get(path: str) -> str:
+        """GET <sender_url><path> from the game (Host 127.0.0.1, no Origin: the game's own checks pass)."""
+        import httpx
+        url = _sender_url()
+        try:
+            async with httpx.AsyncClient(timeout=SENDER_FETCH_TIMEOUT_S, follow_redirects=False) as client:
+                r = await client.get(url + path)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"Couldn't reach Stream Rooms' sender page: {e.__class__.__name__}")
+        if r.status_code != 200 or len(r.content) > SENDER_PAGE_MAX_BYTES:
+            raise HTTPException(502, f"Stream Rooms' sender page answered {r.status_code}")
+        return r.text
+
+    @router.get("/rooms/sender-page")
+    async def rooms_sender_page(x_admin_token: Optional[str] = Header(None)):
+        """{html, base}: the game's sender page (with this run's key in it), with a <base href> to the
+        game's address added so its /vdoninja-sdk.min.js and /backdrop links still go to the game.
+        admin/rooms-sender.js loads it into a same-origin frame (srcdoc)."""
+        _auth(x_admin_token)
+        html = await _sender_get("")
+        base = _sender_url()
+        tag = f'<base href="{base}">'
+        i = html.lower().find("<head>")
+        html = html[: i + 6] + tag + html[i + 6:] if i >= 0 else tag + html
+        return {"html": html, "base": base}
+
+    @router.get("/rooms/sender-key")
+    async def rooms_sender_key(x_admin_token: Optional[str] = Header(None)):
+        """{key}: the game's current stream key (its /key), for a dashboard sender page that was open
+        while the game restarted (web/sender.html refreshKey through window.RoomsSenderHost.fetchKey)."""
+        _auth(x_admin_token)
+        key = (await _sender_get("key")).strip()
+        if not key or len(key) > 200:
+            raise HTTPException(502, "Stream Rooms gave no key")
+        return {"key": key}
+
     @router.get("/rooms/settings")
     async def rooms_settings(x_admin_token: Optional[str] = Header(None)):
         """Setup > Stream Rooms pages: {connected, schema, values, defaults} (Stream Rooms' panel
