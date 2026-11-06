@@ -1008,6 +1008,9 @@
   let roomsSenderUrl = "";
   let roomsSourceSig = "";
   let roomsSourceTouched = false;   // picked in the dropdown, Show not pressed yet: don't move it
+  // This dashboard runs in a browser on the same PC as Core (and so, normally, as Stream Rooms):
+  // only then can it open the game's 127.0.0.1 sender page itself.
+  const ROOMS_SAME_PC = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(location.hostname);
 
   /** Fill the Big screen dropdown when the game's lists or the source showing change (not while it's open). */
   function renderRoomsSources(st) {
@@ -1047,7 +1050,8 @@
     const hint = $("rooms-source-hint");
     if (!hint) return;
     hint.textContent = v === "tab"
-      ? "Show opens the sender page. Click Share there and pick the tab or window; it goes on the big screen by itself."
+      ? (ROOMS_SAME_PC ? "Show opens the sender page in this browser." : "Show opens the sender page in the default browser on the game's PC.") +
+        " Click Share there and pick the tab or window; it goes on the big screen by itself."
       : v === "video" ? "A YouTube (or similar) link is downloaded and converted first; a file path plays straight away."
         : v.startsWith("spout:") ? "A program on this PC (VTube Studio, VSeeFace, OBS with Spout2...). Picture only, no sound."
           : v.startsWith("ndi:") ? "From OBS (DistroAV) or NDI Tools, with its sound." : "";
@@ -1065,7 +1069,12 @@
       roomsSourceSig = "";   // redraw on the next poll, following what the screen shows then
       const v = $("rooms-source").value || "";
       if (v === "tab") {
-        if (roomsSenderUrl) window.open(roomsSenderUrl, "_blank", "noopener");
+        // The sender page only answers on the game's PC (127.0.0.1). This dashboard open on that PC
+        // opens it right here, in this browser. On a phone or another PC that link would point at
+        // the wrong device, so the game opens it in its own PC's default browser instead (rooms
+        // action "sender", stream-rooms rooms_remote.gd run_command). The tab is then picked there.
+        if (roomsSenderUrl && ROOMS_SAME_PC) window.open(roomsSenderUrl, "_blank", "noopener");
+        else if (roomsSenderUrl) roomsSend("sender", "open", "sender page (opened on the game's PC)");
         else if ($("live-stage-msg")) $("live-stage-msg").textContent = "Stream Rooms hasn't said where its sender page is yet.";
       } else if (v === "video") {
         const link = ($("rooms-video").value || "").trim();

@@ -40,7 +40,9 @@ WebSocket protocol (same socket overlays use, ws://127.0.0.1:3850/ws)
   Core → game: {"type":"stage","data":{action:"curtain", value:"open"|"close"|"reveal"|"toggle"}}
     The Live card's buttons use the same packet with other actions (ROOMS_ACTIONS below):
     pause / focus / clean (on|off|toggle), room (id), view (camera view id), playpause,
-    volume / ambience (0..1), presenter ("<n>:on"|"<n>:off"), remote (take|ask), refresh.
+    volume / ambience (0..1), presenter ("<n>:on"|"<n>:off"), remote (take|ask), refresh,
+    and the Big screen picker's ndi / spout (a name), video (a link or file path), stop,
+    sender ("open": the game opens its sender page in its own browser).
     {"type":"overlay","data":{...}}                             (relayed as game_overlay)
 
 Only a socket that has sent `hello` may use room_state / reaction_result /
@@ -90,6 +92,9 @@ ROOMS_ACTIONS: Dict[str, Callable[[Any], bool]] = {
     "spout": lambda v: isinstance(v, str) and 0 < len(v) <= 200,
     "video": lambda v: isinstance(v, str) and 0 < len(v.strip()) <= 2000,
     "stop": lambda v: True,
+    # "open": the game opens its sender page in its own PC's browser (the picker's "Browser tab"
+    # pressed on a phone or another PC, where the 127.0.0.1 link would open on the wrong device)
+    "sender": lambda v: v == "open",
 }
 ROOMS_KEYS = ("room", "rooms", "paused", "focus", "clean", "curtain", "playing", "views", "screen",
               "sender", "volume", "ambience", "presenters", "costream", "sources")

@@ -1591,6 +1591,14 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-col > .rs-card { margin: 0; width: 100%; box-sizing: border-box; }
 .rs-col > .rs-card[hidden] { display: none; }
 .rs-page-note { margin: 0 0 10px; font-size: .85rem; }
+/* Headed sections on each Stream Rooms page (rooms-setup.js SECTIONS): a heading with a rule under
+   it, an optional note, then the section's own card grid. */
+.rs-section { margin: 0 0 6px; }
+.rs-section[hidden] { display: none; }
+.rs-section-title { margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  font-size: .95rem; font-weight: 700; letter-spacing: .02em; color: var(--text); }
+.rs-section:first-of-type .rs-section-title { margin-top: 4px; }
+.rs-section-note { margin: -2px 0 8px; }
 .rs-page-note a { color: var(--accent); }
 .rs-note { margin: 0 0 6px; font-size: .78rem; line-height: 1.35; }
 .rs-card .rs-row { padding: 8px 0 6px; border-top: 1px solid var(--border); min-width: 0; }

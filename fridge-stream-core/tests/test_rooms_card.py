@@ -80,6 +80,8 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(ROOMS_ACTIONS["video"]("https://www.youtube.com/watch?v=x"))
         self.assertFalse(ROOMS_ACTIONS["video"]("   "))
         self.assertTrue(ROOMS_ACTIONS["stop"](""))
+        self.assertTrue(ROOMS_ACTIONS["sender"]("open"))
+        self.assertFalse(ROOMS_ACTIONS["sender"]("http://example.com"))
 
     def test_sources_are_cleaned(self):
         """The Big screen picker's lists: names only, capped; only the game's local sender page is linked."""

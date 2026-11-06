@@ -27,7 +27,8 @@
  * and Reset on every setting that differs from its default ("changed" marks), a warning mark on a
  * few risky values (WARN), "Add to Live" (pins it to the Live page's Pinned card), and on the first
  * page a Start here checklist.
- * Layout: layout() spreads each page's cards over columns in reading order (see "Card layout").
+ * Layout: each page is split into headed sections (SECTIONS), and layout() spreads each section's
+ * cards over columns in reading order (see "Card layout").
  * What the big screen shows is picked on the Live page's Stream Rooms card (admin.js
  * renderRoomsSources); the Big screen page only links there.
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
@@ -127,6 +128,43 @@
       ["Co-stream video quality", /^together_(screen|avatar)_(height|fps|kbps)$/],
     ],
   };
+
+  // Each page is split into a few headed sections, so it reads as "what this part of the page is
+  // for" instead of one wall of cards (Sen, 2026-11-06: the cards were fine but not well ordered).
+  // A section is [heading, [card titles from CARDS above], optional one-line note]. Order: the
+  // switches and the things you'd change most first, then looks, then set-once / this-PC things.
+  // A card no section names (a new game heading CARDS doesn't know) goes in a last "More from
+  // Stream Rooms" section, so nothing is ever dropped. Keep the titles in step with CARDS.
+  const SECTIONS = {
+    room: [
+      ["In the room", ["Room", "Stage curtain", "Big screen light", "Camera moves"]],
+      ["Sound", ["Sound"]],
+      ["This PC and the game window", ["Graphics and speed", "Game window"], "Only for the PC Stream Rooms runs on."],
+    ],
+    screen: [
+      ["Sources", ["Video files and links", "NDI (from OBS or NDI Tools)", "Spout (programs on the same PC)"]],
+      ["Co-stream", ["Co-stream avatar on the big screen"]],
+    ],
+    chat: [
+      ["Chat in the room", ["Chat from Stream Core", "All chat windows", "Chat box on the picture"]],
+      ["Windows around the big screen", ["Left of the screen", "Right of the screen", "Under the screen", "Above the screen (replies)"],
+        "Each window only shows in rooms that have a place for it."],
+    ],
+    audience: [
+      ["Who sits where", ["Audience", "Seats", "Seating by platform", "Crowd (Lecture Hall tiers, balcony, gallery)"]],
+      ["How the audience looks", ["Speech bubbles show", "Names and glows", "Chatter pictures", "Colours"],
+        "Shapes and colours per group (mods, subs...) are on Audience looks."],
+    ],
+    reactions: [
+      ["Reactions", ["Chat reactions", "Pause to react", "Lower the video when I talk", "Flashing lights"]],
+      ["Chat games", ["Chat games boards"]],
+    ],
+    people: [
+      ["Presenters (the podiums)", ["Who's on set", "Presenter 1", "Presenter 2", "Presenter 3", "Presenter 4"]],
+      ["Co-stream", ["You in a co-stream", "Hosting", "Shared with guests", "Co-stream video quality"]],
+    ],
+  };
+  const OTHER_SECTION = "More from Stream Rooms";
 
   // Labels and help texts for this page, by key (presenter keys once, as presenter_N_...).
   // Only what the game's own wording gets wrong here: in-game tabs and buttons, key letters,
@@ -340,6 +378,32 @@
         g.items.push(e);
       });
       const cardsNow = groups.filter((g) => g.items.length);
+      // put the cards in their SECTIONS (section order, then the order listed there); cards no
+      // section names go in a last OTHER_SECTION in CARDS / game order
+      const secs = (SECTIONS[sub] || []).map(([title, names, note]) => ({
+        title, note: note || "", cards: names.map((n) => cardsNow.find((g) => g.name === n)).filter(Boolean),
+      }));
+      const placed = new Set(secs.flatMap((x) => x.cards));
+      const rest = cardsNow.filter((g) => !placed.has(g));
+      if (rest.length) secs.push({ title: OTHER_SECTION, note: "", cards: rest });
+      // one card per group: title, an optional note, then one row per setting:
+      //   [dot] name ............ control
+      //   help text
+      //   ⚠ warning (WARN)                Reset · Add to Live
+      const card = (g, i) => `<fieldset class="cfg-card rs-card" data-rs-group data-order="${i}"><legend>${esc(g.name)}</legend>` +
+        (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
+        g.items.map((e) => {
+          const w = wording(e);
+          return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
+            <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
+            ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
+            <div class="rs-actions">
+              <span class="rs-warn" hidden title=""></span>
+              <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
+              <button type="button" class="rs-pin link-btn" aria-pressed="false" title="Show this setting on the Live page's Pinned card">Add to Live</button>
+            </div>
+          </div>`;
+        }).join("") + "</fieldset>";
       box.innerHTML =
         (sub === "room" ? '<div class="rs-start" id="rooms-start" hidden></div>' : "") +
         `<div class="rs-bar">
@@ -351,29 +415,14 @@
           <label class="check rs-only"><input type="checkbox" data-rs-changed /> Changed only</label>
           <span class="muted rs-count" data-rs-count></span>
         </div>` +
-        (sub === "screen" ? '<p class="rs-note muted rs-page-note">To change what the big screen shows (a browser tab, NDI, Spout or a video link), use ' +
+        (sub === "screen" ? '<p class="rs-note muted rs-page-note">To pick what the big screen shows (a browser tab, NDI, Spout or a video link), use ' +
           '<a href="#live">the Live page</a> (Stream Rooms card, Big screen). This page holds the set-once settings.</p>' : "") +
-        // the cards start in one column; layout() spreads them over columns in reading order
-        `<div class="rs-grid"><div class="rs-col">` +
-        // one card per group: title, an optional note, then one row per setting:
-        //   [dot] name ............ control
-        //   help text
-        //   ⚠ warning (WARN)                Reset · Add to Live
-        cardsNow.map((g, i) => `<fieldset class="cfg-card rs-card" data-rs-group data-order="${i}"><legend>${esc(g.name)}</legend>` +
-          (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
-          g.items.map((e) => {
-            const w = wording(e);
-            return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
-              <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
-              ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
-              <div class="rs-actions">
-                <span class="rs-warn" hidden title=""></span>
-                <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
-                <button type="button" class="rs-pin link-btn" aria-pressed="false" title="Show this setting on the Live page's Pinned card">Add to Live</button>
-              </div>
-            </div>`;
-          }).join("") + "</fieldset>").join("") +
-        "</div></div>" +
+        // one block per section: a heading, its note, and its own grid; each grid's cards start in
+        // one column and layout() spreads them over columns in reading order
+        secs.map((x) => `<section class="rs-section" data-rs-section>
+          <h3 class="rs-section-title">${esc(x.title)}</h3>` +
+          (x.note ? `<p class="rs-note muted rs-section-note">${esc(x.note)}</p>` : "") +
+          `<div class="rs-grid"><div class="rs-col">${x.cards.map(card).join("")}</div></div></section>`).join("") +
         (entries.length ? "" : '<p class="muted">Nothing here from Stream Rooms yet.</p>');
       box.querySelectorAll(".rs-row").forEach((row) => {
         const e = byKey[row.dataset.key];
@@ -386,8 +435,7 @@
         });
         row.querySelector(".rs-slot").appendChild(ctl);
       });
-      const grid = box.querySelector(".rs-grid");
-      if (grid && resizeWatch) resizeWatch.observe(grid);   // see "Card layout"
+      if (resizeWatch) box.querySelectorAll(".rs-grid").forEach((grid) => resizeWatch.observe(grid));   // see "Card layout"
     });
     applyView();
   }
@@ -446,6 +494,10 @@
       box.querySelectorAll("[data-rs-group]").forEach((fs) => {
         fs.hidden = !fs.querySelector(".rs-row:not([hidden])");
       });
+      // a section with no card left (Basics, a search, Changed only) hides with its heading
+      box.querySelectorAll("[data-rs-section]").forEach((sec) => {
+        sec.hidden = !sec.querySelector(".rs-card:not([hidden])");
+      });
       layout(box);
       const count = box.querySelector("[data-rs-count]");
       if (count) count.textContent = `${shownCount} shown · ${changedCount} changed from default`;
@@ -453,7 +505,8 @@
   }
 
   // ── Card layout ─────────────────────────────────────────────────────────
-  // The cards read in CARDS order, left to right: the first ones go across the top row, and each next
+  // Each section (SECTIONS) has its own grid, laid out on its own. Inside it the cards read in the
+  // order SECTIONS lists them, left to right: the first ones go across the top row, and each next
   // card goes under the column that is shortest so far (ties: the leftmost). So the page reads like
   // text and still has no big empty gaps beside one tall card. CSS columns (the old way) read top to
   // bottom instead, which scattered related cards. Cards are only moved when the plan changes, so a
@@ -461,9 +514,13 @@
   const CARD_MIN_W = 340;   // narrowest column in px (keep in step with .rs-col's look in admin.css)
   const CARD_GAP = 12;      // px between cards (admin.css .rs-grid / .rs-col gap)
 
-  /** Spread one page's cards over as many columns as fit (skipped while the page is hidden). */
+  /** Lay out every section grid on one page (applyView, and the ResizeObserver below). */
   function layout(box) {
-    const grid = box.querySelector(".rs-grid");
+    box.querySelectorAll(".rs-grid").forEach(layoutGrid);
+  }
+
+  /** Spread one section's cards over as many columns as fit (skipped while the page or section is hidden). */
+  function layoutGrid(grid) {
     if (!grid || !grid.clientWidth) return;
     const n = Math.max(1, Math.floor((grid.clientWidth + CARD_GAP) / (CARD_MIN_W + CARD_GAP)));
     let cols = [...grid.querySelectorAll(":scope > .rs-col")];
@@ -501,8 +558,7 @@
       const w = Math.round(en.contentRect.width);
       if (gridWidth.get(en.target) === w) return;
       gridWidth.set(en.target, w);
-      const box = en.target.closest("[id^='rooms-page-']");
-      if (box) layout(box);
+      layoutGrid(en.target);
     });
   }) : null;
 
@@ -525,15 +581,16 @@
     const v = data.values;
     const items = [
       [data.connected, "Stream Rooms is running and connected to Core", ""],
-      [!!scr.ok, "Something on the big screen (" + (scr.text || "nothing yet") + ")", "screen"],
-      [scr.mode !== "capture" || (!!snd.connected && !!snd.sharing), "The sender page shares a tab or window", "screen"],
-      [v.audience_enabled !== false, "Chat sits in the room as the audience", "audience"],
+      // (the big screen is picked on the Live page's Stream Rooms card, so those two link there)
+      [!!scr.ok, "Something on the big screen (" + (scr.text || "nothing yet") + ")", "#live"],
+      [scr.mode !== "capture" || (!!snd.connected && !!snd.sharing), "The sender page shares a tab or window", "#live"],
+      [v.audience_enabled !== false, "Chat sits in the room as the audience", "#rooms/audience"],
     ];
     const todo = items.filter((i) => !i[0]).length;
     box.hidden = todo === 0;
     box.innerHTML = `<h3>Start here <small class="muted">${items.length - todo} of ${items.length} done</small></h3><ul>` +
-      items.map(([ok, text, sub]) => `<li class="${ok ? "rs-ok" : "rs-todo"}">${ok ? "✓" : "○"} ${esc(text)}` +
-        (!ok && sub ? ` <a href="#rooms/${sub}">Go there</a>` : "") + "</li>").join("") + "</ul>";
+      items.map(([ok, text, href]) => `<li class="${ok ? "rs-ok" : "rs-todo"}">${ok ? "✓" : "○"} ${esc(text)}` +
+        (!ok && href ? ` <a href="${href}">Go there</a>` : "") + "</li>").join("") + "</ul>";
   }
 
   async function load() {
