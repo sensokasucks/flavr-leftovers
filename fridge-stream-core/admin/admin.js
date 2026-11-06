@@ -933,7 +933,7 @@
   // Live controls: the Stream Rooms card (work list item 13). GET /api/admin/rooms gives
   // {connected, state}; state is Stream Rooms' rooms_state packet (stream-rooms core/rooms_remote.gd
   // build_state: room, rooms, paused, focus, clean, curtain, views, screen, sender, volume, ambience,
-  // presenters, costream). Buttons with data-rooms POST {action, value} to /api/admin/rooms
+  // presenters, costream, sources). Buttons with data-rooms POST {action, value} to /api/admin/rooms
   // (core/reactions.py ROOMS_ACTIONS). Polled every ROOMS_POLL_MS while the Live page shows.
   // ------------------------------------------------------------------
   const ROOMS_POLL_MS = 2000;
@@ -967,6 +967,7 @@
           : "Sender: " + (snd.label || "tab") + " (" + (snd.fps || 0) + " fps)" + (snd.audio ? "" : ", no sound")));
     }
     $("rooms-lines").innerHTML = lines.join("");
+    renderRoomsSources(st);
     for (const [id, on] of [["rooms-pause", st.paused], ["rooms-focus", st.focus], ["rooms-clean", st.clean]]) {
       if ($(id)) $(id).setAttribute("aria-pressed", on ? "true" : "false");
     }
@@ -998,6 +999,97 @@
     $("rooms-costream").textContent = (co.text || "") + (co.remote ? " · remote: " + co.remote : "");
     $("rooms-remote-take").hidden = co.role !== "host" || !!co.has_remote;
     $("rooms-remote-ask").hidden = co.role !== "guest" || !!co.has_remote;
+  }
+
+  // ── Big screen picker (the card's "Big screen" row) ──
+  // The dropdown's values: "tab" (open the sender page), "ndi:<name>", "spout:<name>", "video"
+  // (the link box shows). The lists come from the game's state "sources" (stream-rooms
+  // core/rooms_remote.gd _sources_line); Show sends ndi / spout / video (core/reactions.py ROOMS_ACTIONS).
+  let roomsSenderUrl = "";
+  let roomsSourceSig = "";
+  let roomsSourceTouched = false;   // picked in the dropdown, Show not pressed yet: don't move it
+  // This dashboard runs in a browser on the same PC as Core (and so, normally, as Stream Rooms):
+  // only then can it open the game's 127.0.0.1 sender page itself.
+  const ROOMS_SAME_PC = ["127.0.0.1", "localhost", "::1", "[::1]"].includes(location.hostname);
+
+  /** Fill the Big screen dropdown when the game's lists or the source showing change (not while it's open). */
+  function renderRoomsSources(st) {
+    const sel = $("rooms-source");
+    if (!sel) return;
+    const src = st.sources || {};
+    const mode = (st.screen || {}).mode || "";
+    roomsSenderUrl = src.sender_url || "";
+    const now = mode === "capture" ? "tab" : mode === "ndi" && src.ndi_on ? "ndi:" + src.ndi_on
+      : mode === "spout" && src.spout_on ? "spout:" + src.spout_on : mode === "file" ? "video" : "";
+    const sig = JSON.stringify([src.ndi, src.ndi_ok, src.spout, src.spout_ok, now]);
+    if (sig === roomsSourceSig || document.activeElement === sel) return;
+    roomsSourceSig = sig;
+    const keep = sel.value;
+    // one group per kind; a kind with nothing to pick says why (add-on missing / nothing found)
+    const group = (label, kind, names, ok, none) =>
+      `<optgroup label="${escapeHtml(label)}">` +
+      (!ok ? `<option disabled>(the ${escapeHtml(label.split(" ")[0])} add-on isn't loaded)</option>`
+        : !(names || []).length ? `<option disabled>(${escapeHtml(none)})</option>`
+          : names.map((n) => `<option value="${escapeHtml(kind + ":" + n)}">${escapeHtml(n)}</option>`).join("")) +
+      "</optgroup>";
+    sel.innerHTML =
+      '<option value="tab">Browser tab or window (sender page)</option>' +
+      '<option value="video">Video link or file</option>' +
+      group("NDI (OBS, NDI Tools)", "ndi", src.ndi, src.ndi_ok !== false, "no NDI sources found") +
+      group("Spout (programs on this PC)", "spout", src.spout, src.spout_ok !== false, "no Spout senders running");
+    // follow what the screen shows now, unless the person has picked something and not pressed Show yet
+    const want = (roomsSourceTouched ? keep : now || keep) || "tab";
+    sel.value = [...sel.options].some((o) => o.value === want && !o.disabled) ? want : "tab";
+    roomsSourceHint();
+  }
+
+  /** The link box and the line under the picker follow the dropdown. */
+  function roomsSourceHint() {
+    const v = ($("rooms-source") || {}).value || "";
+    if ($("rooms-video")) $("rooms-video").hidden = v !== "video";
+    const hint = $("rooms-source-hint");
+    if (!hint) return;
+    hint.textContent = v === "tab"
+      ? (ROOMS_SAME_PC ? "Show opens the sender page in this browser." : "Show opens the sender page in the default browser on the game's PC.") +
+        " Click Share there and pick the tab or window; it goes on the big screen by itself."
+      : v === "video" ? "A YouTube (or similar) link is downloaded and converted first; a file path plays straight away."
+        : v.startsWith("spout:") ? "A program on this PC (VTube Studio, VSeeFace, OBS with Spout2...). Picture only, no sound."
+          : v.startsWith("ndi:") ? "From OBS (DistroAV) or NDI Tools, with its sound." : "";
+  }
+
+  if ($("rooms-source")) {
+    $("rooms-source").addEventListener("change", () => {
+      roomsSourceTouched = true;
+      roomsSourceHint();
+    });
+  }
+  if ($("rooms-source-show")) {
+    $("rooms-source-show").addEventListener("click", () => {
+      roomsSourceTouched = false;
+      roomsSourceSig = "";   // redraw on the next poll, following what the screen shows then
+      const v = $("rooms-source").value || "";
+      if (v === "tab") {
+        // The sender page only answers on the game's PC (127.0.0.1). This dashboard open on that PC
+        // opens it right here, in this browser. On a phone or another PC that link would point at
+        // the wrong device, so the game opens it in its own PC's default browser instead (rooms
+        // action "sender", stream-rooms rooms_remote.gd run_command). The tab is then picked there.
+        if (roomsSenderUrl && ROOMS_SAME_PC) window.open(roomsSenderUrl, "_blank", "noopener");
+        else if (roomsSenderUrl) roomsSend("sender", "open", "sender page (opened on the game's PC)");
+        else if ($("live-stage-msg")) $("live-stage-msg").textContent = "Stream Rooms hasn't said where its sender page is yet.";
+      } else if (v === "video") {
+        const link = ($("rooms-video").value || "").trim();
+        if (link) roomsSend("video", link, "video");
+        else $("rooms-video").focus();
+      } else if (v.includes(":")) {
+        const i = v.indexOf(":");
+        roomsSend(v.slice(0, i), v.slice(i + 1), v.slice(i + 1));
+      }
+    });
+  }
+  if ($("rooms-video")) {
+    $("rooms-video").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") $("rooms-source-show").click();
+    });
   }
 
   /** Send one card button / control to Stream Rooms, then refresh the card. */

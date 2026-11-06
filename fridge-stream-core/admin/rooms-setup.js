@@ -27,12 +27,20 @@
  * and Reset on every setting that differs from its default ("changed" marks), a warning mark on a
  * few risky values (WARN), "Add to Live" (pins it to the Live page's Pinned card), and on the first
  * page a Start here checklist.
+ * Layout: each page is split into headed sections (SECTIONS); inside a section the cards sit in a
+ * grid in reading order, like the Live page. Cards start folded (title and a "N settings · M
+ * changed" line) and open with a click; big cards (WIDE_AT settings or more) take the full width once open
+ * and put their settings in columns. See "Folding cards".
+ * What the big screen shows is picked on the Live page's Stream Rooms card (admin.js
+ * renderRoomsSources); the Big screen page only links there.
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
  */
 (() => {
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";   // same key as admin.js
   const moreKey = "stream_core_rooms_more";      // Basics / More, remembered in this browser
+  const openKey = "stream_core_rooms_open";      // which cards are unfolded ("page:card title"), this browser
+  const WIDE_AT = 9;                             // a card with this many settings (all of them, More included) is full width
   const POLL_MS = 3000;
 
   // [sub-page id, title, the game panel tabs it shows]
@@ -124,6 +132,43 @@
       ["Co-stream video quality", /^together_(screen|avatar)_(height|fps|kbps)$/],
     ],
   };
+
+  // Each page is split into a few headed sections, so it reads as "what this part of the page is
+  // for" instead of one wall of cards (Sen, 2026-11-06: the cards were fine but not well ordered).
+  // A section is [heading, [card titles from CARDS above], optional one-line note]. Order: the
+  // switches and the things you'd change most first, then looks, then set-once / this-PC things.
+  // A card no section names (a new game heading CARDS doesn't know) goes in a last "More from
+  // Stream Rooms" section, so nothing is ever dropped. Keep the titles in step with CARDS.
+  const SECTIONS = {
+    room: [
+      ["In the room", ["Room", "Stage curtain", "Big screen light", "Camera moves"]],
+      ["Sound", ["Sound"]],
+      ["This PC and the game window", ["Graphics and speed", "Game window"], "Only for the PC Stream Rooms runs on."],
+    ],
+    screen: [
+      ["Sources", ["Video files and links", "NDI (from OBS or NDI Tools)", "Spout (programs on the same PC)"]],
+      ["Co-stream", ["Co-stream avatar on the big screen"]],
+    ],
+    chat: [
+      ["Chat in the room", ["Chat from Stream Core", "All chat windows", "Chat box on the picture"]],
+      ["Windows around the big screen", ["Left of the screen", "Right of the screen", "Under the screen", "Above the screen (replies)"],
+        "Each window only shows in rooms that have a place for it."],
+    ],
+    audience: [
+      ["Who sits where", ["Audience", "Seats", "Seating by platform", "Crowd (Lecture Hall tiers, balcony, gallery)"]],
+      ["How the audience looks", ["Speech bubbles show", "Names and glows", "Chatter pictures", "Colours"],
+        "Shapes and colours per group (mods, subs...) are on Audience looks."],
+    ],
+    reactions: [
+      ["Reactions", ["Chat reactions", "Pause to react", "Lower the video when I talk", "Flashing lights"]],
+      ["Chat games", ["Chat games boards"]],
+    ],
+    people: [
+      ["Presenters (the podiums)", ["Who's on set", "Presenter 1", "Presenter 2", "Presenter 3", "Presenter 4"]],
+      ["Co-stream", ["You in a co-stream", "Hosting", "Shared with guests", "Co-stream video quality"]],
+    ],
+  };
+  const OTHER_SECTION = "More from Stream Rooms";
 
   // Labels and help texts for this page, by key (presenter keys once, as presenter_N_...).
   // Only what the game's own wording gets wrong here: in-game tabs and buttons, key letters,
@@ -337,6 +382,40 @@
         g.items.push(e);
       });
       const cardsNow = groups.filter((g) => g.items.length);
+      // put the cards in their SECTIONS (section order, then the order listed there); cards no
+      // section names go in a last OTHER_SECTION in CARDS / game order
+      const secs = (SECTIONS[sub] || []).map(([title, names, note]) => ({
+        title, note: note || "", cards: names.map((n) => cardsNow.find((g) => g.name === n)).filter(Boolean),
+      }));
+      const placed = new Set(secs.flatMap((x) => x.cards));
+      const rest = cardsNow.filter((g) => !placed.has(g));
+      if (rest.length) secs.push({ title: OTHER_SECTION, note: "", cards: rest });
+      // one card per group: title, an optional note, then one row per setting:
+      //   [dot] name ............ control
+      //   help text
+      //   ⚠ warning (WARN)                Reset · Add to Live
+      // folded card: the legend is a button (▸ / ▾ title), the summary line says how many settings
+      // and how many changed (applyView fills it); .rs-body holds the note and the rows
+      const card = (g) => {
+        const id = sub + ":" + g.name;
+        return `<fieldset class="cfg-card rs-card${g.items.length >= WIDE_AT ? " rs-wide" : ""}" data-rs-group data-card-id="${esc(id)}">` +
+        `<legend><button type="button" class="rs-fold" aria-expanded="false" title="Open or fold this card">` +
+        `<span class="rs-chev" aria-hidden="true">▸</span>${esc(g.name)}</button></legend>` +
+        `<p class="rs-sum muted" data-rs-sum></p><div class="rs-body">` +
+        (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
+        g.items.map((e) => {
+          const w = wording(e);
+          return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
+            <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
+            ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
+            <div class="rs-actions">
+              <span class="rs-warn" hidden title=""></span>
+              <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
+              <button type="button" class="rs-pin link-btn" aria-pressed="false" title="Show this setting on the Live page's Pinned card">Add to Live</button>
+            </div>
+          </div>`;
+        }).join("") + "</div></fieldset>";
+      };
       box.innerHTML =
         (sub === "room" ? '<div class="rs-start" id="rooms-start" hidden></div>' : "") +
         `<div class="rs-bar">
@@ -347,27 +426,16 @@
           <label class="rs-filter">Find <input type="search" data-rs-filter placeholder="setting name or help text" /></label>
           <label class="check rs-only"><input type="checkbox" data-rs-changed /> Changed only</label>
           <span class="muted rs-count" data-rs-count></span>
+          <span class="rs-folds"><button type="button" class="link-btn" data-rs-openall="1">Open all</button>
+            <button type="button" class="link-btn" data-rs-openall="0">Fold all</button></span>
         </div>` +
-        `<div class="config-grid rs-grid">` +
-        // one card per group: title, an optional note, then one row per setting:
-        //   [dot] name ............ control
-        //   help text
-        //   ⚠ warning (WARN)                Reset · Add to Live
-        cardsNow.map((g) => `<fieldset class="cfg-card rs-card" data-rs-group><legend>${esc(g.name)}</legend>` +
-          (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
-          g.items.map((e) => {
-            const w = wording(e);
-            return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
-              <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
-              ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
-              <div class="rs-actions">
-                <span class="rs-warn" hidden title=""></span>
-                <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
-                <button type="button" class="rs-pin link-btn" aria-pressed="false" title="Show this setting on the Live page's Pinned card">Add to Live</button>
-              </div>
-            </div>`;
-          }).join("") + "</fieldset>").join("") +
-        "</div>" +
+        (sub === "screen" ? '<p class="rs-note muted rs-page-note">To pick what the big screen shows (a browser tab, NDI, Spout or a video link), use ' +
+          '<a href="#live">the Live page</a> (Stream Rooms card, Big screen). This page holds the set-once settings.</p>' : "") +
+        // one block per section: a heading, its note, and its own grid of cards (reading order)
+        secs.map((x) => `<section class="rs-section" data-rs-section>
+          <h3 class="rs-section-title">${esc(x.title)}</h3>` +
+          (x.note ? `<p class="rs-note muted rs-section-note">${esc(x.note)}</p>` : "") +
+          `<div class="rs-grid">${x.cards.map(card).join("")}</div></section>`).join("") +
         (entries.length ? "" : '<p class="muted">Nothing here from Stream Rooms yet.</p>');
       box.querySelectorAll(".rs-row").forEach((row) => {
         const e = byKey[row.dataset.key];
@@ -435,12 +503,43 @@
         row.hidden = !on;
         if (on) shownCount++;
       });
+      const opened = openCards();
       box.querySelectorAll("[data-rs-group]").forEach((fs) => {
-        fs.hidden = !fs.querySelector(".rs-row:not([hidden])");
+        const rows = [...fs.querySelectorAll(".rs-row")];
+        const vis = rows.filter((r) => !r.hidden);
+        fs.hidden = !vis.length;
+        const nCh = vis.filter((r) => r.classList.contains("rs-changed")).length;
+        fs.querySelector("[data-rs-sum]").textContent =
+          vis.length + (vis.length === 1 ? " setting" : " settings") + (nCh ? " · " + nCh + " changed" : "");
+        // a search or Changed only opens every card it found something in (without remembering it)
+        setOpen(fs, opened.has(fs.dataset.cardId) || words.length > 0 || only);
+      });
+      // a section with no card left (Basics, a search, Changed only) hides with its heading
+      box.querySelectorAll("[data-rs-section]").forEach((sec) => {
+        sec.hidden = !sec.querySelector(".rs-card:not([hidden])");
       });
       const count = box.querySelector("[data-rs-count]");
       if (count) count.textContent = `${shownCount} shown · ${changedCount} changed from default`;
     });
+  }
+
+  // ── Folding cards ───────────────────────────────────────────────────────
+  // Every card starts folded: its title (a button) and "N settings · M changed". A click opens it;
+  // which cards are open is remembered in this browser (openKey), per page and card title. Open all /
+  // Fold all do the whole page. While Find has text or Changed only is ticked, every card with a
+  // match is shown open, so a search never hides its own results.
+  function openCards() {
+    try { return new Set(JSON.parse(localStorage.getItem(openKey) || "[]")); } catch (_) { return new Set(); }
+  }
+  function saveOpen(set) {
+    try { localStorage.setItem(openKey, JSON.stringify([...set])); } catch (_) { /* private window */ }
+  }
+  /** Show one card open or folded (the button's arrow and aria-expanded follow). */
+  function setOpen(fs, on) {
+    fs.classList.toggle("rs-open", on);
+    const b = fs.querySelector(".rs-fold");
+    b.setAttribute("aria-expanded", String(on));
+    b.querySelector(".rs-chev").textContent = on ? "▾" : "▸";
   }
 
   /** New values from the game (it may have changed them itself): controls and marks follow. */
@@ -462,15 +561,16 @@
     const v = data.values;
     const items = [
       [data.connected, "Stream Rooms is running and connected to Core", ""],
-      [!!scr.ok, "Something on the big screen (" + (scr.text || "nothing yet") + ")", "screen"],
-      [scr.mode !== "capture" || (!!snd.connected && !!snd.sharing), "The sender page shares a tab or window", "screen"],
-      [v.audience_enabled !== false, "Chat sits in the room as the audience", "audience"],
+      // (the big screen is picked on the Live page's Stream Rooms card, so those two link there)
+      [!!scr.ok, "Something on the big screen (" + (scr.text || "nothing yet") + ")", "#live"],
+      [scr.mode !== "capture" || (!!snd.connected && !!snd.sharing), "The sender page shares a tab or window", "#live"],
+      [v.audience_enabled !== false, "Chat sits in the room as the audience", "#rooms/audience"],
     ];
     const todo = items.filter((i) => !i[0]).length;
     box.hidden = todo === 0;
     box.innerHTML = `<h3>Start here <small class="muted">${items.length - todo} of ${items.length} done</small></h3><ul>` +
-      items.map(([ok, text, sub]) => `<li class="${ok ? "rs-ok" : "rs-todo"}">${ok ? "✓" : "○"} ${esc(text)}` +
-        (!ok && sub ? ` <a href="#rooms/${sub}">Go there</a>` : "") + "</li>").join("") + "</ul>";
+      items.map(([ok, text, href]) => `<li class="${ok ? "rs-ok" : "rs-todo"}">${ok ? "✓" : "○"} ${esc(text)}` +
+        (!ok && href ? ` <a href="${href}">Go there</a>` : "") + "</li>").join("") + "</ul>";
   }
 
   async function load() {
@@ -517,6 +617,28 @@
     const more = t.closest("[data-rs-more]");
     if (more) {
       try { localStorage.setItem(moreKey, more.dataset.rsMore); } catch (_) { /* private window */ }
+      applyView();
+      return;
+    }
+    const fold = t.closest(".rs-fold");
+    if (fold) {
+      const fs = fold.closest("[data-rs-group]");
+      const set = openCards();
+      if (fs.classList.contains("rs-open")) set.delete(fs.dataset.cardId);
+      else set.add(fs.dataset.cardId);
+      saveOpen(set);
+      setOpen(fs, set.has(fs.dataset.cardId));
+      return;
+    }
+    const all = t.closest("[data-rs-openall]");
+    if (all) {
+      const set = openCards();
+      const page = all.closest("[id^='rooms-page-']");
+      (page ? page.querySelectorAll("[data-rs-group]") : []).forEach((fs) => {
+        if (all.dataset.rsOpenall === "1") set.add(fs.dataset.cardId);
+        else set.delete(fs.dataset.cardId);
+      });
+      saveOpen(set);
       applyView();
       return;
     }

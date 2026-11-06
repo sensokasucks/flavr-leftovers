@@ -375,6 +375,11 @@ button.danger { color: var(--danger); }
 .rooms-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 0; }
 .rooms-row label { display: flex; align-items: center; gap: 8px; }
 .rooms-row select { min-width: 180px; }
+/* Big screen picker (admin.js renderRoomsSources): dropdown, link box (for a video), Show, Stop */
+.rooms-source { align-items: center; gap: 8px; margin-bottom: 4px; }
+.rooms-source select { max-width: 260px; }
+.rooms-source #rooms-video { flex: 1 1 200px; min-width: 0; }
+#rooms-source-hint { margin: 0 0 6px; }
 .live-buttons button { min-height: 44px; padding: 10px 14px; }
 .live-cmd { display: flex; gap: 8px; }
 .live-cmd input { flex: 1; min-width: 0; }
@@ -1577,11 +1582,37 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
      help text                            (.field-help, full width)
      ⚠ warning           Reset  Add to Live   (.rs-actions)
    Every flex child has min-width: 0 so nothing pushes the card wider than its grid column. */
-/* Cards flow down columns (like a pin board) instead of grid rows, so one tall card (a chat window
-   with More on) doesn't leave a big empty gap beside the short ones. */
-.rs-grid { display: block; columns: 320px; column-gap: 12px; }
-.rs-grid > .rs-card { break-inside: avoid; margin: 0 0 12px; width: 100%; box-sizing: border-box; }
+/* Cards sit in a grid in reading order, like the Live page (rooms-setup.js). They start folded
+   (title + summary line); .rs-open shows the body. Open .rs-wide cards (rooms-setup.js WIDE_AT
+   settings or more: chat windows, presenters, graphics) take the whole row and put their settings in columns. */
+.rs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 12px; align-items: start; margin-bottom: 16px; }
+.rs-grid > .rs-card { margin: 0; box-sizing: border-box; }
 .rs-grid > .rs-card[hidden] { display: none; }
+.rs-grid > .rs-card.rs-wide.rs-open { grid-column: 1 / -1; }   /* folded, a big card is as small as the rest */
+.rs-card { padding-top: 6px; padding-bottom: 8px; }
+.rs-card .rs-fold { background: none; border: 0; padding: 2px 4px; min-height: 0; font: inherit; font-weight: 700;
+  color: var(--accent); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.rs-card .rs-fold:hover { text-decoration: underline; }
+.rs-chev { display: inline-block; width: 1em; color: var(--muted); }
+.rs-sum { margin: 0; font-size: .8rem; }
+.rs-card .rs-body { display: none; }
+.rs-card.rs-open .rs-body { display: block; margin-top: 6px; }
+.rs-card.rs-open .rs-sum { display: none; }
+.rs-wide.rs-open .rs-body { columns: 300px; column-gap: 28px; }
+.rs-wide .rs-body > .rs-note { column-span: all; }
+.rs-wide .rs-row { break-inside: avoid; }
+.rs-folds { margin-left: auto; display: inline-flex; gap: 12px; }
+.rs-folds .link-btn { font-size: .85rem; }
+.rs-page-note { margin: 0 0 10px; font-size: .85rem; }
+/* Headed sections on each Stream Rooms page (rooms-setup.js SECTIONS): a heading with a rule under
+   it, an optional note, then the section's own card grid. */
+.rs-section { margin: 0 0 6px; }
+.rs-section[hidden] { display: none; }
+.rs-section-title { margin: 14px 0 8px; padding-bottom: 4px; border-bottom: 1px solid var(--border);
+  font-size: .95rem; font-weight: 700; letter-spacing: .02em; color: var(--text); }
+.rs-section:first-of-type .rs-section-title { margin-top: 4px; }
+.rs-section-note { margin: -2px 0 8px; }
+.rs-page-note a { color: var(--accent); }
 .rs-note { margin: 0 0 6px; font-size: .78rem; line-height: 1.35; }
 .rs-card .rs-row { padding: 8px 0 6px; border-top: 1px solid var(--border); min-width: 0; }
 .rs-card .rs-row:first-of-type { border-top: 0; }
