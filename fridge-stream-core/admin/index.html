@@ -47,7 +47,7 @@
     </div>
 
     <div class="nav-group" data-mode="live" data-heading="On stream">
-      <button class="tab" data-keywords="stream roll alert fire test quick buttons curtain credits events feed redeems errors commands" data-tab="live">Live controls</button>
+      <button class="tab" data-keywords="stream roll alert fire test quick buttons curtain credits events feed redeems errors commands big screen source tab sender ndi spout video" data-tab="live">Live controls</button>
       <button class="tab" data-keywords="paid super chat super sticker jewels gift bits power-up cheer kicks tip donation sub member checklist thank missed money credits list end credits chatters names tick" data-tab="paid" data-set="thanks" data-title="Paid &amp; thank-yous">Paid &amp; thank-yous <span class="nav-badge" id="paid-badge" hidden title="Paid messages and tips not ticked yet"></span></button>
       <button class="tab" data-keywords="poll predict prediction trivia rate rating request queue moments clip heist slots duel hype combo emote launch cheer boo streak claim seat games" data-tab="fun">Chat games</button>
       <button class="tab" data-keywords="messages log export csv search history red flag flagged phrases hide block troll spam moderation ban unflag custom flags" data-tab="chat" data-set="chatflags">Chat &amp; flags</button>
@@ -162,6 +162,18 @@
           <button data-rooms="clean" data-value="toggle" id="rooms-clean" aria-pressed="false" title="Clean feed: hide the chat, boards and messages on the picture">Clean feed</button>
           <button data-rooms="playpause" data-value="" id="rooms-playpause" title="Play or pause the video on the big screen">Play / pause video</button>
         </div>
+        <!-- Big screen picker (admin.js loadRoomsCard fills the list from the game's "sources"):
+             one dropdown of everything that can go on the big screen; Show sends it as rooms
+             action ndi / spout / video, Stop sends "stop". A browser tab is picked on the sender page. -->
+        <h4 class="rooms-sub">Big screen</h4>
+        <div class="rooms-row rooms-source">
+          <label>Show <select id="rooms-source" title="What goes on the big screen: a browser tab, an NDI source, a Spout program or a video link"></select></label>
+          <input type="text" id="rooms-video" placeholder="YouTube link or a video file path" hidden
+            title="A video address (downloaded and converted first) or a video file on the game's PC" />
+          <button type="button" class="primary" id="rooms-source-show" title="Put the picked source on the big screen">Show</button>
+          <button type="button" data-rooms="stop" data-value="" id="rooms-source-stop" title="Stop the video, NDI or Spout source on the big screen (a browser tab stops on the sender page)">Stop</button>
+        </div>
+        <p class="hint" id="rooms-source-hint"></p>
         <h4 class="rooms-sub">Curtain</h4>
         <p class="hint">Closed = your screen, its light and the stream sound are hidden. Mods can also type
           <code>!curtain open|close|reveal</code> (Chat games on).</p>

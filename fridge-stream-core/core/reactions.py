@@ -83,9 +83,17 @@ ROOMS_ACTIONS: Dict[str, Callable[[Any], bool]] = {
     "presenter": lambda v: isinstance(v, str) and bool(re.fullmatch(r"[1-4]:(on|off)", v)),
     "remote": lambda v: v in ("take", "ask"),
     "refresh": lambda v: True,
+    # Big screen picker (admin.js loadRoomsCard): show an NDI source / Spout sender by name, play a
+    # video link or a file path on the game's PC, or stop whatever shows. The names come from the
+    # game's own lists (rooms_state "sources"); the game refuses an empty one.
+    "ndi": lambda v: isinstance(v, str) and 0 < len(v) <= 200,
+    "spout": lambda v: isinstance(v, str) and 0 < len(v) <= 200,
+    "video": lambda v: isinstance(v, str) and 0 < len(v.strip()) <= 2000,
+    "stop": lambda v: True,
 }
 ROOMS_KEYS = ("room", "rooms", "paused", "focus", "clean", "curtain", "playing", "views", "screen",
-              "sender", "volume", "ambience", "presenters", "costream")
+              "sender", "volume", "ambience", "presenters", "costream", "sources")
+ROOMS_SOURCE_NAMES_MAX = 40   # names kept per list in "sources" (stream-rooms MAX_SOURCE_NAMES)
 
 
 def clean_rooms_state(data: Dict[str, Any]) -> Dict[str, Any]:
@@ -96,9 +104,17 @@ def clean_rooms_state(data: Dict[str, Any]) -> Dict[str, Any]:
         if not isinstance(out.get(key), list):
             out[key] = []
         out[key] = out[key][:cap]
-    for key in ("screen", "sender", "costream"):
+    for key in ("screen", "sender", "costream", "sources"):
         if not isinstance(out.get(key), dict):
             out[key] = {}
+    # the Big screen picker's lists: only short strings, at most ROOMS_SOURCE_NAMES_MAX of each
+    src = out["sources"] = dict(out["sources"])
+    for key in ("ndi", "spout"):
+        names = src.get(key) if isinstance(src.get(key), list) else []
+        src[key] = [n for n in names if isinstance(n, str) and 0 < len(n) <= 200][:ROOMS_SOURCE_NAMES_MAX]
+    url = src.get("sender_url")
+    # only the game's own local sender page is linked from the dashboard
+    src["sender_url"] = url if isinstance(url, str) and re.fullmatch(r"http://127\.0\.0\.1:\d{2,5}/", url) else ""
     out["ts"] = time.time()
     return out
 

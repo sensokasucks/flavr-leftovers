@@ -375,6 +375,11 @@ button.danger { color: var(--danger); }
 .rooms-row { display: flex; flex-wrap: wrap; gap: 14px; margin: 10px 0; }
 .rooms-row label { display: flex; align-items: center; gap: 8px; }
 .rooms-row select { min-width: 180px; }
+/* Big screen picker (admin.js renderRoomsSources): dropdown, link box (for a video), Show, Stop */
+.rooms-source { align-items: center; gap: 8px; margin-bottom: 4px; }
+.rooms-source select { max-width: 260px; }
+.rooms-source #rooms-video { flex: 1 1 200px; min-width: 0; }
+#rooms-source-hint { margin: 0 0 6px; }
 .live-buttons button { min-height: 44px; padding: 10px 14px; }
 .live-cmd { display: flex; gap: 8px; }
 .live-cmd input { flex: 1; min-width: 0; }
@@ -1577,11 +1582,16 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
      help text                            (.field-help, full width)
      ⚠ warning           Reset  Add to Live   (.rs-actions)
    Every flex child has min-width: 0 so nothing pushes the card wider than its grid column. */
-/* Cards flow down columns (like a pin board) instead of grid rows, so one tall card (a chat window
-   with More on) doesn't leave a big empty gap beside the short ones. */
-.rs-grid { display: block; columns: 320px; column-gap: 12px; }
-.rs-grid > .rs-card { break-inside: avoid; margin: 0 0 12px; width: 100%; box-sizing: border-box; }
-.rs-grid > .rs-card[hidden] { display: none; }
+/* Cards sit in side-by-side columns (.rs-col); rooms-setup.js layout() puts them in reading order:
+   across the top row first, then each next card under the shortest column. That keeps related cards
+   next to each other and leaves no big empty gap beside one tall card (a chat window with More on).
+   The 340px column minimum and 12px gap are CARD_MIN_W / CARD_GAP in rooms-setup.js. */
+.rs-grid { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 16px; }
+.rs-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
+.rs-col > .rs-card { margin: 0; width: 100%; box-sizing: border-box; }
+.rs-col > .rs-card[hidden] { display: none; }
+.rs-page-note { margin: 0 0 10px; font-size: .85rem; }
+.rs-page-note a { color: var(--accent); }
 .rs-note { margin: 0 0 6px; font-size: .78rem; line-height: 1.35; }
 .rs-card .rs-row { padding: 8px 0 6px; border-top: 1px solid var(--border); min-width: 0; }
 .rs-card .rs-row:first-of-type { border-top: 0; }

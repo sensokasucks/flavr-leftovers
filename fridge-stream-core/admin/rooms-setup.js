@@ -27,6 +27,9 @@
  * and Reset on every setting that differs from its default ("changed" marks), a warning mark on a
  * few risky values (WARN), "Add to Live" (pins it to the Live page's Pinned card), and on the first
  * page a Start here checklist.
+ * Layout: layout() spreads each page's cards over columns in reading order (see "Card layout").
+ * What the big screen shows is picked on the Live page's Stream Rooms card (admin.js
+ * renderRoomsSources); the Big screen page only links there.
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
  */
 (() => {
@@ -348,12 +351,15 @@
           <label class="check rs-only"><input type="checkbox" data-rs-changed /> Changed only</label>
           <span class="muted rs-count" data-rs-count></span>
         </div>` +
-        `<div class="config-grid rs-grid">` +
+        (sub === "screen" ? '<p class="rs-note muted rs-page-note">To change what the big screen shows (a browser tab, NDI, Spout or a video link), use ' +
+          '<a href="#live">the Live page</a> (Stream Rooms card, Big screen). This page holds the set-once settings.</p>' : "") +
+        // the cards start in one column; layout() spreads them over columns in reading order
+        `<div class="rs-grid"><div class="rs-col">` +
         // one card per group: title, an optional note, then one row per setting:
         //   [dot] name ............ control
         //   help text
         //   ⚠ warning (WARN)                Reset · Add to Live
-        cardsNow.map((g) => `<fieldset class="cfg-card rs-card" data-rs-group><legend>${esc(g.name)}</legend>` +
+        cardsNow.map((g, i) => `<fieldset class="cfg-card rs-card" data-rs-group data-order="${i}"><legend>${esc(g.name)}</legend>` +
           (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
           g.items.map((e) => {
             const w = wording(e);
@@ -367,7 +373,7 @@
               </div>
             </div>`;
           }).join("") + "</fieldset>").join("") +
-        "</div>" +
+        "</div></div>" +
         (entries.length ? "" : '<p class="muted">Nothing here from Stream Rooms yet.</p>');
       box.querySelectorAll(".rs-row").forEach((row) => {
         const e = byKey[row.dataset.key];
@@ -380,6 +386,8 @@
         });
         row.querySelector(".rs-slot").appendChild(ctl);
       });
+      const grid = box.querySelector(".rs-grid");
+      if (grid && resizeWatch) resizeWatch.observe(grid);   // see "Card layout"
     });
     applyView();
   }
@@ -438,10 +446,65 @@
       box.querySelectorAll("[data-rs-group]").forEach((fs) => {
         fs.hidden = !fs.querySelector(".rs-row:not([hidden])");
       });
+      layout(box);
       const count = box.querySelector("[data-rs-count]");
       if (count) count.textContent = `${shownCount} shown · ${changedCount} changed from default`;
     });
   }
+
+  // ── Card layout ─────────────────────────────────────────────────────────
+  // The cards read in CARDS order, left to right: the first ones go across the top row, and each next
+  // card goes under the column that is shortest so far (ties: the leftmost). So the page reads like
+  // text and still has no big empty gaps beside one tall card. CSS columns (the old way) read top to
+  // bottom instead, which scattered related cards. Cards are only moved when the plan changes, so a
+  // control being used isn't pulled out from under the mouse on the 3-second refresh.
+  const CARD_MIN_W = 340;   // narrowest column in px (keep in step with .rs-col's look in admin.css)
+  const CARD_GAP = 12;      // px between cards (admin.css .rs-grid / .rs-col gap)
+
+  /** Spread one page's cards over as many columns as fit (skipped while the page is hidden). */
+  function layout(box) {
+    const grid = box.querySelector(".rs-grid");
+    if (!grid || !grid.clientWidth) return;
+    const n = Math.max(1, Math.floor((grid.clientWidth + CARD_GAP) / (CARD_MIN_W + CARD_GAP)));
+    let cols = [...grid.querySelectorAll(":scope > .rs-col")];
+    while (cols.length < n) {
+      const c = document.createElement("div");
+      c.className = "rs-col";
+      grid.appendChild(c);
+      cols.push(c);
+    }
+    const cards = [...grid.querySelectorAll(".rs-card")].sort((a, b) => a.dataset.order - b.dataset.order);
+    const heights = new Array(n).fill(0);
+    const plan = Array.from({ length: n }, () => []);
+    cards.forEach((card) => {
+      if (card.hidden) {
+        plan[0].push(card);   // takes no room; parked in the first column
+        return;
+      }
+      const c = heights.indexOf(Math.min(...heights));
+      plan[c].push(card);
+      heights[c] += card.offsetHeight + CARD_GAP;
+    });
+    plan.forEach((want, i) => {
+      const have = [...cols[i].children];
+      if (have.length !== want.length || have.some((el, k) => el !== want[k])) want.forEach((el) => cols[i].appendChild(el));
+    });
+    // columns past n are empty now: drop them so the rest share the width
+    cols.slice(n).forEach((c) => c.remove());
+  }
+
+  // Lay a page out again when its width changes: the page tab opening (0 -> full width) or the
+  // window being resized. Only width counts; cards growing (More, a filter) go through applyView.
+  const gridWidth = new WeakMap();
+  const resizeWatch = typeof ResizeObserver === "function" ? new ResizeObserver((entries) => {
+    entries.forEach((en) => {
+      const w = Math.round(en.contentRect.width);
+      if (gridWidth.get(en.target) === w) return;
+      gridWidth.set(en.target, w);
+      const box = en.target.closest("[id^='rooms-page-']");
+      if (box) layout(box);
+    });
+  }) : null;
 
   /** New values from the game (it may have changed them itself): controls and marks follow. */
   function refreshValues() {

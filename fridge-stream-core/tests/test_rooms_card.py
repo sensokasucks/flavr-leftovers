@@ -73,6 +73,26 @@ class EngineTests(unittest.TestCase):
         self.assertTrue(ROOMS_ACTIONS["presenter"]("2:on"))
         self.assertFalse(ROOMS_ACTIONS["presenter"]("9:on"))
         self.assertFalse(ROOMS_ACTIONS["room"](""))
+        # Big screen picker: a source by name, a video link, Stop
+        self.assertTrue(ROOMS_ACTIONS["spout"]("VTubeStudioSpout"))
+        self.assertFalse(ROOMS_ACTIONS["spout"](""))
+        self.assertFalse(ROOMS_ACTIONS["ndi"](5))
+        self.assertTrue(ROOMS_ACTIONS["video"]("https://www.youtube.com/watch?v=x"))
+        self.assertFalse(ROOMS_ACTIONS["video"]("   "))
+        self.assertTrue(ROOMS_ACTIONS["stop"](""))
+
+    def test_sources_are_cleaned(self):
+        """The Big screen picker's lists: names only, capped; only the game's local sender page is linked."""
+        st = clean_rooms_state({"sources": {"ndi": ["PC (OBS)", 7, "x" * 300] + ["n"] * 100, "spout": "nope",
+                                            "sender_url": "http://127.0.0.1:8765/"}})
+        self.assertEqual(st["sources"]["ndi"][0], "PC (OBS)")
+        self.assertEqual(len(st["sources"]["ndi"]), 40)
+        self.assertNotIn(7, st["sources"]["ndi"])
+        self.assertEqual(st["sources"]["spout"], [])
+        self.assertEqual(st["sources"]["sender_url"], "http://127.0.0.1:8765/")
+        bad = clean_rooms_state({"sources": {"sender_url": "javascript:alert(1)"}})
+        self.assertEqual(bad["sources"]["sender_url"], "")
+        self.assertEqual(clean_rooms_state({})["sources"]["ndi"], [])
 
     def test_send_stage_carries_any_value(self):
         self.hello()
