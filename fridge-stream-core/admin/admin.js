@@ -559,6 +559,10 @@
       clearInterval(liveTimer);
       liveTimer = 0;
     }
+    // #live/sender (what Stream Rooms opens for its "Open sender page" while linked to Core,
+    // stream-rooms core/rooms_remote.gd CORE_SENDER_PATH): the "Share to the big screen" card.
+    // Checked on every visit, also when Live is already showing.
+    if (tabId === "live" && sub === "sender" && window.RoomsSender) window.RoomsSender.open();
     if (wasActive) return;
     if (tabId === "config") {
       loadConfigForm();
@@ -1080,7 +1084,7 @@
     const hint = $("rooms-source-hint");
     if (!hint) return;
     hint.textContent = v === "tab"
-      ? (ROOMS_SAME_PC ? "Show opens the sender page in this browser." : "Show opens the sender page in the default browser on the game's PC.") +
+      ? (ROOMS_SAME_PC ? "Show opens the sender in the \"Share to the big screen\" card below." : "Show opens the sender in the default browser on the game's PC.") +
         " Click Share there and pick the tab or window; it goes on the big screen by itself."
       : v === "video" ? "A YouTube (or similar) link is downloaded and converted first; a file path plays straight away."
         : v.startsWith("spout:") ? "A program on this PC (VTube Studio, VSeeFace, OBS with Spout2...). Picture only, no sound."
@@ -1100,10 +1104,12 @@
       const v = $("rooms-source").value || "";
       if (v === "tab") {
         // The sender page only answers on the game's PC (127.0.0.1). This dashboard open on that PC
-        // opens it right here, in this browser. On a phone or another PC that link would point at
-        // the wrong device, so the game opens it in its own PC's default browser instead (rooms
-        // action "sender", stream-rooms rooms_remote.gd run_command). The tab is then picked there.
-        if (roomsSenderUrl && ROOMS_SAME_PC) window.open(roomsSenderUrl, "_blank", "noopener");
+        // runs it right here, in the "Share to the big screen" card (admin/rooms-sender.js). On a
+        // phone or another PC that would share from the wrong device, so the game opens a sender
+        // in its own PC's default browser instead (rooms action "sender", stream-rooms
+        // rooms_remote.gd open_sender_page: Core's #live/sender there). The tab is then picked there.
+        if (roomsSenderUrl && ROOMS_SAME_PC && window.RoomsSender) window.RoomsSender.open();
+        else if (roomsSenderUrl && ROOMS_SAME_PC) window.open(roomsSenderUrl, "_blank", "noopener");
         else if (roomsSenderUrl) roomsSend("sender", "open", "sender page (opened on the game's PC)");
         else if ($("live-stage-msg")) $("live-stage-msg").textContent = "Stream Rooms hasn't said where its sender page is yet.";
       } else if (v === "video") {
