@@ -7,18 +7,23 @@
  * every 4 s so dashboard saves apply without a reload.
  *
  * Each row carries Streamlabs', StreamElements' and jChat's class names at once so bought or
- * free chat CSS works unchanged. The markup and selectors are documented in overlay/CHAT.md;
+ * free chat CSS works unchanged. ?template=youtube (Septapus Chat v2.0 / YouTube popout chat CSS)
+ * draws YouTube's own element names instead (yt-live-chat-text-message-renderer ..., see
+ * youtubeRow below), because that CSS selects by tag name. The markup and selectors are
+ * documented in overlay/CHAT.md;
  * tests/test_overlay_compat.py and test_overlay_catalog.py read this file, so keep class names,
  * URL switches and CHAT.md in step.
  */
 (() => {
-  const logEl = document.getElementById("log");
+  // the box rows go into: #log, or YouTube's #items under ?template=youtube (buildYoutubeTree)
+  let logEl = document.getElementById("log");
   const customLink = document.getElementById("chat-custom-css");
 
   // URL options: ?platform=kick | ?platforms=kick,twitch | omit = all
   //   ?badges=0 hides the K / T / Y platform letters, ?skin=classic|plain|custom,
   //   ?hide=12 (seconds, 0 = keep), ?avatars=1, ?sound=0, ?top=1 (newest on top), ?preview=1,
-  //   ?template=streamlabs|streamelements|jchat (a free template's CSS), ?css=<saved stylesheet>
+  //   ?template=streamlabs|streamelements|jchat|youtube (a free template's CSS), ?css=<saved stylesheet>,
+  //   ?timestamps=0 hides the time on ?template=youtube rows
   const params = new URLSearchParams(location.search);
   const platformFilter = new Set();
   // A typo (?platform=twich) used to filter out everything: unknown names are ignored, and
@@ -46,14 +51,24 @@
   // ?template=streamlabs|streamelements|jchat: a free template's CSS is the whole look, so the
   // page starts from "Custom CSS only" and leaves out what those templates never had
   // (the K / T / Y letters, profile pictures) unless the URL turns them back on
+  // youtube: CSS written for YouTube's popout chat in OBS, e.g. made with the Septapus
+  // "Chat v2.0 Style Generator" (chatv2.septapus.com; "chatv2" comes out as "chatv" below)
   const TEMPLATES = { streamlabs: "streamlabs", sl: "streamlabs", streamelements: "streamelements", se: "streamelements",
-                      jchat: "jchat", chatis: "jchat", chatisthis: "jchat" };
+                      jchat: "jchat", chatis: "jchat", chatisthis: "jchat",
+                      youtube: "youtube", yt: "youtube", ytchat: "youtube", youtubechat: "youtube",
+                      septapus: "youtube", chatv: "youtube" };
   const template = TEMPLATES[(params.get("template") || "").trim().toLowerCase().replace(/[^a-z]/g, "")] || "";
   if (template) document.body.classList.add("template", "template-" + template);
   const showPlatformBadge = params.has("badges") ? params.get("badges") !== "0" : !template;
   const skinParam = (params.get("skin") || "").trim().toLowerCase() || (template ? "custom" : "");
   const seIn = (params.get("in") || "fadeInUp").replace(/[^A-Za-z]/g, "") || "fadeInUp";
   if (template === "streamelements") document.documentElement.style.setProperty("--chat-row-in", seIn);
+  const ytMode = template === "youtube";
+  if (ytMode) buildYoutubeTree();
+  // ?timestamps=0: no "3:24 PM" before YouTube-style lines (chat.css body.yt-no-timestamps)
+  if (ytMode && (params.get("timestamps") === "0" || params.get("timestamps") === "false")) {
+    document.body.classList.add("yt-no-timestamps");
+  }
   const cssSlot = (params.get("css") || "").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").slice(0, 40);
   const preview = params.get("preview") === "1" || params.get("preview") === "true";
   const SKINS = ["classic", "plain", "custom"];
@@ -78,7 +93,8 @@
       hide: hide != null && Number.isFinite(hide) ? hide : options.hide_after_sec,
       max: Math.max(1, Number(options.max_messages) || 30),
       top: urlBool("top") ?? !!options.newest_on_top,
-      avatars: urlBool("avatars") ?? (template ? false : !!options.show_avatars),
+      // YouTube chat always has pictures, so ?template=youtube keeps the dashboard's choice
+      avatars: urlBool("avatars") ?? (template && !ytMode ? false : !!options.show_avatars),
       sound: urlBool("sound") ?? true,
     };
   }
@@ -247,6 +263,7 @@
   function appendMessage(data) {
     if (!data || !data.message) return;
     if (!allowedPlatform(data.platform)) return;
+    if (ytMode) return placeRow(youtubeRow(data), data);
 
     const user = data.user || {};
     // a chatter with no name colour gets their platform's colour (Twitch purple, YouTube red, Kick green)
@@ -299,7 +316,13 @@
         `<span class="colon">:</span>` +
       `</span>` +
       `<span class="message text user-message">${inlineReply}${textHtml}</span>`;
+    placeRow(row, data);
+  }
 
+  // Put a finished row on screen (newest at the bottom, or on top with ?top=1 / "newest on
+  // top"), drop the oldest past `max`, start its hide timer and play its sound. Used by
+  // appendMessage for both the normal rows and the YouTube ones.
+  function placeRow(row, data) {
     const eff = effective();
     if (eff.top) logEl.prepend(row);
     else logEl.appendChild(row);
@@ -309,6 +332,158 @@
     if (!eff.top) logEl.scrollTop = logEl.scrollHeight;
     scheduleHide(row);
     playSound(data.is_paid ? "paid" : "message");
+  }
+
+  // ---- ?template=youtube: YouTube's own chat markup -------------------------------------
+  // CSS for YouTube's popout chat (the Septapus Chat v2.0 generator, OBS forum presets) picks
+  // elements by YouTube's tag names and ids: yt-live-chat-text-message-renderer[author-type]
+  // > #author-photo, #content > #timestamp, yt-live-chat-author-chip > #author-name[type],
+  // #author-badges, #message. youtubeRow builds that shape for every Core line (Kick and
+  // Twitch chatters too); chat.css "?template=youtube" gives it YouTube's own layout as a
+  // starting point, which the pasted CSS (all !important) then restyles. overlay/CHAT.md
+  // lists the names; tests/test_overlay_compat.py checks them, so keep the three in step.
+
+  // Swaps #chat-root's contents for YouTube's nesting (the list a pasted "Hide scrollbar"
+  // rule targets is yt-live-chat-item-list-renderer #item-scroller / #items) and points
+  // logEl at #items. Called once at start-up when ?template=youtube.
+  function buildYoutubeTree() {
+    const root = document.getElementById("chat-root");
+    if (!root) return;
+    root.innerHTML =
+      `<yt-live-chat-renderer><div id="contents"><div id="chat"><div id="item-list">` +
+        `<yt-live-chat-item-list-renderer><div id="contents"><div id="item-scroller">` +
+          `<div id="item-offset"><div id="items"></div></div>` +
+        `</div></div></yt-live-chat-item-list-renderer>` +
+      `</div></div></div></yt-live-chat-renderer>`;
+    logEl = root.querySelector("#items");
+  }
+
+  // YouTube's author-type for a chatter: owner (the channel / broadcaster), moderator or member
+  // (YouTube members, Twitch / Kick subs). "" for everyone else. YouTube CSS colours by these.
+  function youtubeAuthorType(user) {
+    const keys = badgeKeys(user);
+    if (keys.includes("broadcaster")) return "owner";
+    if (keys.includes("mod")) return "moderator";
+    if (keys.includes("sub")) return "member";
+    return "";
+  }
+
+  // The badge YouTube shows after a name: Core's uploaded badge picture when there is one,
+  // else YouTube's wrench for moderators. YouTube CSS colours these with `color`, so the
+  // wrench is drawn in currentColor.
+  const YT_WRENCH = `<svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">` +
+    `<path d="M9.64 7.64c.23-.5.36-1.05.36-1.64 0-2.21-1.79-4-4-4-.59 0-1.14.13-1.64.36L6.5 4.5 4.5 6.5 2.36 4.36C2.13 4.86 2 5.41 2 6c0 2.21 1.79 4 4 4 .59 0 1.14-.13 1.64-.36l4.86 4.86 2-2-4.86-4.86z"/></svg>`;
+  function youtubeBadge(type) {
+    if (!type) return "";
+    const slot = { owner: "badge-broadcaster", moderator: "badge-mod", member: "badge-sub" }[type];
+    const pic = mediaMap[slot];
+    let inner = "";
+    if (pic) inner = `<img id="img" src="${escapeHtml(pic)}" alt="${type}" />`;
+    else if (type === "moderator") inner = YT_WRENCH;
+    if (!inner) return "";
+    return `<yt-live-chat-author-badge-renderer type="${type}" aria-label="${type}"><div id="image">${inner}</div></yt-live-chat-author-badge-renderer>`;
+  }
+
+  // "3:24 PM" from Core's timestamp (seconds since 1970), like YouTube's own #timestamp
+  function youtubeTime(ts) {
+    const d = new Date(Number(ts) > 0 ? Number(ts) * 1000 : Date.now());
+    try { return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }); } catch (_) { return ""; }
+  }
+
+  // The amount line of a paid row: "$5.00", "500 bits". YouTube lines arrive as
+  // "[$5.00] text" (adapters/youtube.py), so that prefix is taken off the message instead.
+  function youtubeAmount(data) {
+    const amt = Number(data.paid_amount);
+    if (!Number.isFinite(amt) || amt <= 0) return "";
+    const cur = String(data.paid_currency || "");
+    if (/^[A-Z]{3}$/.test(cur)) {
+      try { return new Intl.NumberFormat(undefined, { style: "currency", currency: cur }).format(amt); } catch (_) {}
+    }
+    return cur ? `${amt} ${cur}` : String(amt);
+  }
+
+  // YouTube's Super Chat colour steps (header / body), by the amount in dollars. Bits and
+  // KICKs count 100 to the dollar. Set as YouTube's own CSS variables on the row so a pasted
+  // `background-color: ... !important` still wins.
+  const YT_PAID_COLORS = [
+    [100, "#d00000", "#e62117"], [50, "#c2185b", "#e91e63"], [20, "#e65100", "#f57c00"],
+    [10, "#ffb300", "#ffca28"], [5, "#00bfa5", "#1de9b6"], [2, "#00b8d4", "#00e5ff"], [0, "#1565c0", "#1e88e5"],
+  ];
+  function youtubePaidColors(data) {
+    let amt = Number(data.paid_amount) || 0;
+    if (/bits|kicks/i.test(String(data.paid_currency || data.paid_kind || ""))) amt /= 100;
+    return YT_PAID_COLORS.find(([min]) => amt >= min) || YT_PAID_COLORS[YT_PAID_COLORS.length - 1];
+  }
+
+  // One Core chat line as YouTube markup: yt-live-chat-paid-message-renderer for paid lines,
+  // yt-live-chat-text-message-renderer for the rest. Carries the same data-* as the normal rows
+  // (platform, id, from, user-id) so user_update / chat_removed / red flags still find it.
+  function youtubeRow(data) {
+    const user = data.user || {};
+    const name = escapeHtml(user.display_name || user.username || "unknown");
+    const login = user.username || user.display_name || "";
+    const type = youtubeAuthorType(user);
+    let textHtml = renderMessageHtml(data.message, data.emotes)
+      // YouTube's emoji pictures are img.emoji; Core's .emote stays for Core's own CSS
+      .replace(/<img class="emote/g, '<img class="emoji emote');
+    const r = data.reply_to;
+    if (r && typeof r === "object" && r.user) {
+      textHtml = `<span class="reply">↩ ${escapeHtml(String(r.user))} </span>` + textHtml;
+    }
+    // the photo: Core's copy first, the platform's link until then; hidden when pictures are off
+    const url = user.avatar_local || user.profile_image_url;
+    const photo = effective().avatars
+      ? `<yt-img-shadow id="author-photo" class="no-transition"><img id="img" class="avatar" alt=""` +
+        (url ? ` src="${escapeHtml(url)}"` : " hidden") + ` /></yt-img-shadow>`
+      : "";
+    const nameHtml = `<span id="author-name" dir="auto"${type ? ` type="${type}" class="${type}"` : ""}>${name}</span>`;
+    const badge = youtubeBadge(type);
+    const badges = `<span id="author-badges"><span id="chat-badges">${badge}</span></span>`;
+
+    let el;
+    if (data.is_paid) {
+      el = document.createElement("yt-live-chat-paid-message-renderer");
+      // a YouTube "[$5.00] " prefix moves to the amount line
+      let amount = youtubeAmount(data);
+      const pre = textHtml.match(/^\[([^\]<]{1,24})\]\s*/);
+      if (pre) {
+        amount = amount || pre[1];
+        textHtml = textHtml.slice(pre[0].length);
+      }
+      const [, head, body] = youtubePaidColors(data);
+      el.style.setProperty("--yt-live-chat-paid-message-primary-color", body);
+      el.style.setProperty("--yt-live-chat-paid-message-secondary-color", head);
+      el.innerHTML =
+        `<div id="card">` +
+          `<div id="header">` + photo +
+            `<div id="header-content"><div id="header-content-primary-column">` +
+              `<div id="author-name-chip"><yt-live-chat-author-chip>${nameHtml}</yt-live-chat-author-chip></div>` +
+              `<div id="purchase-amount-column"><div id="purchase-amount">${escapeHtml(amount)}</div></div>` +
+            `</div></div>` +
+          `</div>` +
+          `<div id="content"><div id="message" dir="auto">${textHtml}</div></div>` +
+        `</div>`;
+    } else {
+      el = document.createElement("yt-live-chat-text-message-renderer");
+      el.innerHTML =
+        photo +
+        `<div id="content">` +
+          `<span id="timestamp">${escapeHtml(youtubeTime(data.timestamp))}</span>` +
+          `<yt-live-chat-author-chip>${nameHtml}${badges}</yt-live-chat-author-chip>` +
+          `<span id="message" dir="auto">${textHtml}</span>` +
+        `</div>`;
+    }
+    if (type) el.setAttribute("author-type", type);
+    // Twitch "Highlight My Message" and the like: YouTube's own highlighted-line attribute
+    if (data.highlight) el.setAttribute("is-highlighted", "");
+    el.classList.add("yt-row");
+    if (data.is_system) el.classList.add("system");
+    if (data.platform) el.dataset.platform = data.platform;
+    if (data.message_id) el.dataset.id = data.message_id;
+    el.dataset.from = login;
+    el.dataset.time = String(Date.now());
+    if (user.id != null) el.dataset.userId = String(user.id);
+    return el;
   }
 
   // chat_history (sent by Core on connect): replaces what is on screen, without sounds.
@@ -367,6 +542,8 @@
         (!mid && name && String(row.dataset.from || "").toLowerCase() === name);
       if (!hit || row.classList.contains("deleted")) return;
       row.classList.add("deleted");
+      // YouTube marks a removed line with an is-deleted attribute (YouTube chat CSS hides those)
+      if (ytMode) row.setAttribute("is-deleted", "");
       setTimeout(() => row.remove(), 450);
     });
   }

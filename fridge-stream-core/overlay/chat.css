@@ -280,7 +280,176 @@ body.template-streamelements .msg.animated {
 /* jChat lays its lines out itself: block rows inside #chat_container */
 body.template-jchat #chat-root { display: block; }
 
+/* ============================================================
+   ?template=youtube: YouTube popout chat markup (chat.js youtubeRow)
+   A starting point that looks like YouTube's dark chat on a see-through background, for CSS
+   made for YouTube's popout chat (Septapus Chat v2.0 generator, OBS forum presets). That CSS
+   marks everything !important, so it wins over all of this. Colours and sizes follow
+   YouTube's own (13px text, 24px pictures, owner chip yellow, moderator blue, member green).
+   :where(body.template-youtube) adds no weight, so a pasted rule with the same selector wins
+   even without !important (a Septapus fade-in animation, for one). The emoji size keeps a
+   little weight on purpose so it beats the Custom CSS skin's .emote height.
+   ============================================================ */
+:where(body.template-youtube) {
+  font-family: Roboto, Arial, sans-serif;
+  font-size: 13px;
+}
+:where(body.template-youtube) #chat-root { display: block; }
+:where(body.template-youtube) yt-live-chat-renderer,
+:where(body.template-youtube) yt-live-chat-renderer > #contents,
+:where(body.template-youtube) #chat,
+:where(body.template-youtube) #item-list,
+:where(body.template-youtube) yt-live-chat-item-list-renderer,
+:where(body.template-youtube) yt-live-chat-item-list-renderer > #contents {
+  display: block;
+  height: 100%;
+  background: transparent;
+}
+/* the list sits at the bottom and grows upwards (top with "newest on top") */
+:where(body.template-youtube) #item-scroller {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+:where(body.template-youtube.newest-top) #item-scroller { justify-content: flex-start; }
+:where(body.template-youtube) #item-offset { position: relative; }
+:where(body.template-youtube) #items {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 8px;
+}
+:where(body.template-youtube) yt-live-chat-text-message-renderer {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  padding: 4px 24px;
+  font-size: 13px;
+  color: #fff;
+  animation: fade-in 0.18s ease-out;
+}
+:where(body.template-youtube) yt-live-chat-text-message-renderer[is-highlighted] { background-color: rgba(255, 255, 255, 0.1); }
+:where(body.template-youtube) #author-photo {
+  display: block;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-right: 16px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+/* the picture fills whatever size the pasted CSS gives #author-photo */
+:where(body.template-youtube) #author-photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: cover;
+}
+:where(body.template-youtube) #author-photo img[hidden] { display: none; }
+:where(body.template-youtube) yt-live-chat-text-message-renderer #content {
+  align-self: center;
+  min-width: 0;
+  flex: 1 1 0;
+  overflow: hidden;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+:where(body.template-youtube) #timestamp {
+  display: inline;
+  margin-right: 8px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+}
+:where(body.template-youtube.yt-no-timestamps) #timestamp { display: none; }
+:where(body.template-youtube) yt-live-chat-author-chip {
+  display: inline-flex;
+  align-items: baseline;
+  margin-right: 8px;
+  vertical-align: baseline;
+}
+:where(body.template-youtube) #author-name {
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.7);
+}
+:where(body.template-youtube) yt-live-chat-text-message-renderer #author-name.owner {
+  background-color: #ffd600;
+  color: rgba(0, 0, 0, 0.87);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+:where(body.template-youtube) #author-name.moderator { color: #5e84f1; }
+:where(body.template-youtube) #author-name.member { color: #2ba640; }
+:where(body.template-youtube) #author-badges,
+:where(body.template-youtube) #chat-badges {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: text-bottom;
+}
+:where(body.template-youtube) yt-live-chat-author-badge-renderer {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  margin-left: 2px;
+  color: rgba(255, 255, 255, 0.7);
+}
+:where(body.template-youtube) yt-live-chat-author-badge-renderer[type="moderator"] { color: #5e84f1; }
+:where(body.template-youtube) yt-live-chat-author-badge-renderer[type="member"] { color: #2ba640; }
+:where(body.template-youtube) yt-live-chat-author-badge-renderer #image,
+:where(body.template-youtube) yt-live-chat-author-badge-renderer img,
+:where(body.template-youtube) yt-live-chat-author-badge-renderer svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+:where(body.template-youtube) #message {
+  color: #fff;
+  line-height: 16px;
+  word-wrap: break-word;
+}
+:where(body.template-youtube) img.emoji.emote {
+  width: 24px;
+  height: 24px;
+  margin: -1px 2px 1px;
+  vertical-align: middle;
+}
+:where(body.template-youtube) img.emoji.emote.sticker,
+:where(body.template-youtube) img.emoji.emote.gift { width: auto; height: 72px; }
+:where(body.template-youtube) .reply { opacity: 0.7; font-size: 0.85em; }
+/* Super Chat card: coloured header (picture, name, amount) over the message */
+:where(body.template-youtube) yt-live-chat-paid-message-renderer {
+  display: block;
+  margin: 4px 24px;
+  border-radius: 4px;
+  font-size: 14px;
+  color: #fff;
+  animation: fade-in 0.18s ease-out;
+}
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #card { border-radius: 4px; overflow: hidden; }
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #header {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  min-height: 20px;
+  font-weight: 500;
+  background-color: var(--yt-live-chat-paid-message-secondary-color, #1565c0);
+}
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #author-photo { width: 40px; height: 40px; }
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #header-content { flex: 1 1 0; min-width: 0; }
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #author-name { color: rgba(255, 255, 255, 0.85); font-size: 14px; }
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #purchase-amount { font-size: 15px; }
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #content {
+  padding: 8px 16px;
+  background-color: var(--yt-live-chat-paid-message-primary-color, #1e88e5);
+  overflow-wrap: anywhere;
+}
+:where(body.template-youtube) yt-live-chat-paid-message-renderer #content:has(#message:empty) { display: none; }
+:where(body.template-youtube) .yt-row.hide,
+:where(body.template-youtube) .yt-row.deleted { animation: fade-out 0.4s ease-in forwards; }
+
 @media (prefers-reduced-motion: reduce) {
-  .msg, .msg.hide, .msg.deleted { animation: none; }
-  .msg.hide, .msg.deleted { opacity: 0; }
+  .msg, .msg.hide, .msg.deleted, .yt-row, .yt-row.hide, .yt-row.deleted { animation: none; }
+  .msg.hide, .msg.deleted, .yt-row.hide, .yt-row.deleted { opacity: 0; }
 }
