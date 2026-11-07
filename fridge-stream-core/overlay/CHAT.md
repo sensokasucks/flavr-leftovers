@@ -26,13 +26,15 @@ The same rules can go into OBS **Custom CSS** on the browser source instead.
 ## Free chat templates (keep your layout)
 
 Free chat templates come in three families, and the overlay carries all three sets of names on
-the same elements, so one row matches whichever template you paste:
+the same elements, so one row matches whichever template you paste. A fourth kind, CSS made for
+YouTube's own popout chat, needs YouTube's markup instead (next section):
 
 | Family | Add to the overlay address | Tested with |
 |--------|----------------------------|-------------|
 | Streamlabs Chat Box CSS | `?template=streamlabs` | the default Streamlabs template, nnja 8-bit, nico scroll, maylogger bubbles |
 | StreamElements chat CSS | `?template=streamelements` | StreamElements' own custom chat, danirabbit cards, m1s1da bubbles, a JRPG dialog box |
 | jChat / Chat Is This CSS | `?template=jchat` | jChat v2 with its size / font / stroke / shadow files, Johnnycyan's ChatIS CSS, an SMS-bubble fork |
+| YouTube popout chat CSS | `?template=youtube` (or `septapus`) | the Septapus Chat v2.0 Style Generator (chatv2.septapus.com), with and without pictures, badges, backgrounds and its fade-in |
 
 `?template=` starts from **Custom CSS only**, leaves out the K / T / Y letters, chatter pictures and
 word badges (templates expect badge pictures), and puts a reply's "Replying to …" inside the
@@ -56,6 +58,57 @@ options (`?fade=`, `?size=`) are Core's `?hide=` and the CSS variables instead.
 **One look per OBS source.** Save a template as its own stylesheet (Chat overlay → Custom CSS →
 Stylesheet → Add stylesheet), then put `?css=<name>` on that source's address. Each source can
 use a different template.
+
+## YouTube chat CSS (Septapus Chat v2.0)
+
+CSS made with the [Septapus Chat v2.0 Style Generator](https://chatv2.septapus.com/), or any other
+CSS for YouTube's popout chat in OBS, picks elements by YouTube's own tag names
+(`yt-live-chat-text-message-renderer`, `#author-name`, `#message` ...). With `?template=youtube`
+the overlay draws every line (Kick and Twitch ones too) in that shape:
+
+1. Make the look on the generator and copy everything from its **CSS** box.
+2. Paste it into **Custom CSS** (Overlays → Chat box → Custom CSS), or save it as its own stylesheet.
+3. Put `?template=youtube` on the chat overlay address (add `&css=<name>` for a saved stylesheet).
+
+Without any pasted CSS the lines look like YouTube's dark chat on a see-through background.
+Who gets which YouTube look: the broadcaster / channel owner is `owner`, mods are `moderator`,
+YouTube members and Twitch / Kick subscribers are `member`. Chatter pictures follow the dashboard
+setting (YouTube CSS shows or hides them itself). Badge pictures uploaded under **Pictures and
+sounds** (badge-mod, badge-sub, badge-broadcaster) become the YouTube badges; without one a
+moderator gets YouTube's wrench. `?timestamps=0` hides the time before each line.
+
+Paid lines (Super Chats, Bits, KICKs) become Super Chat cards in YouTube's colour steps for the
+amount (blue under $2 up to red at $100; 100 Bits or KICKs count as $1). Core has no YouTube
+ticker or membership banners, so CSS for those does nothing. The generator's Google Fonts
+`@import` lines load as long as the PC running OBS is online.
+
+```html
+<yt-live-chat-renderer> … <yt-live-chat-item-list-renderer> … <div id="item-scroller"><div id="item-offset">
+<div id="items">
+  <yt-live-chat-text-message-renderer author-type="moderator" class="yt-row" data-platform="twitch"
+      data-from="login" data-id="…" data-user-id="…">                 <!-- [is-highlighted] on Twitch highlights, [is-deleted] when removed -->
+    <yt-img-shadow id="author-photo"><img id="img" class="avatar" src="…"></yt-img-shadow>
+    <div id="content">
+      <span id="timestamp">3:24 PM</span>
+      <yt-live-chat-author-chip>
+        <span id="author-name" type="moderator" class="moderator">Name</span>
+        <span id="author-badges"><span id="chat-badges">
+          <yt-live-chat-author-badge-renderer type="moderator"><div id="image"><svg>…</svg></div></yt-live-chat-author-badge-renderer>
+        </span></span>
+      </yt-live-chat-author-chip>
+      <span id="message">hello <img class="emoji emote" src="…"></span>
+    </div>
+  </yt-live-chat-text-message-renderer>
+  <yt-live-chat-paid-message-renderer author-type="…">
+    <div id="card"><div id="header"><yt-img-shadow id="author-photo">…</yt-img-shadow>
+      <div id="header-content"><div id="header-content-primary-column">
+        <div id="author-name-chip"><yt-live-chat-author-chip><span id="author-name">Name</span></yt-live-chat-author-chip></div>
+        <div id="purchase-amount-column"><div id="purchase-amount">$5.00</div></div>
+      </div></div></div>
+      <div id="content"><div id="message">thanks!</div></div></div>
+  </yt-live-chat-paid-message-renderer>
+</div></div></div> …
+```
 
 ## Deleted messages
 
@@ -151,7 +204,8 @@ Sounds play inside OBS / XSplit without a click. A normal browser tab needs one 
 | Newest on top | `?top=1` | Flip the direction |
 | Chatter pictures | `?avatars=1` | Show profile pictures (Kick, Twitch with Connect Twitch, YouTube) |
 | Sounds | `?sound=0` | Mute this one browser source |
-| Template | `?template=streamlabs` | `streamlabs`, `streamelements` or `jchat` (see above) |
+| Template | `?template=streamlabs` | `streamlabs`, `streamelements`, `jchat` or `youtube` (see above) |
+| Times (YouTube template) | `?timestamps=0` | Hide the time before each `?template=youtube` line |
 | Saved stylesheet | `?css=twitch` | Use the stylesheet saved as "twitch" instead of the main one |
 
 ## Red-flagged chatters
