@@ -104,7 +104,7 @@
       return i >= 0 ? i : c.id === FEED_ID ? 1e6 : 1000 + all.indexOf(c);
     };
     // Cards are only moved when the order changed: moving a card reloads any frame inside it, and the
-    // "Share to the big screen" card's frame (admin/rooms-sender.js) would stop what it shares. This
+    // "Share to Stream Rooms" card's frame (admin/rooms-sender.js) would stop what it shares. This
     // runs each time Live opens, so without the check every visit to Live would cut the big screen.
     const sorted = all.slice().sort((a, b) => rank(a) - rank(b));
     if (sorted.some((c, i) => c !== all[i])) sorted.forEach((c) => g.appendChild(c));

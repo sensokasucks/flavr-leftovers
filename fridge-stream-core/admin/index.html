@@ -194,6 +194,8 @@
         <div id="rooms-presenters-box" hidden>
           <h4 class="rooms-sub">Presenters on set</h4>
           <div class="live-buttons" id="rooms-presenters"></div>
+          <!-- podiums waiting for a tab or window, each with a Pick button (admin.js loadRoomsCard) -->
+          <p id="rooms-presenters-feed" class="muted" hidden></p>
         </div>
         <div id="rooms-costream-box" hidden>
           <h4 class="rooms-sub">Co-stream</h4>
@@ -298,19 +300,21 @@
         <div id="live-tts-missed" class="tts-missed" hidden></div>
         <p id="live-tts-msg" class="muted" role="status"></p>
       </section>
-      <!-- Share to the big screen (admin/rooms-sender.js): Stream Rooms' sender page run inside this
-           dashboard, in a frame. Hidden until it's opened (the Stream Rooms card's Big screen picker,
-           "Browser tab or window" + Show, or the address #live/sender, which the game opens while it's
-           linked to Core). It sits just above Stream events because it grows when a share starts. -->
+      <!-- Share to Stream Rooms (admin/rooms-sender.js): Stream Rooms' sender page run inside this
+           dashboard, in a frame: the big screen's tab and the podiums' feeds. Hidden until it's opened
+           (the Stream Rooms card's Big screen picker, "Browser tab or window" + Show; a podium's "Pick
+           a tab or window" on Setup > Stream Rooms or "Pick it" on the Stream Rooms card; or the
+           address #live/sender, which the game opens while it's linked to Core). It sits just above Stream events because it grows when a share starts. -->
       <section class="live-card sender-card" id="live-sender-card" data-card="sender" hidden>
         <div class="live-card-head">
-          <h3>Share to the big screen</h3>
+          <h3>Share to Stream Rooms</h3>
           <a href="#" id="sender-own-page" class="live-link" hidden
             title="The game's own sender page in a browser tab of its own (the old way; it takes over from this card)">Game's own page</a>
           <button type="button" id="sender-close" class="link-btn" title="Close the sender (stops what it shares)">Close</button>
         </div>
-        <p class="hint">Click Share and pick the tab or window; it goes on Stream Rooms' big screen. Keep this
-          dashboard tab open while sharing (other dashboard pages are fine).</p>
+        <p class="hint">Click Share and pick the tab or window for the big screen. Podiums set to a tab or
+          window get their own button under Presenter feeds. Keep this dashboard tab open while sharing
+          (other dashboard pages are fine).</p>
         <p id="sender-msg" class="muted" role="status"></p>
         <div id="sender-frame-box"></div>
       </section>
@@ -2309,7 +2313,7 @@
   <!-- folding cards on every page; before rooms-setup.js, which uses window.FoldCards -->
   <script src="/admin/fold-cards.js"></script>
   <script src="/admin/rooms-setup.js"></script>
-  <!-- the "Share to the big screen" card (window.RoomsSender, used by admin.js) -->
+  <!-- the "Share to Stream Rooms" card (window.RoomsSender, used by admin.js) -->
   <script src="/admin/rooms-sender.js"></script>
   <script src="/admin/admin.js"></script>
   <!-- Arrange, Pinned + Scenes cards, help panel, Ctrl+K (needs admin.js and rooms-setup.js first) -->

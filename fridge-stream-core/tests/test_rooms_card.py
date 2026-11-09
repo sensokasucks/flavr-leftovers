@@ -139,7 +139,7 @@ class RouteTests(unittest.TestCase):
 
 
 class SenderPageTests(unittest.TestCase):
-    """The Live page's "Share to the big screen" card (admin/rooms-sender.js): Core reads the game's
+    """The Live page's "Share to Stream Rooms" card (admin/rooms-sender.js): Core reads the game's
     sender page and key server side (GET /api/admin/rooms/sender-page, /sender-key)."""
 
     def setUp(self):

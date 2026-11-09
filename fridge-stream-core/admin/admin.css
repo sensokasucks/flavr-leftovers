@@ -1630,6 +1630,15 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-row .rs-pin[aria-pressed="true"] { color: var(--accent); }
 @media (hover: none) { .rs-row .rs-pin { visibility: visible; } }
 .rs-warn { flex: 1; min-width: 0; color: #f0b44a; font-size: .8rem; }
+/* A Presenter card's feed line under "Shows" (rooms-setup.js renderFeeds): what the podium gets
+   from the sender page, and the button that picks its tab or window (or opens the sender). */
+.rs-feed { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0 0 16px; font-size: .82rem; }
+.rs-feed[hidden] { display: none; }
+.rs-feed-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.rs-feed-live { color: var(--accent); }
+.rs-feed-bad { color: #ff6b6b; }
+.rs-feed-btn { flex: none; padding: 4px 10px; font-size: .82rem; }
+.rs-feed-btn[hidden] { display: none; }
 .rs-warn[hidden] { display: none; }
 .rs-start { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
 .rs-start h3 { margin: 0 0 6px; }

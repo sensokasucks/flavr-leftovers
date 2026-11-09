@@ -1576,8 +1576,8 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(409, "Stream Rooms isn't connected")
         return {"ok": True}
 
-    # ── Share to the big screen (the sender page inside the dashboard) ──
-    # The Live page's "Share to the big screen" card (admin/rooms-sender.js) runs Stream Rooms' sender
+    # ── Share to Stream Rooms (the sender page inside the dashboard) ──
+    # The Live page's "Share to Stream Rooms" card (admin/rooms-sender.js) runs Stream Rooms' sender
     # page inside the dashboard. The game serves that page only to 127.0.0.1 and writes its stream key
     # into it (stream-rooms core/capture_server.gd), and other web pages may not read it (no CORS). So
     # Core reads it server side from the address the game gave in its rooms_state ("sources" ->
