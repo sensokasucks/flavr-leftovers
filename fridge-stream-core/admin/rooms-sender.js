@@ -23,10 +23,14 @@
  * has a link to it too. Only one sender page sends at a time (the newest that connects); the other
  * one then says so and offers "Use this page".
  *
- * Who opens the card (window.RoomsSender.open): admin.js, from the Stream Rooms card's Big screen
- * picker ("Browser tab or window" + Show) when this dashboard runs on the game's PC, and for the
- * address #live/sender (what the game opens while it's linked to Core). The card stays hidden until
- * then, so opening the dashboard never takes the big screen away from a sender page already open.
+ * When the card shows (update, called by admin.js loadRoomsCard on every Stream Rooms poll while
+ * Live shows): whenever Stream Rooms is linked to Core and this dashboard runs on the game's PC. It
+ * then starts the sender by itself, but only while no other sender page is connected (the game's
+ * state says sender.connected), so opening the dashboard never takes the big screen away from a
+ * sender page already open in another tab; the card then offers "Use it here" instead. "Stop the
+ * sender" stops it and it stays stopped until "Start the sender" (or one of the buttons below).
+ * Also opened (window.RoomsSender.open) by the Stream Rooms card's Big screen picker ("Browser tab
+ * or window" + Show) and the address #live/sender (what the game opens while it's linked to Core).
  * Podiums (window.RoomsSender.pickPresenter): the "Pick a tab or window" / "Open the sender"
  * buttons on Setup > Stream Rooms > Presenters & Co-stream (admin/rooms-setup.js) and on the Live
  * page's Stream Rooms card (admin.js) open that presenter's tab picker through the page inside
@@ -54,6 +58,7 @@
   let retryTimer = 0;
   let sizeObs = null;      // keeps the frame as tall as the page inside it
   let pendingPick = 0;     // a podium (1-4) to point at once the page inside has loaded (pickPresenter)
+  let userStopped = false; // "Stop the sender" was pressed: update() doesn't start it again by itself
 
   function token() {
     try { return localStorage.getItem(tokenKey) || ($("token") ? $("token").value.trim() : ""); } catch (_) { return ""; }
@@ -139,11 +144,49 @@
     frame.srcdoc = got.html;
   }
 
-  /** Show the card and start the sender in it (does nothing more if it already runs). */
-  function open() {
+  /** The idle line (sender not running here): why, and the button that starts it. */
+  function idle(elsewhere) {
+    if ($("sender-idle")) $("sender-idle").hidden = false;
+    if ($("sender-idle-text")) {
+      $("sender-idle-text").textContent = elsewhere
+        ? "A sender page is already open somewhere else (another dashboard tab or the game's own page), so this one waits."
+        : "The sender is stopped.";
+    }
+    if ($("sender-start")) $("sender-start").textContent = elsewhere ? "Use it here" : "Start the sender";
+  }
+
+  /**
+   * admin.js loadRoomsCard, every poll while Live shows: r = GET /api/admin/rooms ({connected,
+   * state}). Shows the card while Stream Rooms is linked and this dashboard is on the game's PC, and
+   * starts the sender when nothing else sends (see the file comment). On another device the card
+   * stays hidden: a sender there would share that device's screen (the Big screen picker and the
+   * podium buttons open one on the game's PC instead).
+   */
+  function update(r) {
+    const card = $("live-sender-card");
+    if (!card) return;
+    const linked = !!(r && r.connected && r.state);
+    if (!SAME_PC || (!linked && !frame)) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    if (frame) return;
+    // (after Stop the game may still report this card's own socket for a poll: stopped wins)
+    const elsewhere = !!(r.state.sender && r.state.sender.connected);
+    if (userStopped) idle(false);
+    else if (elsewhere) idle(true);
+    else open({ scroll: false });
+  }
+
+  /** Show the card and start the sender in it (does nothing more if it already runs). opts.scroll:
+   *  false keeps the page where it is (update starting it by itself). */
+  function open(opts) {
     const card = $("live-sender-card");
     if (!card) return;
     card.hidden = false;
+    userStopped = false;
+    if ($("sender-idle")) $("sender-idle").hidden = true;
     if (!frame) {
       frame = document.createElement("iframe");
       frame.className = "sender-frame";
@@ -154,7 +197,7 @@
       say("Loading the sender page...");
       load();
     }
-    card.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (!opts || opts.scroll !== false) card.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }
 
   /** The page inside's window.SenderPage (stream-rooms web/sender.html), or null (not loaded yet, or an older game). */
@@ -207,9 +250,11 @@
     return "Opening the sender on the Live page: click Presenter " + n + "'s button there.";
   }
 
-  /** Close button: remove the frame (stops anything it shared) and hide the card. */
+  /** "Stop the sender": remove the frame (stops anything it shared and every podium feed it sends);
+   *  the card stays, with "Start the sender". */
   function close() {
-    if (sharing() && !confirm("Stop sharing to the big screen and close the sender?")) return;
+    if (sharing() && !confirm("Stop sharing to the big screen and stop the sender?")) return;
+    userStopped = true;
     clearTimeout(retryTimer);
     if (sizeObs) sizeObs.disconnect();
     sizeObs = null;
@@ -217,10 +262,11 @@
     frame = null;
     pendingPick = 0;
     say("");
-    if ($("live-sender-card")) $("live-sender-card").hidden = true;
+    idle(false);
   }
 
   if ($("sender-close")) $("sender-close").addEventListener("click", close);
+  if ($("sender-start")) $("sender-start").addEventListener("click", () => open());
   if ($("sender-own-page")) {
     // the old way: the game's own page in a tab of its own (it takes over from this card)
     $("sender-own-page").addEventListener("click", (ev) => {
@@ -236,5 +282,5 @@
     }
   });
 
-  window.RoomsSender = { open, close, isOpen: () => !!frame, sharing, pickPresenter };
+  window.RoomsSender = { open, close, update, isOpen: () => !!frame, sharing, pickPresenter };
 })();

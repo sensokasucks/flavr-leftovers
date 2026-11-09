@@ -301,20 +301,24 @@
         <p id="live-tts-msg" class="muted" role="status"></p>
       </section>
       <!-- Share to Stream Rooms (admin/rooms-sender.js): Stream Rooms' sender page run inside this
-           dashboard, in a frame: the big screen's tab and the podiums' feeds. Hidden until it's opened
-           (the Stream Rooms card's Big screen picker, "Browser tab or window" + Show; a podium's "Pick
-           a tab or window" on Setup > Stream Rooms or "Pick it" on the Stream Rooms card; or the
-           address #live/sender, which the game opens while it's linked to Core). It sits just above Stream events because it grows when a share starts. -->
+           dashboard, in a frame: the big screen's tab, the webcam, the podiums' feeds and co-stream.
+           Shows while Stream Rooms is linked and this dashboard is on the game's PC, and starts its
+           sender by itself unless another sender page already sends (RoomsSender.update). It sits
+           just above Stream events because it grows when a share starts. -->
       <section class="live-card sender-card" id="live-sender-card" data-card="sender" hidden>
         <div class="live-card-head">
           <h3>Share to Stream Rooms</h3>
           <a href="#" id="sender-own-page" class="live-link" hidden
             title="The game's own sender page in a browser tab of its own (the old way; it takes over from this card)">Game's own page</a>
-          <button type="button" id="sender-close" class="link-btn" title="Close the sender (stops what it shares)">Close</button>
+          <button type="button" id="sender-close" class="link-btn" title="Stop the sender (stops what it shares and the podium feeds)">Stop the sender</button>
         </div>
-        <p class="hint">Click Share and pick the tab or window for the big screen. Podiums set to a tab or
-          window get their own button under Presenter feeds. Keep this dashboard tab open while sharing
-          (other dashboard pages are fine).</p>
+        <p class="hint">The big screen's tab or window, the webcam and the podiums' feeds. Keep this dashboard
+          tab open while sharing (other dashboard pages are fine).</p>
+        <!-- while the sender isn't running here (RoomsSender idle): why, and a button to start it -->
+        <div id="sender-idle" class="sender-idle" hidden>
+          <span id="sender-idle-text" class="muted"></span>
+          <button type="button" id="sender-start" class="primary">Start the sender</button>
+        </div>
         <p id="sender-msg" class="muted" role="status"></p>
         <div id="sender-frame-box"></div>
       </section>

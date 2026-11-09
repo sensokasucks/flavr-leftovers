@@ -989,6 +989,8 @@
       return;   // Core unreachable: the status card already says so
     }
     card.hidden = !r.connected;
+    // the "Share to Stream Rooms" card shows (and starts its sender) from the same answer
+    if (window.RoomsSender) window.RoomsSender.update(r);
     const st = r.state;
     if (!r.connected || !st) return;
     $("live-stage-state").textContent = "curtain " + (st.curtain || "?");
