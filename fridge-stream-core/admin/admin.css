@@ -1503,7 +1503,8 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 }
 
 /* ---- Live controls: Highlighted message card (admin.js "Highlighted message") ---- */
-.hl-card { grid-column: 1 / -1; }
+/* No width of its own: half or full width comes from Arrange (.live-wide, live-extras.js), like
+   every other Live card. (It used to force full width here, so Arrange's Half/Wide did nothing.) */
 .hl-now {
   padding: 8px 10px;
   border-left: 4px solid #a55bff;

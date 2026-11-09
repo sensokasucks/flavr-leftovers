@@ -33,6 +33,9 @@ Dates are when the work landed in this tree.
   - Settings › Points has **Copy sign-in link** for another browser on this PC, such as an OBS dock.
   - The black windows, the installer and the wizard point at these instead of the plain dashboard address, which only shows the token box.
 
+### Fixed
+- **Highlighted message card follows Arrange.** Its **Half** / wide button on the Live page did nothing because the card always forced full width. It now starts half width and can be made full width like any other card.
+
 ## [2026.11.4] — 2026-11-04
 
 ### Fixed
