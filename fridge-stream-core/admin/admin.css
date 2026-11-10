@@ -378,6 +378,9 @@ button.danger { color: var(--danger); }
 .sender-card .live-card-head h3 { margin-right: auto; }
 .sender-card .live-link { margin-left: 0; }
 .sender-card .live-card-head a, .sender-card .live-card-head button { white-space: nowrap; }
+/* "Share to Stream Rooms" while its sender isn't running here (rooms-sender.js idle) */
+.sender-idle { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 6px 0; }
+.sender-idle[hidden] { display: none; }
 .sender-frame { display: block; width: 100%; height: 160px; border: 0; background: transparent; color-scheme: dark; }
 .rooms-row label { display: flex; align-items: center; gap: 8px; }
 .rooms-row select { min-width: 180px; }
@@ -1500,7 +1503,8 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 }
 
 /* ---- Live controls: Highlighted message card (admin.js "Highlighted message") ---- */
-.hl-card { grid-column: 1 / -1; }
+/* No width of its own: half or full width comes from Arrange (.live-wide, live-extras.js), like
+   every other Live card. (It used to force full width here, so Arrange's Half/Wide did nothing.) */
 .hl-now {
   padding: 8px 10px;
   border-left: 4px solid #a55bff;
@@ -1630,6 +1634,15 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-row .rs-pin[aria-pressed="true"] { color: var(--accent); }
 @media (hover: none) { .rs-row .rs-pin { visibility: visible; } }
 .rs-warn { flex: 1; min-width: 0; color: #f0b44a; font-size: .8rem; }
+/* A Presenter card's feed line under "Shows" (rooms-setup.js renderFeeds): what the podium gets
+   from the sender page, and the button that picks its tab or window (or opens the sender). */
+.rs-feed { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0 0 16px; font-size: .82rem; }
+.rs-feed[hidden] { display: none; }
+.rs-feed-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.rs-feed-live { color: var(--accent); }
+.rs-feed-bad { color: #ff6b6b; }
+.rs-feed-btn { flex: none; padding: 4px 10px; font-size: .82rem; }
+.rs-feed-btn[hidden] { display: none; }
 .rs-warn[hidden] { display: none; }
 .rs-start { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
 .rs-start h3 { margin: 0 0 6px; }

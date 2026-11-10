@@ -33,6 +33,10 @@
  * and put their settings in columns. See "Folding cards".
  * What the big screen shows is picked on the Live page's Stream Rooms card (admin.js
  * renderRoomsSources); the Big screen page only links there.
+ * Podium feeds: under each Presenter card's "Shows" setting, a feed line (renderFeeds) says what the
+ * podium gets from the sender page ("Live: <tab>", "No tab or window picked yet"...) and has the
+ * button that picks the tab or window (window.RoomsSender.pickPresenter, admin/rooms-sender.js).
+ * The sender itself runs in the Live page's "Share to Stream Rooms" card.
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
  */
 (() => {
@@ -410,6 +414,8 @@
           return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
             <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
             ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
+            ${/^presenter_\d_source$/.test(e.key) ? `<p class="rs-feed" data-rs-feed hidden><span class="rs-feed-text"></span>
+              <button type="button" class="rs-feed-btn"></button></p>` : ""}
             <div class="rs-actions">
               <span class="rs-warn" hidden title=""></span>
               <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
@@ -539,6 +545,58 @@
     applyView();
   }
 
+  // ── Podium feeds (the line under each Presenter card's "Shows") ───────
+  // Sources that come through the sender page (stream-rooms web/sender.html "Presenter feeds"):
+  // "tab" (a tab or window picked there), "web" (a web page opened and shared from there), "camera"
+  // (started there) and "peer" (a co-stream avatar, received there). The others (silhouette, green,
+  // NDI, Spout) don't need it, so their line stays hidden.
+  const FEED_SOURCES = ["tab", "web", "camera", "peer"];
+
+  /**
+   * Fill every Presenter card's feed line from the game's state (state.presenters[].feed: that
+   * podium's row on the sender page, {active, label, error}; state.sender.connected: a sender page
+   * is open). The button's data-pick says what it does: "1" picks a tab or window, "0" opens the
+   * sender. Called by load() every POLL_MS.
+   */
+  function renderFeeds() {
+    const st = state || {};
+    const open = !!(st.sender && st.sender.connected);
+    document.querySelectorAll("#tab-rooms [data-rs-feed]").forEach((line) => {
+      const key = line.closest(".rs-row").dataset.key;
+      const n = Number(/^presenter_(\d)_/.exec(key)[1]);
+      const src = String(data.values[key] || "");
+      const p = (st.presenters || []).find((x) => x && x.n === n) || {};
+      const feed = p.feed || {};
+      const text = line.querySelector(".rs-feed-text");
+      const btn = line.querySelector(".rs-feed-btn");
+      line.hidden = !FEED_SOURCES.includes(src);
+      if (line.hidden) return;
+      let say = "";
+      let button = "";
+      let pick = false;
+      let bad = false;
+      if (feed.active) say = "Live: " + (feed.label || "on");
+      else if (feed.error) { say = "Sender: " + feed.error; bad = true; }
+      if (src === "tab") {
+        pick = true;
+        button = feed.active ? "Pick another" : "Pick a tab or window";
+        if (!say) say = open ? "No tab or window picked yet." : "No tab or window yet (the sender isn't open).";
+      } else if (src === "web") {
+        if (!feed.active) button = "Open the sender";
+        if (!say) say = "The web page is opened and shared from the sender (Presenter " + n + "'s row there).";
+      } else if (!feed.active && !open) {
+        // camera / someone's avatar: they start by themselves once a sender page is open
+        button = "Open the sender";
+        say = (src === "camera" ? "The camera" : "The avatar") + " comes through the sender, which isn't open.";
+      } else if (!say) say = src === "camera" ? "Starting the camera in the sender..." : "Waiting for the avatar in the sender...";
+      text.textContent = say;
+      text.className = "rs-feed-text " + (feed.active ? "rs-feed-live" : bad ? "rs-feed-bad" : "muted");
+      btn.hidden = !button;
+      btn.textContent = button;
+      btn.dataset.pick = pick ? "1" : "0";
+    });
+  }
+
   /** Start here: the few things that make Stream Rooms work, ticked from the game's state. */
   function renderStart() {
     const box = $("rooms-start");
@@ -577,6 +635,7 @@
       build();
       refreshValues();
       renderStart();
+      renderFeeds();
     } catch (e) {
       say(String(e.message || e), true);
     }
@@ -611,6 +670,14 @@
     const row = t.closest(".rs-row");
     if (!row) return;
     const key = row.dataset.key;
+    const feedBtn = t.closest(".rs-feed-btn");
+    if (feedBtn) {
+      // a podium's "Pick a tab or window" / "Open the sender" (renderFeeds): straight from the click,
+      // so the browser lets the sender open its share box
+      const n = Number(/^presenter_(\d)_/.exec(key)[1]);
+      if (window.RoomsSender) say(window.RoomsSender.pickPresenter(n, feedBtn.dataset.pick === "1"), false);
+      return;
+    }
     if (t.closest(".rs-reset")) {
       const e = byKey[key];
       call("/api/admin/rooms/set", { method: "POST", body: JSON.stringify({ key, value: data.defaults[key] }) })
