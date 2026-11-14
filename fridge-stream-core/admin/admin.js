@@ -575,6 +575,8 @@
       loadFun();
       // the "Read aloud" card (admin/tts.js), shown only while text-to-speech is on
       if (window.TtsPage) window.TtsPage.openLive();
+      // the "Video requests" card (admin/discord.js), shown only while video requests are on
+      if (window.DiscordPage) window.DiscordPage.openLive();
       // Arrange, the Pinned and Scenes cards (admin/live-extras.js)
       if (window.LiveExtras) window.LiveExtras.openLive();
     }
@@ -595,6 +597,8 @@
     if (tabId === "rooms" && window.RoomsSetup) window.RoomsSetup.open(pick);
     // Read aloud (TTS) lives in its own file (admin/tts.js, loaded before this one)
     if (tabId === "tts" && window.TtsPage) window.TtsPage.open();
+    // Discord & video requests lives in its own file (admin/discord.js, loaded before this one)
+    if (tabId === "discord" && window.DiscordPage) window.DiscordPage.open();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "chat") {

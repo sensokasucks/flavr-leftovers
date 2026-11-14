@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Video requests player</title>
+  <!--
+    Video requests player: /overlay/video-player.html. Plays the approved video requests one after
+    another straight from YouTube (YouTube's own embedded player: no download, no converting).
+    Core decides what plays (core/video_requests.py); this page asks GET /api/video-requests/player
+    every second and reports the end (POST .../player/ended) or a refusal (.../player/error).
+
+    Two ways to use it:
+      - OBS / XSplit: a Browser Source, 1920x1080. Transparent between videos.
+      - Stream Rooms: open it in a normal browser tab (?bg=black) and share that tab with the
+        sender page; it then plays on the big screen. A browser tab needs one click before it may
+        play sound (the "Click to start" button); OBS doesn't.
+    URL options: ?bg=black (black instead of transparent), ?title=0 (no title card).
+    No overlay-hint.js here: this page is also shared as a browser tab onto Stream Rooms' big screen,
+    where the corner hint line would show on stream.
+    Setup → Discord & video requests → Player has both links (admin/discord.js).
+  -->
+  <link rel="stylesheet" href="video-player.css" />
+</head>
+<body>
+  <div id="vp-frame" class="vp-frame"><div id="vp-player"></div></div>
+  <div id="vp-title" class="vp-title" hidden><span id="vp-title-text"></span><span id="vp-title-by" class="vp-by"></span></div>
+  <button type="button" id="vp-start" class="vp-start" hidden>Click to start the video player<br><small>(browsers need one click before they play sound)</small></button>
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="video-player.js"></script>
+</body>
+</html>

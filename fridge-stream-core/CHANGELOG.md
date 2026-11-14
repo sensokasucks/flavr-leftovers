@@ -9,6 +9,9 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Discord bot and video requests** (Setup → Chat & viewers → **Discord & video requests**, off by default). Make your own free bot in Discord's developer portal, paste its token (it stays in Core) and invite it to your server. Viewers post YouTube links in the channel you pick; you approve or deny each one on the new Live card **Video requests** or with buttons in a mods' channel (only people with an approver role, Manage Server or Administrator can press them). Rules: longest video, waiting requests per person, no repeats, a wait after a denial, blocked words; live streams, age-restricted videos and videos that can't be played outside YouTube are always refused. Approved videos play one after another on the **video player page** (`/overlay/video-player.html`: an OBS Browser Source, or a browser tab you share onto Stream Rooms' big screen with **Share to Stream Rooms**), with a title card and auto-play; or pick **Download into Stream Rooms** to have the game download each one (slower, but co-stream guests see it in sync). The Live card has Play next, Skip, Pause, Play now, reorder, remove, deny with a reason, add your own link, and a history. Code: `core/discord_bot.py`, `core/video_requests.py`, `api/video_request_routes.py`, `admin/discord.js`; tests `tests/test_video_requests.py`.
+
 ## [2026.11.10] — 2026-11-10
 
 ### Added
