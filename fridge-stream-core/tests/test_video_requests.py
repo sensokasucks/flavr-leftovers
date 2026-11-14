@@ -106,7 +106,9 @@ class QueueTest(unittest.TestCase, Setup):
         self.assertIn("already have", run(q.submit("https://youtu.be/ggggggggggg", "ann", by_id="1"))["reason"])
         self.assertIn("already in the queue", run(q.submit("https://youtu.be/aaaaaaaaaaa", "zed", by_id="9"))["reason"])
         # the streamer's own Add skips the per-person rules
-        self.assertTrue(run(q.submit("https://youtu.be/ggggggggggg", "Streamer", source="dashboard", bypass_rules=True))["ok"])
+        mine = run(q.submit("https://youtu.be/ggggggggggg", "Streamer", source="dashboard", bypass_rules=True))
+        self.assertTrue(mine["ok"])
+        self.assertEqual(mine["item"]["status"], "approved")  # the streamer's own Add skips the yes
 
     def test_order_play_and_auto_play(self):
         q = self.make(vr={"auto_play": True})
@@ -364,11 +366,12 @@ class RoutesTest(unittest.TestCase, Setup):
         self.assertEqual(saved["discord"]["guild_id"], "9")
         self.assertEqual(saved["video_requests"]["max_seconds"], 300)
         self.assertEqual(saved["video_requests"]["play_on"], "player")
-        # add (dashboard), approve, play, the player sees it and reports the end
+        # add (dashboard), play, the player sees it and reports the end
         r = c.post("/api/admin/video-requests/add", headers=head, json={"url": f"https://youtu.be/{VID}"})
         self.assertEqual(r.status_code, 200, r.text)
-        rid = r.json()["queue"]["pending"][0]["id"]
-        self.assertEqual(c.post("/api/admin/video-requests/approve", headers=head, json={"id": rid}).status_code, 200)
+        # the streamer's own Add lands approved ("Up next"), so a second yes is refused
+        rid = r.json()["queue"]["approved"][0]["id"]
+        self.assertEqual(c.post("/api/admin/video-requests/approve", headers=head, json={"id": rid}).status_code, 409)
         self.assertEqual(c.post("/api/admin/video-requests/play", headers=head, json={}).status_code, 200)
         p = c.get("/api/video-requests/player").json()
         self.assertEqual(p["current"]["video_id"], VID)

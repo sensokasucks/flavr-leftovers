@@ -375,6 +375,9 @@ class VideoRequestQueue:
                 "length": length, "by": (by or "someone")[:60], "by_id": str(by_id)[:40], "person": person,
                 "source": source, "status": "pending", "reason": "", "created": time.time(),
                 "decided": None, "decided_by": "", "finished": None, "ref": dict(ref or {})}
+        if bypass_rules:
+            # the streamer's own Add needs no yes from anyone: it goes straight to "Up next"
+            item.update(status="approved", decided=item["created"], decided_by=(by or "Streamer")[:60])
         self.items.append(item)
         self._note(f"Video request from {item['by']}: {item['title']} ({fmt_length(length)})", "command")
         self._changed(item, "added")

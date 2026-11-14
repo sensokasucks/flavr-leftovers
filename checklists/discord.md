@@ -12,7 +12,7 @@ Viewers post YouTube links in one Discord channel; the streamer or approvers say
 - [ ] Gateway intents GUILDS | GUILD_MESSAGES | MESSAGE_CONTENT (33281). Close codes 4004 / 4013 / 4014 stop reconnecting and show a plain-words reason; others reconnect with a back-off.
 - [ ] Every message the bot posts sends `allowed_mentions: {parse: []}` (a video title can't ping @everyone).
 - [ ] Only messages in `request_channel_id` count; bots ignored; `requester_role_ids` (empty = everyone). Buttons (`vr:<act>:<id>`) obey `_may_decide`: Administrator, Manage Server, or an `approver_role_ids` role. Anyone else gets a private (flags 64) "not allowed" reply.
-- [ ] Nothing plays without a yes. The streamer's own Add (dashboard) skips the per-person, repeat, cooldown, length and blocked-word rules, never the YouTube checks (live, age-restricted, not embeddable in player mode).
+- [ ] Nothing plays without a yes. The streamer's own Add (dashboard) lands approved and skips the per-person, repeat, cooldown, length and blocked-word rules, never the YouTube checks (live, age-restricted, not embeddable in player mode).
 - [ ] YouTube look-up needs no API key (oEmbed + watch page). A failed look-up refuses the link with a reason; it never crashes the bot.
 - [ ] Queue saved in `data/video_requests.json` (git-ignored with `data/`); a "playing" item at start goes back to approved. History trimmed.
 - [ ] Player routes (`/api/video-requests/player*`) need no token (overlay on this PC, Core listens on 127.0.0.1). Admin routes need X-Admin-Token.

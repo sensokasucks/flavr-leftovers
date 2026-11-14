@@ -330,7 +330,7 @@
       const url = $("live-vr-url").value.trim();
       if (!url) return $("live-vr-url").focus();
       say("live-vr-msg", "Checking the video…");
-      await act("/add", { url }, "Added. Approve it below to queue it.");
+      await act("/add", { url }, "Added to Up next.");
       $("live-vr-url").value = "";
     });
     $("live-vr-card").addEventListener("click", (ev) => {
