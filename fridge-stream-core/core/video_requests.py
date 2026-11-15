@@ -22,6 +22,11 @@ Where approved videos play (video_requests.play_on in config.yaml):
             prepared ahead with the "video_prep" action, and the end is seen in the game's
             rooms_state "video" line (ended_n goes up; stream-rooms core/rooms_remote.gd).
 
+Auto-play (video_requests.auto_play): when a video ends or fails, the next approved one starts by
+itself, after a pause of gap_seconds (_move_on / _gap_wait). The Live card shows the countdown
+with Start now and Hold; the player page and the queue overlay (/overlay/video-queue.html) show
+"Up next" from player_state(). The first video of a run is still started by hand (Play next).
+
 The queue is saved to data/video_requests.json after every change, so it survives a restart.
 Played / denied / failed requests are kept (last HISTORY_MAX) for the "already played" rule and
 the Live card's History list.
@@ -54,6 +59,9 @@ DEFAULTS: Dict[str, Any] = {
     "enabled": False,          # requests taken at all (the Discord channel and the Live card's Add)
     "play_on": "player",       # "player" (video player page) or "rooms" (Stream Rooms downloads it)
     "auto_play": False,        # start the next approved video when one ends
+    "gap_seconds": 10,         # auto-play: pause between two videos, in seconds (0 = start at once)
+    "show_next": True,         # the player page shows an "Up next" card (during the pause, and near a video's end)
+    "next_seconds": 15,        # ... for the last this many seconds of a video (0 = only during the pause)
     "max_seconds": 600,        # longest video taken, in seconds (0 = no limit)
     "per_person": 1,           # requests one person may have waiting (0 = no limit)
     "repeats": "session",      # "off" (allowed), "session" (not twice since Core started), "history"
@@ -95,10 +103,12 @@ def read_settings(config: Dict[str, Any]) -> Dict[str, Any]:
     out["bot_replies"] = bool(out["bot_replies"])
     out["now_playing_post"] = bool(out["now_playing_post"])
     out["show_title"] = bool(out["show_title"])
+    out["show_next"] = bool(out["show_next"])
     out["play_on"] = out["play_on"] if out["play_on"] in PLAY_ON else "player"
     out["repeats"] = out["repeats"] if out["repeats"] in REPEATS else "session"
     for key, lo, hi in (("max_seconds", 0, 6 * 3600), ("per_person", 0, 50), ("deny_cooldown_sec", 0, 86400),
-                        ("player_volume", 0, 100), ("title_seconds", 0, 60)):
+                        ("player_volume", 0, 100), ("title_seconds", 0, 60),
+                        ("gap_seconds", 0, 600), ("next_seconds", 0, 120)):
         try:
             out[key] = max(lo, min(hi, int(out[key])))
         except (TypeError, ValueError):
@@ -232,6 +242,11 @@ class VideoRequestQueue:
         self._rooms_ended_n: Optional[int] = None  # last rooms_state video.ended_n seen
         self._prepped: str = ""                    # the link last sent to Stream Rooms with video_prep
         self.player_paused = False                 # the Live card's Pause (player page only)
+        # The pause between two videos (auto-play with gap_seconds): the moment the next one
+        # starts, how long the whole pause is, and the task that waits for it (see _move_on).
+        self._gap_until = 0.0
+        self._gap_total = 0
+        self._gap_task: Optional["asyncio.Task[None]"] = None
         self._load()
 
     # ── settings / persistence ──────────────────────────────────────────
@@ -307,19 +322,39 @@ class VideoRequestQueue:
         video = rooms.get("video") if isinstance(rooms.get("video"), dict) else {}
         return {"settings": self.settings, "playing": self.playing(), "pending": self.waiting("pending"),
                 "approved": self.waiting("approved"), "history": self.history(),
-                "player_paused": self.player_paused, "rooms_connected": bool(rooms),
+                "player_paused": self.player_paused, "gap": self.gap(), "rooms_connected": bool(rooms),
                 "rooms_job": {"state": str(video.get("job") or ""), "text": str(video.get("job_text") or "")},
                 "deny_reasons": DENY_REASONS}
 
+    def gap(self) -> Optional[Dict[str, Any]]:
+        """The pause between two videos running now: {"left": seconds until the next video
+        starts, "total": the whole pause}, or None when none runs."""
+        if self._gap_until <= 0.0:
+            return None
+        return {"left": max(0, int(round(self._gap_until - time.time()))), "total": self._gap_total}
+
+    @staticmethod
+    def _brief(item: Dict[str, Any]) -> Dict[str, Any]:
+        """The few fields of a request an overlay page may show."""
+        return {"id": item["id"], "video_id": item["video_id"], "title": item.get("title", ""), "by": item.get("by", ""),
+                "channel": item.get("channel", ""), "length": item.get("length"), "thumb": item.get("thumb", "")}
+
     def player_state(self) -> Dict[str, Any]:
-        """What the player page needs (GET /api/video-requests/player). seq changes whenever it
-        must (re)load: a new video, a skip, Play now."""
+        """What the overlay pages need (GET /api/video-requests/player): the player page
+        (overlay/video-player.js) and the queue overlay (overlay/video-queue.js). seq changes
+        whenever the player must (re)load: a new video, a skip, Play now.
+        "current" is the video the player page should play (None with play_on "rooms": the game
+        plays it); "now" is the video playing wherever it plays; "up_next" the approved ones in
+        play order (at most 5); "gap" the pause between videos running now (see gap())."""
         s = self.settings
-        cur = self.playing() if s["play_on"] == "player" else None
+        now = self.playing()
+        cur = now if s["play_on"] == "player" else None
         return {"seq": self._player_seq, "paused": self.player_paused, "volume": s["player_volume"],
                 "show_title": s["show_title"], "title_seconds": s["title_seconds"],
-                "current": None if cur is None else {"id": cur["id"], "video_id": cur["video_id"], "title": cur.get("title", ""),
-                                                      "by": cur.get("by", ""), "channel": cur.get("channel", "")}}
+                "show_next": s["show_next"], "next_seconds": s["next_seconds"], "auto_play": s["auto_play"],
+                "gap": self.gap(), "now": None if now is None else self._brief(now),
+                "up_next": [self._brief(i) for i in self.waiting("approved")[:5]],
+                "current": None if cur is None else self._brief(cur)}
 
     # ── submitting ──────────────────────────────────────────────────────
     def _person_key(self, source: str, by_id: str, by: str) -> str:
@@ -452,6 +487,7 @@ class VideoRequestQueue:
             if not approved:
                 return {"ok": False, "reason": "No approved videos waiting."}
             item = approved[0]
+        self._end_gap()
         cur = self.playing()
         if cur is not None:
             self._finish(cur, "skipped")
@@ -500,8 +536,7 @@ class VideoRequestQueue:
         self._player_seq += 1
         if self.settings["play_on"] == "rooms" and self._send_stage is not None:
             await self._send_stage("stop", True)
-        if self.settings["auto_play"] and self.waiting("approved"):
-            await self.play()
+        await self._move_on(wait=False)      # Skip means "next one, please": no pause
         return {"ok": True}
 
     async def ended(self, rid: Optional[int] = None) -> None:
@@ -512,8 +547,7 @@ class VideoRequestQueue:
             return
         self._finish(cur, "played")
         self._player_seq += 1
-        if self.settings["auto_play"] and self.waiting("approved"):
-            await self.play()
+        await self._move_on()
 
     async def failed(self, rid: int, reason: str) -> None:
         """The player page couldn't play it (YouTube error: removed, not embeddable ...)."""
@@ -522,8 +556,56 @@ class VideoRequestQueue:
             return
         self._finish(cur, "failed", reason)
         self._player_seq += 1
-        if self.settings["auto_play"] and self.waiting("approved"):
+        await self._move_on()
+
+    # ── auto-play and the pause between videos ──────────────────────────
+    async def _move_on(self, wait: bool = True) -> None:
+        """A video just finished (ended, failed or skipped). With auto-play on and an approved
+        video waiting, start it: at once, or after the pause (gap_seconds) when wait is true.
+        The pause is a task that sleeps and then calls play(); play(), hold() and skip() end it."""
+        s = self.settings
+        if not s["auto_play"] or not self.waiting("approved"):
+            return
+        if not wait or s["gap_seconds"] <= 0:
             await self.play()
+            return
+        self._end_gap()
+        self._gap_total = s["gap_seconds"]
+        self._gap_until = time.time() + s["gap_seconds"]
+        self._gap_task = asyncio.ensure_future(self._gap_wait(self._gap_until))
+
+    async def _gap_wait(self, until: float) -> None:
+        """Sleeps through the pause, then plays the next approved video. `until` is the pause it
+        belongs to: when another pause (or none) runs by the time it wakes, it does nothing."""
+        try:
+            await asyncio.sleep(max(0.0, until - time.time()))
+        except asyncio.CancelledError:
+            return
+        if self._gap_until != until:
+            return
+        self._gap_until = 0.0
+        self._gap_task = None
+        if self.playing() is None and self.waiting("approved"):
+            try:
+                await self.play()
+            except Exception:  # noqa: BLE001 - a failed start must not lose the task's error silently
+                log.exception("starting the next video after the pause failed")
+
+    def _end_gap(self) -> None:
+        """Stop the pause between videos, if one runs (the next video then doesn't start by itself)."""
+        self._gap_until = 0.0
+        task, self._gap_task = self._gap_task, None
+        if task is not None and not task.done() and task is not asyncio.current_task():
+            task.cancel()
+
+    def hold(self) -> Dict[str, Any]:
+        """The Live card's Hold: stop the countdown to the next video. Auto-play stays on; the
+        queue waits until Play next (or Play now) is pressed."""
+        if self._gap_until <= 0.0:
+            return {"ok": False, "reason": "No countdown is running."}
+        self._end_gap()
+        self._player_seq += 1
+        return {"ok": True}
 
     def set_paused(self, on: bool) -> None:
         self.player_paused = bool(on)

@@ -110,8 +110,77 @@ class QueueTest(unittest.TestCase, Setup):
         self.assertTrue(mine["ok"])
         self.assertEqual(mine["item"]["status"], "approved")  # the streamer's own Add skips the yes
 
+    def test_pause_between_videos(self):
+        """Auto-play with gap_seconds: the next video waits for the pause; Hold stops the
+        countdown, Play next ends it early, Skip never waits. One event loop for the whole
+        test, because the pause is a task that sleeps on it."""
+        q = self.make(vr={"auto_play": True, "gap_seconds": 1})
+
+        async def go():
+            ids = []
+            for n, vid in enumerate(("aaaaaaaaaaa", "bbbbbbbbbbb", "ccccccccccc", "ddddddddddd")):
+                ids.append((await q.submit(f"https://youtu.be/{vid}", f"p{n}", by_id=str(n)))["item"]["id"])
+                q.approve(ids[-1])
+            a, b, c, d = ids
+            await q.play()
+            self.assertIsNone(q.gap())
+            ps = q.player_state()
+            self.assertEqual([i["id"] for i in ps["up_next"]], [b, c, d])
+            self.assertEqual(ps["now"]["id"], a)
+            # the video ends: nothing plays during the pause, the countdown shows
+            await q.ended(a)
+            self.assertIsNone(q.playing())
+            gap = q.gap()
+            self.assertEqual(gap["total"], 1)
+            self.assertIn(gap["left"], (0, 1))
+            self.assertEqual(q.state()["gap"]["total"], 1)
+            self.assertIsNone(q.player_state()["current"])
+            await asyncio.sleep(1.3)
+            self.assertEqual(q.playing()["id"], b, "the next one starts after the pause")
+            self.assertIsNone(q.gap())
+            # Hold: the countdown stops and nothing starts
+            await q.ended(b)
+            self.assertTrue(q.hold()["ok"])
+            self.assertIsNone(q.gap())
+            await asyncio.sleep(1.3)
+            self.assertIsNone(q.playing())
+            self.assertFalse(q.hold()["ok"], "no countdown left to hold")
+            # Play next ends a pause early, and the old pause must not start another video later
+            await q.play()
+            self.assertEqual(q.playing()["id"], c)
+            await q.ended(c)
+            self.assertIsNotNone(q.gap())
+            await q.play()
+            self.assertEqual(q.playing()["id"], d)
+            await asyncio.sleep(1.3)
+            self.assertEqual(q.playing()["id"], d)
+            self.assertIsNone(q.gap())
+        run(go())
+
+    def test_skip_does_not_wait(self):
+        q = self.make(vr={"auto_play": True, "gap_seconds": 30})
+
+        async def go():
+            a = (await q.submit("https://youtu.be/aaaaaaaaaaa", "ann", by_id="1"))["item"]["id"]
+            b = (await q.submit("https://youtu.be/bbbbbbbbbbb", "bob", by_id="2"))["item"]["id"]
+            q.approve(a)
+            q.approve(b)
+            await q.play()
+            await q.skip()
+            self.assertEqual(q.playing()["id"], b)
+            self.assertIsNone(q.gap())
+            # the last video ends with nothing approved: no pause starts
+            await q.ended(b)
+            self.assertIsNone(q.gap())
+        run(go())
+
+    def test_gap_settings_are_cleaned(self):
+        s = read_settings({"video_requests": {"gap_seconds": "9999", "next_seconds": -3, "show_next": 0}})
+        self.assertEqual((s["gap_seconds"], s["next_seconds"], s["show_next"]), (600, 0, False))
+        self.assertEqual(read_settings({})["gap_seconds"], 10)
+
     def test_order_play_and_auto_play(self):
-        q = self.make(vr={"auto_play": True})
+        q = self.make(vr={"auto_play": True, "gap_seconds": 0})
         a = run(q.submit("https://youtu.be/aaaaaaaaaaa", "ann", by_id="1"))["item"]
         b = run(q.submit("https://youtu.be/bbbbbbbbbbb", "bob", by_id="2"))["item"]
         c = run(q.submit("https://youtu.be/ccccccccccc", "cy", by_id="3"))["item"]
@@ -164,7 +233,7 @@ class QueueTest(unittest.TestCase, Setup):
 
     def test_stream_rooms_download_mode(self):
         self.rooms = {"video": {"ended_n": 4}}
-        q = self.make(vr={"play_on": "rooms", "auto_play": True}, rooms=self.rooms)
+        q = self.make(vr={"play_on": "rooms", "auto_play": True, "gap_seconds": 0}, rooms=self.rooms)
         a = run(q.submit("https://youtu.be/aaaaaaaaaaa", "ann", by_id="1"))["item"]
         b = run(q.submit("https://youtu.be/bbbbbbbbbbb", "bob", by_id="2"))["item"]
 

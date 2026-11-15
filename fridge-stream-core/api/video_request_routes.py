@@ -13,12 +13,13 @@ requests (admin/discord.js) and the Live card "Video requests" (also admin/disco
   POST /api/admin/video-requests/deny         {id, reason}
   POST /api/admin/video-requests/play         {id} play this one now; no id = the next approved one
   POST /api/admin/video-requests/skip         stop the one playing (auto-play then starts the next)
+  POST /api/admin/video-requests/hold         stop the countdown to the next video (the pause between videos)
   POST /api/admin/video-requests/remove       {id} take one out quietly
   POST /api/admin/video-requests/move         {id, step: -1 | 1} approved play order
   POST /api/admin/video-requests/pause        {on} hold / resume the player page
 
 Player routes (no token: the video player page is an overlay, opened in OBS or a browser tab on
-this PC; Core only listens on 127.0.0.1):
+this PC, and so is the queue overlay overlay/video-queue.html; Core only listens on 127.0.0.1):
   GET  /api/video-requests/player             VideoRequestQueue.player_state()
   POST /api/video-requests/player/ended       {id} the video reached its end
   POST /api/video-requests/player/error       {id, code} YouTube's player refused it (removed, not embeddable)
@@ -171,6 +172,11 @@ def create_video_request_router(core_state, core_root) -> APIRouter:
     async def vr_skip(x_admin_token: Optional[str] = Header(None)):
         _auth(x_admin_token)
         return _answer(await _queue().skip())
+
+    @router.post("/api/admin/video-requests/hold")
+    async def vr_hold(x_admin_token: Optional[str] = Header(None)):
+        _auth(x_admin_token)
+        return _answer(_queue().hold())
 
     @router.post("/api/admin/video-requests/remove")
     async def vr_remove(body: Dict[str, Any] = Body(default={}), x_admin_token: Optional[str] = Header(None)):

@@ -10,5 +10,17 @@ body.bg-black { background: #000; }
   box-shadow: 0 0.3em 1.2em rgba(0, 0, 0, 0.5); animation: vp-in 0.4s ease-out; }
 .vp-title .vp-by { display: block; opacity: 0.75; font-size: 0.8em; }
 @keyframes vp-in { from { opacity: 0; transform: translateY(1em); } to { opacity: 1; transform: none; } }
+/* "Up next" card. .gap = the pause between two videos: big, in the middle. Without .gap it sits
+   small in the top right corner over the last seconds of the video playing. */
+.vp-next { position: fixed; right: 3vw; top: 5vh; max-width: 42vw; display: flex; align-items: center; gap: 1em;
+  padding: 0.7em 1.1em; border-radius: 0.5em; background: rgba(10, 12, 20, 0.82); color: #fff;
+  font-size: clamp(12px, 1.9vh, 34px); line-height: 1.3; box-shadow: 0 0.3em 1.2em rgba(0, 0, 0, 0.5); animation: vp-in 0.4s ease-out; }
+.vp-next[hidden] { display: none; }
+.vp-next img { height: 4.2em; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 0.3em; flex: none; }
+.vp-next img[hidden] { display: none; }
+.vp-next span { display: block; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.vp-next .vp-next-head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72em; opacity: 0.75; }
+.vp-next.gap { right: auto; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 70vw;
+  font-size: clamp(16px, 3vh, 54px); padding: 1em 1.5em; animation: none; }
 .vp-start { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 1.2em 2em; font-size: 22px;
   border: 0; border-radius: 0.6em; background: #e33; color: #fff; cursor: pointer; }

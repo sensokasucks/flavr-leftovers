@@ -311,6 +311,12 @@
           <a href="#discord" class="live-link">Video request settings →</a>
         </div>
         <div id="live-vr-now" class="vr-now"></div>
+        <!-- the pause between two videos (auto-play): countdown, shown only while it runs -->
+        <div id="live-vr-gap" class="vr-gap" hidden>
+          <span id="live-vr-gap-text"></span>
+          <button type="button" id="live-vr-gap-go" class="primary" title="Skip the wait and start the next video now">Start now</button>
+          <button type="button" id="live-vr-gap-hold" title="Stop the countdown. The next video waits until you press Play next.">Hold</button>
+        </div>
         <div class="live-buttons">
           <button type="button" id="live-vr-next" class="primary" title="Start the next approved video now">Play next</button>
           <button type="button" id="live-vr-skip" title="Stop the video playing now">Skip</button>
@@ -1199,6 +1205,11 @@
           the game downloads and converts each video (the next one is prepared ahead). Slower to start, but co-stream guests get it in sync.</span></label>
         <label class="check"><input id="vr-auto_play" type="checkbox" /> Auto-play: start the next approved video when one ends</label>
         <div class="row2">
+          <label title="How long auto-play waits after a video before the next one starts. 0 = at once. The Live card shows the countdown with Start now and Hold.">Pause between videos (seconds) <input id="vr-gap_seconds" type="number" min="0" max="600" step="1" /></label>
+          <label title="The player page also shows the Up next card in the corner for the last seconds of a video. 0 = only during the pause.">"Up next" before a video ends (seconds) <input id="vr-next_seconds" type="number" min="0" max="120" step="1" /></label>
+        </div>
+        <label class="check"><input id="vr-show_next" type="checkbox" /> Show an "Up next" card on the player page (during the pause, with a countdown)</label>
+        <div class="row2">
           <label>Player volume <input id="vr-player_volume" type="number" min="0" max="100" step="5" /></label>
           <label>Title card (seconds) <input id="vr-title_seconds" type="number" min="0" max="60" step="1" /></label>
         </div>
@@ -1210,6 +1221,10 @@
           with <a href="#live/sender">Share to Stream Rooms</a> (pick the tab in the share dialog).</p>
         <div class="form-row"><input id="vr-link-tab" type="text" readonly /> <button type="button" data-copy="vr-link-tab">Copy</button>
           <a id="vr-open-tab" class="button-link" href="/overlay/video-player.html?bg=black" target="_blank" rel="noopener">Open player tab →</a></div>
+        <h4>Queue overlay</h4>
+        <p class="hint">A small see-through list for OBS, "Now playing" and what's up next: add a <strong>Browser Source</strong> with this link,
+          about 520 × 400. It hides itself while nothing plays. Add <code>?count=5</code> for more rows or <code>?align=right</code> for a right-hand corner.</p>
+        <div class="form-row"><input id="vr-link-queue" type="text" readonly /> <button type="button" data-copy="vr-link-queue">Copy</button></div>
       </fieldset>
     </div>
     <div class="form-row save-row">

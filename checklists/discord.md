@@ -1,6 +1,6 @@
 # Checklist — Discord bot + video requests
 
-Home: `fridge-stream-core/core/discord_bot.py` (DiscordBot: the streamer's own bot, written on `websockets` + `httpx`, no discord.py), `core/video_requests.py` (VideoRequestQueue, rules, YouTube look-up), `api/video_request_routes.py`, `admin/discord.js` (Setup → Chat & viewers → Discord & video requests + the Live card "Video requests"), `overlay/video-player.html/.css/.js` (the player page). Tests: `tests/test_video_requests.py`.
+Home: `fridge-stream-core/core/discord_bot.py` (DiscordBot: the streamer's own bot, written on `websockets` + `httpx`, no discord.py), `core/video_requests.py` (VideoRequestQueue, rules, YouTube look-up), `api/video_request_routes.py`, `admin/discord.js` (Setup → Chat & viewers → Discord & video requests + the Live card "Video requests"), `overlay/video-player.html/.css/.js` (the player page), `overlay/video-queue.html/.css/.js` (the queue overlay). Tests: `tests/test_video_requests.py`.
 
 Viewers post YouTube links in one Discord channel; the streamer or approvers say yes / no (dashboard or Discord buttons); approved videos play one after another on the player page (OBS Browser Source, or a browser tab shared onto Stream Rooms' big screen), or, with `play_on: rooms`, are downloaded into Stream Rooms.
 
@@ -16,6 +16,8 @@ Viewers post YouTube links in one Discord channel; the streamer or approvers say
 - [ ] YouTube look-up needs no API key (oEmbed + watch page). A failed look-up refuses the link with a reason; it never crashes the bot.
 - [ ] Queue saved in `data/video_requests.json` (git-ignored with `data/`); a "playing" item at start goes back to approved. History trimmed.
 - [ ] Player routes (`/api/video-requests/player*`) need no token (overlay on this PC, Core listens on 127.0.0.1). Admin routes need X-Admin-Token.
+- [ ] Auto-play (`auto_play`, off by default) starts the next approved video when one ends or fails, after `gap_seconds` (default 10, 0 = at once). During that pause nothing plays; the Live card shows the countdown with **Start now** and **Hold** (`POST .../hold`: the countdown stops, auto-play stays on, the queue waits for Play next). Skip and Play now never wait. The first video of a run is started by hand. Any `play()` ends a running pause, and a stale pause task must never start a second video.
+- [ ] "Up next" (`show_next`): the player page shows the card during the pause (with seconds left) and in the corner for the last `next_seconds` of a video; `?next=0` hides it. The queue overlay `/overlay/video-queue.html` (`.css/.js`; Now playing + up to 5 next, `?count=`, `?now=0`, `?thumbs=0`, `?align=right`) reads the same `GET /api/video-requests/player` and never sends anything.
 - [ ] The player page never waits: it follows `seq`, reports `ended` / `error` (YouTube error codes → plain words in History), shows "Click to start" in a plain browser tab until the browser lets it play with sound. It has **no** overlay-hint.js (the tab is shared on stream).
 - [ ] `play_on: rooms`: Core asks Stream Rooms through `send_stage` and follows its `rooms_state` `video` block (`now`, `ended_n`, `job`); the next approved video is prepared ahead (`video_prep`).
 - [ ] Dashboard: one Setup entry (Bot / Channels / Request rules / Player tabs, cards never fold); the Live card shows only while video requests are on.

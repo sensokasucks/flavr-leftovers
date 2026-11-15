@@ -136,6 +136,9 @@
     setVal("vr-bot_replies", s.bot_replies);
     setVal("vr-now_playing_post", s.now_playing_post);
     setVal("vr-auto_play", s.auto_play);
+    setVal("vr-gap_seconds", s.gap_seconds);
+    setVal("vr-next_seconds", s.next_seconds);
+    setVal("vr-show_next", s.show_next);
     setVal("vr-player_volume", s.player_volume);
     setVal("vr-title_seconds", s.title_seconds);
     setVal("vr-show_title", s.show_title);
@@ -166,7 +169,8 @@
         repeats: $("vr-repeats").value, deny_cooldown_sec: num("vr-deny_cooldown_min") * 60,
         blocked_words: $("vr-blocked_words").value.split(",").map((w) => w.trim()).filter(Boolean),
         bot_replies: $("vr-bot_replies").checked, now_playing_post: $("vr-now_playing_post").checked,
-        auto_play: $("vr-auto_play").checked, player_volume: num("vr-player_volume"), title_seconds: num("vr-title_seconds"),
+        auto_play: $("vr-auto_play").checked, gap_seconds: num("vr-gap_seconds"), next_seconds: num("vr-next_seconds"),
+        show_next: $("vr-show_next").checked, player_volume: num("vr-player_volume"), title_seconds: num("vr-title_seconds"),
         show_title: $("vr-show_title").checked, play_on: playOn ? playOn.value : "player",
       },
     };
@@ -263,6 +267,13 @@
       now = `<div class="vr-playing">▶ <strong>${esc(cur.title)}</strong> <span class="muted">${esc(fmtLen(cur.length))} · from ${esc(cur.by)}</span>${extra}</div>`;
     }
     $("live-vr-now").innerHTML = now;
+    // the pause between two videos: "Next video in 12 s: <title>" with Start now / Hold
+    const gap = q.gap;
+    $("live-vr-gap").hidden = !gap;
+    if (gap) {
+      const nxt = (q.approved || [])[0];
+      $("live-vr-gap-text").textContent = `Next video in ${gap.left} s` + (nxt ? `: ${nxt.title}` : "");
+    }
     $("live-vr-pause").setAttribute("aria-pressed", String(!!q.player_paused));
     $("live-vr-pause").textContent = q.player_paused ? "Resume" : "Pause";
     $("live-vr-pause").hidden = s.play_on === "rooms";
@@ -313,12 +324,15 @@
     const base = location.origin + "/overlay/video-player.html";
     $("vr-link-obs").value = base;
     $("vr-link-tab").value = base + "?bg=black";
+    $("vr-link-queue").value = location.origin + "/overlay/video-queue.html";
     document.querySelectorAll("#tab-discord [data-copy]").forEach((b) => b.addEventListener("click", async () => {
       try { await navigator.clipboard.writeText($(b.dataset.copy).value); b.textContent = "Copied ✓"; setTimeout(() => { b.textContent = "Copy"; }, 1500); } catch (_) { $(b.dataset.copy).select(); }
     }));
 
     // Live card buttons
     $("live-vr-next").addEventListener("click", () => act("/play", {}, "Playing the next video."));
+    $("live-vr-gap-go").addEventListener("click", () => act("/play", {}, "Playing the next video."));
+    $("live-vr-gap-hold").addEventListener("click", () => act("/hold", {}, "Holding. Press Play next when you're ready."));
     $("live-vr-skip").addEventListener("click", () => act("/skip", {}, "Skipped."));
     $("live-vr-pause").addEventListener("click", () => act("/pause", { on: $("live-vr-pause").getAttribute("aria-pressed") !== "true" }));
     $("live-vr-auto").addEventListener("change", async () => {

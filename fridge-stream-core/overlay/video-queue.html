@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Video requests queue</title>
+  <!--
+    Video requests queue overlay: /overlay/video-queue.html. A small see-through list for OBS /
+    XSplit (Browser Source, about 520 x 400): "Now playing" and the next approved video requests,
+    with the countdown while the pause between two videos runs. It only shows what Core says
+    (GET /api/video-requests/player, core/video_requests.py player_state) and hides itself when
+    nothing plays and nothing is approved. Works with both "where videos play" choices.
+    URL options: ?count=3 (how many "Up next" rows, 1-5), ?now=0 (no "Now playing" row),
+    ?thumbs=0 (no small pictures), ?align=right (text on the right, for a right-hand corner).
+    Setup -> Discord & video requests -> Player has the link (admin/discord.js).
+  -->
+  <link rel="stylesheet" href="video-queue.css" />
+</head>
+<body>
+  <div id="vq" class="vq" hidden>
+    <div id="vq-now" class="vq-row vq-now" hidden></div>
+    <div id="vq-head" class="vq-head" hidden>Up next</div>
+    <div id="vq-list"></div>
+  </div>
+  <script src="overlay-hint.js"></script>
+  <script src="video-queue.js"></script>
+</body>
+</html>
