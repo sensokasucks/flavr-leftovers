@@ -359,6 +359,9 @@ class YouTubeAdapter(BaseAdapter):
             if not self._running:
                 break
             if self._reached:
+                # the chat we were reading ended or broke: offline until it is reached again
+                # (a short break inside stream.restart_grace_min still counts as the same stream)
+                self.bus.report_live("youtube", False, "live chat ended")
                 delay = RETRY_FIRST
             why = self.last_error or "YouTube chat isn't reachable yet."
             self._set_retrying(f"{why.rstrip('.')}. Trying again in {delay:.0f} s.")
@@ -400,6 +403,8 @@ class YouTubeAdapter(BaseAdapter):
                     return
             log.info("YouTube official liveChatId=%s", self.live_chat_id)
             self._reached = True
+            # reading the live chat = live (Core's stream start / end, core/stream_state.py)
+            self.bus.report_live("youtube", True, "live chat")
             self._set_connected()
             failures = 0
             while self._running:
@@ -568,6 +573,8 @@ class YouTubeAdapter(BaseAdapter):
                 return
             log.info("YouTube innertube ready (video=%s)", self.video_id)
             self._reached = True
+            # reading the live chat = live (Core's stream start / end, core/stream_state.py)
+            self.bus.report_live("youtube", True, "live chat")
             self._set_connected()
             failures = 0
             while self._running:

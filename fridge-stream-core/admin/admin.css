@@ -1496,6 +1496,7 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .feed-command .feed-kind { color: #6cc4ff; }
 .feed-game .feed-kind { color: var(--warn); }
 .feed-flag .feed-kind { color: #ff8fb1; }
+.feed-stream .feed-kind { color: #7ee2a8; }
 .feed-error .feed-kind { color: var(--danger); }
 @media (max-width: 560px) {
   .feed-row { grid-template-columns: 6.6em minmax(0, 1fr); }

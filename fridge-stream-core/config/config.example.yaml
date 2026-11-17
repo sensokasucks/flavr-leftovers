@@ -223,6 +223,18 @@ credits:
   # clear_when_done: false      # Play once ends on an empty screen
   # title_own_page: true        # page motions: title on its own page
   # ignore_usernames: [nightbot, streamelements]   # replaces the built-in bot list
+  # auto_session: false        # start a new credits session when you go live (Credits page → When you go live)
+
+# Stream start / end (core/stream_state.py). Core sees you go live on Twitch (Connect Twitch), Kick and YouTube.
+# stream:
+#   restart_grace_min: 15       # all platforms offline this long = the stream ended; back sooner = same stream
+
+# Companion bot link (core/companion_link.py): Core sends to an always-on bot on another home PC (FlaVR Bot).
+# Set it up under Setup → Discord & video requests → Companion bot. Off by default.
+# companion:
+#   enabled: false
+#   url: "http://192.168.1.50:3870"
+#   key: ""                     # shared password, the same as FLAVR_CORE_KEY on the bot
 
 # Command groups. Toggle in Admin → Config without restarting Core.
 # bind: <game> → on only when that game plugin is enabled AND running (each game plugin adds its own group)

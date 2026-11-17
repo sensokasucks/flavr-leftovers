@@ -49,6 +49,9 @@ class EventBus:
         # Stream events feed for the Live controls page (core/activity.py). Set in main.py;
         # anything holding the bus adds lines with bus.note(kind, text).
         self.activity = None
+        # Stream start / end (core/stream_state.py StreamState). Set in main.py; adapters say
+        # "this platform is live / offline now" with bus.report_live(platform, live, source).
+        self.stream = None
 
     def note(self, kind: str, text: str, platform: str = "") -> None:
         """Add a line to the Live page's Stream events window (no-op until main.py sets activity)."""
@@ -57,6 +60,15 @@ class EventBus:
                 self.activity.add(kind, text, platform)
             except Exception:
                 log.exception("activity note failed")
+
+    def report_live(self, platform: str, live: bool, source: str = "") -> None:
+        """A platform adapter learned whether the channel is live (no-op until main.py sets stream).
+        Callers: Twitch EventSub stream.online / offline, Kick's viewer poll, YouTube's chat loop."""
+        if self.stream is not None:
+            try:
+                self.stream.report(platform, live, source)
+            except Exception:
+                log.exception("stream state report failed")
 
     def on_chat(self, handler: ChatHandler) -> None:
         """Every chat line after smoothing (main.py: command router, overlays, store, credits ...)."""

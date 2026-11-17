@@ -137,17 +137,21 @@ def note(mid, stype, event):
 
 
 class Session(unittest.TestCase):
-    def client(self, auth, scripts, http_status=202):
+    def client(self, auth, scripts, http_status=202, live_now=False, paid=True):
         got, posts, urls = [], [], []
+        self.lives = []
 
         async def on_alert(a):
             got.append(a)
 
         async def http(method, url, body, headers):
+            if method == "GET":         # the Helix "is the channel live" check after each (re)connect
+                return 200, {"data": [{"type": "live"}] if live_now else []}
             posts.append(body)
             return http_status, {}
 
-        c = es.EventSubClient(auth, "fridge", on_alert, http=http)
+        c = es.EventSubClient(auth, "fridge", on_alert, http=http,
+                              on_live=lambda live, src: self.lives.append((live, src)), paid=paid)
 
         def connect(url, **kw):
             urls.append(url)
@@ -172,18 +176,21 @@ class Session(unittest.TestCase):
 
         run(go())
         self.assertEqual([p["type"] for p in posts],
-                         ["channel.bits.use", "channel.charity_campaign.donate", "channel.hype_train.end"])
+                         ["channel.bits.use", "channel.charity_campaign.donate", "channel.hype_train.end",
+                          "stream.online", "stream.offline"])
         self.assertEqual(posts[0]["condition"], {"broadcaster_user_id": "99"})
         self.assertEqual(posts[0]["transport"], {"method": "websocket", "session_id": "s1"})
         self.assertEqual(urls, [es.WS_URL, "wss://elsewhere"])   # no new subscriptions after a move
         self.assertEqual([(a["kind"], a["event_id"]) for a in got], [("celebration", "n1"), ("charity", "n3")])
-        self.assertEqual(len(c.subscribed), 3)
+        self.assertEqual(len(c.subscribed), 5)
+        self.assertEqual(self.lives, [(False, "helix check")])   # checked once, not after the move
 
     def test_wrong_account_or_old_sign_in_stays_off(self):
         c, _, posts, _ = self.client(FakeAuth(login="somebot"), [])
         self.assertIn("not fridge", c.why_not())
         c2, _, _, _ = self.client(FakeAuth(scopes=["user:read:chat", "user:write:chat"]), [])
-        self.assertIn("Reconnect", c2.why_not())
+        self.assertEqual(c2.why_not(), "")              # stream start / end still runs
+        self.assertIn("Reconnect", c2.paid_hint())
         c3, _, _, _ = self.client(FakeAuth(connected=False), [])
         self.assertIn("Connect Twitch", c3.why_not())
         self.assertEqual(self.client(FakeAuth(), [])[0].why_not(), "")
@@ -191,7 +198,24 @@ class Session(unittest.TestCase):
     def test_only_allowed_scopes_are_subscribed(self):
         c, _, posts, _ = self.client(FakeAuth(scopes=["user:read:chat", "bits:read"]), [[welcome()]])
         run(asyncio.wait_for(c._loop(), 5))
-        self.assertEqual([p["type"] for p in posts], ["channel.bits.use"])
+        self.assertEqual([p["type"] for p in posts], ["channel.bits.use", "stream.online", "stream.offline"])
+
+    def test_stream_online_and_offline_report_live(self):
+        c, got, posts, _ = self.client(FakeAuth(scopes=["user:read:chat"]), [[
+            welcome(), note("o1", "stream.online", {"type": "live"}),
+            note("o2", "stream.online", {"type": "rerun"}), note("o3", "stream.offline", {})]], live_now=True)
+        run(asyncio.wait_for(c._loop(), 5))
+        self.assertEqual([p["type"] for p in posts], ["stream.online", "stream.offline"])
+        self.assertEqual(self.lives, [(True, "helix check"), (True, "eventsub"), (False, "eventsub"),
+                                      (False, "eventsub")])
+        self.assertEqual(got, [])                       # never alerts
+        self.assertIn("stream start / end on", c.message)
+
+    def test_paid_events_switched_off_keeps_stream_events(self):
+        c, _, posts, _ = self.client(FakeAuth(), [[welcome()]], paid=False)
+        run(asyncio.wait_for(c._loop(), 5))
+        self.assertEqual([p["type"] for p in posts], ["stream.online", "stream.offline"])
+        self.assertIn("switched off", c.message)
 
     def test_bits_live_follows_the_client(self):
         self.assertFalse(es.bits_live())

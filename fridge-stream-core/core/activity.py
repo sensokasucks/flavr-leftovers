@@ -12,6 +12,8 @@ LIVE_FEED_KINDS):
   command  a chat command that passed the router (main.py _on_chat)
   game     something a game plugin reports with ctx.activity(...) (core/plugin_api.py)
   flag     a chatter set off a custom chat flag (main.py, bus.on_flag)
+  stream   the stream started / dropped / came back / ended (main.py _stream_changed,
+           core/stream_state.py)
   error    a logged error anywhere in Core, or a warning from a chat platform / plugin
            (ActivityLogHandler, attached in main.py _run)
 
@@ -32,7 +34,7 @@ MAX_ITEMS = 300
 # The same error text again within this many seconds bumps a counter instead of a new line,
 # so a platform that keeps failing to connect can't flood the window.
 REPEAT_WINDOW_SEC = 60.0
-KINDS = ("alert", "redeem", "command", "game", "flag", "error")
+KINDS = ("alert", "redeem", "command", "game", "flag", "stream", "error")
 
 
 class ActivityLog:

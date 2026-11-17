@@ -373,6 +373,7 @@
           <button type="button" data-kind="command" aria-pressed="false">Commands</button>
           <button type="button" data-kind="game" aria-pressed="false">Games</button>
           <button type="button" data-kind="flag" aria-pressed="false">Flags</button>
+          <button type="button" data-kind="stream" aria-pressed="false">Stream</button>
           <button type="button" data-kind="error" aria-pressed="false">Errors</button>
         </div>
         <div id="live-feed" class="live-feed" role="log" aria-live="off" tabindex="0">
@@ -680,6 +681,21 @@
             <code id="crd-url">/overlay/credits.html</code>
             <button type="button" id="crd-copy">Copy</button>
           </p>
+        </fieldset>
+        <!-- Stream start / end (core/stream_state.py, admin/companion.js) -->
+        <fieldset class="cfg-card" id="crd-golive-card">
+          <legend>When you go live</legend>
+          <p id="crd-stream-state" class="live-state" role="status">Stream: —</p>
+          <label class="check"><input type="checkbox" id="crd-auto-session" /> Start a new credits session when I go live</label>
+          <p class="hint">Stream Core sees you go live by itself: Twitch with <strong>Connect Twitch</strong> (Settings → Twitch),
+            Kick from its viewer check, YouTube once it reaches your live chat. Live on several platforms counts as one stream.</p>
+          <label>Same stream if I'm back within (minutes)
+            <input type="number" id="crd-grace" min="0" max="120" step="1" style="max-width:6em" />
+            <span class="hint">An OBS crash or an internet drop shorter than this keeps the same credits.</span></label>
+          <div class="form-row" style="gap:8px">
+            <button type="button" class="primary" id="crd-golive-save">Save</button>
+            <span id="crd-golive-msg" class="muted" role="status"></span>
+          </div>
         </fieldset>
         <fieldset class="cfg-card">
           <legend>Roll</legend>
@@ -1139,6 +1155,7 @@
       <button type="button" role="tab" data-dc-show="channels">Channels</button>
       <button type="button" role="tab" data-dc-show="rules">Request rules</button>
       <button type="button" role="tab" data-dc-show="player">Player</button>
+      <button type="button" role="tab" data-dc-show="companion">Companion bot</button>
     </div>
     <div class="config-grid">
       <fieldset class="cfg-card" data-dc-tab="bot" data-fold="no">
@@ -1225,6 +1242,31 @@
         <p class="hint">A small see-through list for OBS, "Now playing" and what's up next: add a <strong>Browser Source</strong> with this link,
           about 520 × 400. It hides itself while nothing plays. Add <code>?count=5</code> for more rows or <code>?align=right</code> for a right-hand corner.</p>
         <div class="form-row"><input id="vr-link-queue" type="text" readonly /> <button type="button" data-copy="vr-link-queue">Copy</button></div>
+      </fieldset>
+      <!-- Companion bot link (core/companion_link.py, admin/companion.js): Core sends to an always-on bot on another home PC -->
+      <fieldset class="cfg-card" data-dc-tab="companion" data-fold="no">
+        <legend>Companion bot (optional)</legend>
+        <p class="hint">Only if you run a second, always-on bot on another computer at home, like FlaVR Bot
+          (<a href="https://github.com/sensokasucks/flavr-bot" target="_blank" rel="noopener">github.com/sensokasucks/flavr-bot</a>).
+          Stream Core then tells it when you go live or offline, sends raids, gifts and tips for phone pings, and keeps a copy
+          of the points and the video queue so it can answer while this PC is off. Stream Core only sends; it opens nothing new on this PC.</p>
+        <label class="check"><input id="cp-enabled" type="checkbox" /> Send to the companion bot</label>
+        <label>Companion bot address <input id="cp-url" type="text" placeholder="http://192.168.1.50:3870" />
+          <span class="hint">The other computer's home-network address and the bot's port (3870 unless you changed it).</span></label>
+        <label>Shared password <input id="cp-key" type="password" autocomplete="new-password" placeholder="the same as FLAVR_CORE_KEY on the bot" />
+          <span class="hint" id="cp-key-note"></span></label>
+        <label class="check" id="cp-key-clear-row" hidden><input id="cp-key-clear" type="checkbox" /> Remove the saved password</label>
+        <label>Heartbeat every (seconds) <input id="cp-heartbeat_sec" type="number" min="10" max="300" step="5" />
+          <span class="hint">The bot pings your phone when these stop during a stream (Stream Core closed or crashed).</span></label>
+        <label class="check"><input id="cp-send_alerts" type="checkbox" /> Send alerts (raids, subs, gifts, tips; never follows or tests)</label>
+        <label class="check"><input id="cp-send_points" type="checkbox" /> Send the points list (top 500, every 5 minutes)</label>
+        <label class="check"><input id="cp-send_queue" type="checkbox" /> Send the video request queue</label>
+        <p id="cp-state" class="live-state">—</p>
+        <div class="form-row">
+          <button type="button" id="cp-save" class="primary">Save</button>
+          <button type="button" id="cp-test">Test</button>
+          <span id="cp-msg" class="muted" role="status"></span>
+        </div>
       </fieldset>
     </div>
     <div class="form-row save-row">
@@ -2461,6 +2503,7 @@
   <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
   <script src="/admin/tts.js"></script>
   <script src="/admin/discord.js"></script>
+  <script src="/admin/companion.js"></script>
   <!-- folding cards on every page; before rooms-setup.js, which uses window.FoldCards -->
   <script src="/admin/fold-cards.js"></script>
   <script src="/admin/rooms-setup.js"></script>

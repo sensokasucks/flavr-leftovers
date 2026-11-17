@@ -20,7 +20,7 @@ Viewers post YouTube links in one Discord channel; the streamer or approvers say
 - [ ] "Up next" (`show_next`): the player page shows the card during the pause (with seconds left) and in the corner for the last `next_seconds` of a video; `?next=0` hides it. The queue overlay `/overlay/video-queue.html` (`.css/.js`; Now playing + up to 5 next, `?count=`, `?now=0`, `?thumbs=0`, `?align=right`) reads the same `GET /api/video-requests/player` and never sends anything.
 - [ ] The player page never waits: it follows `seq`, reports `ended` / `error` (YouTube error codes → plain words in History), shows "Click to start" in a plain browser tab until the browser lets it play with sound. It has **no** overlay-hint.js (the tab is shared on stream).
 - [ ] `play_on: rooms`: Core asks Stream Rooms through `send_stage` and follows its `rooms_state` `video` block (`now`, `ended_n`, `job`); the next approved video is prepared ahead (`video_prep`).
-- [ ] Dashboard: one Setup entry (Bot / Channels / Request rules / Player tabs, cards never fold); the Live card shows only while video requests are on.
+- [ ] Dashboard: one Setup entry (Bot / Channels / Request rules / Player / Companion bot tabs, cards never fold); the Live card shows only while video requests are on. The Companion bot tab is run by `admin/companion.js` with its own Save (the page's Save row hides on that tab); its rules are in [stream-state.md](stream-state.md).
 
 ## After-change verify
 
