@@ -267,6 +267,12 @@ DEFAULTS["highlight"] = {"hold_sec": 0, "show_avatar": True, "read_aloud": False
 # Text-to-speech (core/tts.py DEFAULTS; Setup → Read aloud (TTS)). Off until switched on.
 from core.tts import DEFAULTS as _TTS_DEFAULTS  # noqa: E402
 DEFAULTS["tts"] = copy.deepcopy(_TTS_DEFAULTS)
+# Discord bot + video requests (core/discord_bot.py, core/video_requests.py; Setup → Discord &
+# video requests). Both off until switched on; the bot token stays in this file only.
+from core.discord_bot import DEFAULTS as _DISCORD_DEFAULTS  # noqa: E402
+from core.video_requests import DEFAULTS as _VR_DEFAULTS  # noqa: E402
+DEFAULTS["discord"] = copy.deepcopy(_DISCORD_DEFAULTS)
+DEFAULTS["video_requests"] = copy.deepcopy(_VR_DEFAULTS)
 # Phone remote (core/phone_remote.py DEFAULTS; Setup → Phone remote). Off until switched on.
 DEFAULTS["phone_remote"] = {"enabled": False, "stop_on_exit": True, "host": ""}
 

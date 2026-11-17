@@ -1,0 +1,17 @@
+/* Video requests queue overlay (video-queue.html): a see-through column of rows. */
+html, body { margin: 0; background: transparent; font-family: "Segoe UI", system-ui, sans-serif; color: #fff; }
+.vq { padding: 12px; display: flex; flex-direction: column; gap: 6px; max-width: 520px; font-size: 18px; }
+.vq[hidden], .vq-row[hidden], .vq-head[hidden] { display: none; }
+body.align-right .vq { margin-left: auto; }
+.vq-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 8px;
+  background: rgba(10, 12, 20, 0.78); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4); }
+.vq-row img { height: 45px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 4px; flex: none; }
+.vq-text { min-width: 0; flex: 1; }
+.vq-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vq-meta { font-size: 0.75em; opacity: 0.75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* the row of the video playing now: a coloured edge and a small label */
+.vq-now { border-left: 4px solid #e33; }
+.vq-label { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.65em; opacity: 0.75; }
+.vq-head { text-transform: uppercase; letter-spacing: 0.08em; font-size: 0.72em; padding: 4px 12px 0;
+  text-shadow: 0 1px 3px #000; }
+.vq-num { opacity: 0.6; width: 1.2em; text-align: right; flex: none; }
