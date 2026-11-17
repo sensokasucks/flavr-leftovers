@@ -184,6 +184,18 @@
   // Rooms reads PNG, JPEG, WebP and GIF up to MEDIA_PICK_MAX bytes (its core/picture_file.gd
   // MAX_BYTES; keep the two in step), so bigger stored pictures are listed but can't be ticked.
   const MEDIA_PICKS = { r22_bb_core: "Billboard pictures" };
+  // Picture sizes the pop-up suggests for a key, each with a blank template to download
+  // (admin/billboard-templates/, drawn by make_templates.py there; keep the sizes in step):
+  // [width, height, file, what it is good for]. Any size works (Stream Rooms builds each board
+  // to its picture's shape, between about 2:3 tall and 10:3 wide); these fill the boards best.
+  const MEDIA_TEMPLATES = {
+    r22_bb_core: [
+      [1920, 1080, "billboard-1920x1080.png", "Best all-round: fills every billboard"],
+      [1920, 660, "billboard-wide-1920x660.png", "Wide banner: fills the parked trailer's side"],
+      [1080, 1080, "billboard-square-1080x1080.png", "Square: on a narrower board"],
+      [1080, 1350, "billboard-tall-1080x1350.png", "Tall poster: on a narrow, tall board"],
+    ],
+  };
   const MEDIA_PICK_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
   const MEDIA_PICK_MAX = 3 * 1024 * 1024;
 
@@ -383,6 +395,8 @@
    * The control for a MEDIA_PICKS setting: a line saying how many pictures are picked and a
    * "Choose pictures" button. The button opens a pop-up (a <dialog> on <body>, so it works in a
    * settings row and in the Live page's Pinned card alike) with
+   *   - "Picture sizes and templates" (MEDIA_TEMPLATES): suggested pixel sizes, each with a
+   *     blank template to download,
    *   - the picked pictures in their order, each with a "Take off" button,
    *   - every picture in Stored files as a tile; a click puts it on or takes it off,
    *   - "Upload pictures": sends the files to Stored files (POST /api/admin/media, where an
@@ -408,6 +422,11 @@
     dlg.innerHTML = `<h3>${esc(MEDIA_PICKS[e.key])}</h3>
       <p class="muted rs-media-help">Click a picture to put it on or take it off. Stream Rooms shows the picked ones in the order below.
         Pictures live in Stored files (Overlays), so one upload can be used in many places.</p>
+      ${(MEDIA_TEMPLATES[e.key] || []).length ? `<details class="rs-media-sizes"><summary>Picture sizes and templates</summary>
+        <p class="muted">Any size works and the whole picture always shows: each billboard is built to its picture's shape. These sizes fill the boards best.
+          JPG or PNG, under 3 MB. Download a template, draw over it, then upload the result.</p>
+        <ul>${MEDIA_TEMPLATES[e.key].map(([w, h, file, note]) => `<li><b>${w} x ${h}</b> px · ${esc(note)} ·
+          <a href="/admin/billboard-templates/${esc(file)}" download>Download template</a></li>`).join("")}</ul></details>` : ""}
       <div class="rs-media-picked" data-part="picked"></div>
       <h4>Stored pictures</h4>
       <div class="rs-media-grid" data-part="grid"></div>

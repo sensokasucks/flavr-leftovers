@@ -1629,6 +1629,12 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-media-dlg h3 { margin: 0 0 4px; }
 .rs-media-dlg h4 { margin: 12px 0 6px; font-size: .9rem; }
 .rs-media-help { margin: 0 0 10px; font-size: .82rem; }
+.rs-media-sizes { margin: 0 0 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: .84rem; }
+.rs-media-sizes summary { cursor: pointer; font-weight: 600; }
+.rs-media-sizes p { margin: 6px 0; }
+.rs-media-sizes ul { margin: 0; padding-left: 18px; }
+.rs-media-sizes li { margin: 3px 0; }
+.rs-media-sizes a { color: var(--accent); }
 .rs-media-picked { display: flex; flex-wrap: wrap; gap: 6px; }
 .rs-media-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 3px; border: 1px solid var(--border); border-radius: 6px; font-size: .8rem; }
 .rs-media-chip img { width: 44px; height: 28px; object-fit: contain; background: #000; border-radius: 3px; }
