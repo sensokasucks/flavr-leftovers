@@ -346,9 +346,13 @@ class TwitchAdapter(BaseAdapter):
         self._stop.clear()
         self._task = asyncio.create_task(self._loop(), name="twitch-irc")
         log.info("Twitch IRC listening on #%s", self.channel)
-        if self.paid_events:
-            self.eventsub = EventSubClient(self.auth, self.channel, self._on_paid_event)
-            self.eventsub.start()
+        # EventSub always runs (with the streamer's own Connect Twitch): stream.online / offline
+        # feed Core's stream start / end (core/stream_state.py); the paid events only when
+        # twitch.paid_events is on (default).
+        self.eventsub = EventSubClient(self.auth, self.channel, self._on_paid_event,
+                                       on_live=lambda live, src: self.bus.report_live("twitch", live, src),
+                                       paid=self.paid_events)
+        self.eventsub.start()
 
     async def _on_paid_event(self, alert: dict) -> None:
         """EventSub callback: kwargs from twitch_eventsub's *_alert functions."""

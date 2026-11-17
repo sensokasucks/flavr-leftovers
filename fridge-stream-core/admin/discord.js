@@ -67,7 +67,8 @@
   }
 
   // ── Setup page: tabs ──
-  const TABS = ["bot", "channels", "rules", "player"];
+  // "companion" is filled and saved by admin/companion.js (its own Save button, so the page's Save row hides)
+  const TABS = ["bot", "channels", "rules", "player", "companion"];
   function showTab(name) {
     if (!TABS.includes(name)) name = "bot";
     document.querySelectorAll("#tab-discord [data-dc-tab]").forEach((el) => { el.hidden = el.dataset.dcTab !== name; });
@@ -75,6 +76,8 @@
       b.classList.toggle("active", b.dataset.dcShow === name);
       b.setAttribute("aria-selected", String(b.dataset.dcShow === name));
     });
+    const saveRow = document.querySelector("#tab-discord .save-row");
+    if (saveRow) saveRow.hidden = name === "companion";
     try { localStorage.setItem("stream_core_discord_tab", name); } catch (_) { /* private window */ }
   }
 

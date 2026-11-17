@@ -1248,7 +1248,7 @@
   // has a fixed height (admin.css .live-feed) so it scrolls inside instead of moving the page.
   // Kinds and labels match core/activity.py KINDS and the filter buttons in index.html.
   // ------------------------------------------------------------------
-  const LIVE_FEED_KINDS = { alert: "Alert", redeem: "Redeem", command: "Command", game: "Game", flag: "Flag", error: "Error" };
+  const LIVE_FEED_KINDS = { alert: "Alert", redeem: "Redeem", command: "Command", game: "Game", flag: "Flag", stream: "Stream", error: "Error" };
   const FEED_MAX = 200;           // lines kept in the window
   const FEED_POLL_MS = 3000;
   let feedLast = 0;               // highest activity id seen (sent back as ?after=)

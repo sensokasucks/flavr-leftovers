@@ -17,6 +17,7 @@
 | Read aloud (TTS) | [tts.md](tts.md) | `core/tts.py`, `core/tts_text.py`, `api/tts_routes.py`, `admin/tts.js`, `overlay/tts-player.js`, `/tts/` files, `tts:` config, `tts` `/ws` frames |
 | Discord bot + video requests | [discord.md](discord.md) | `core/discord_bot.py`, `core/video_requests.py`, `api/video_request_routes.py`, `admin/discord.js`, `/overlay/video-player.html`, `discord:` / `video_requests:` config |
 | Phone remote | [phone-remote.md](phone-remote.md) | `core/phone_remote.py`, `api/phone_server.py`, `api/phone_admin_routes.py`, `phone/`, Setup → Phone remote, port 3860 |
+| Stream start / end + companion link | [stream-state.md](stream-state.md) | `core/stream_state.py`, `core/companion_link.py`, `api/companion_routes.py`, `admin/companion.js`, `bus.report_live` calls in the adapters, `stream:` / `companion:` / `credits.auto_session` config |
 | Credits (Core) | [credits-core.md](credits-core.md) | Built-in credits overlay, cast styles, Admin Credits |
 | Gamer Stonks (the market) | [market.md](market.md) | Now a plugin in flavr-game-plugins; what Core still owes it |
 | Admin hub | [admin-hub.md](admin-hub.md) | `/admin/` tabs, save/merge, APIs |

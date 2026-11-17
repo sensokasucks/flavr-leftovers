@@ -6,6 +6,10 @@ Twitch EventSub (WebSocket): the paid events Twitch only sends here, not in IRC 
   from chat, so they are skipped here.
 * ``channel.charity_campaign.donate``: donations to the channel's charity campaign.
 * ``channel.hype_train.end`` (v2): a Hype Train's summary (level, type, top contributors).
+* ``stream.online`` / ``stream.offline``: the channel went live / ended. These need no extra
+  scope; they feed Core's stream start / end (core/stream_state.py) through ``on_live``. Each
+  time the link (re)connects, one Helix ``streams`` look-up says whether the channel is live
+  already (EventSub only reports changes).
 
 It needs the streamer's own Twitch sign-in ("Connect Twitch") with the scopes in
 ``adapters.twitch_auth.PAID_SCOPES``. Signed in as another account, or with an older
@@ -29,13 +33,20 @@ log = logging.getLogger("adapters.twitch_eventsub")
 
 WS_URL = "wss://eventsub.wss.twitch.tv/ws"
 SUBS_URL = "https://api.twitch.tv/helix/eventsub/subscriptions"
+STREAMS_URL = "https://api.twitch.tv/helix/streams"
 
-# (subscription type, version, scope it needs)
+# (subscription type, version, scope it needs; "" = none, any sign-in of the channel owner may)
 SUBSCRIPTIONS: list[tuple[str, str, str]] = [
     ("channel.bits.use", "1", "bits:read"),
     ("channel.charity_campaign.donate", "1", "channel:read:charity"),
     ("channel.hype_train.end", "2", "channel:read:hype_train"),
+    ("stream.online", "1", ""),
+    ("stream.offline", "1", ""),
 ]
+# The paid events (the ones that need a scope); "Press Reconnect" only matters for these
+PAID_TYPES = [stype for stype, _, scope in SUBSCRIPTIONS if scope]
+# Stream start / end: handled by _notification itself, not turned into alerts
+LIVE_TYPES = ("stream.online", "stream.offline")
 
 IDLE_RECHECK_SEC = 30.0            # not signed in yet / wrong account: look again this often
 BACKOFF_MAX = 60.0                 # seconds; reconnect waits double from 3 s up to this
@@ -196,10 +207,15 @@ class EventSubClient:
     """
 
     def __init__(self, auth, channel: str, on_alert: Callable[[dict], Awaitable[None]],
-                 http: Optional[Http] = None, connect=None):
+                 http: Optional[Http] = None, connect=None,
+                 on_live: Optional[Callable[[bool, str], None]] = None, paid: bool = True):
         self.auth = auth
         self.channel = (channel or "").lower()
         self.on_alert = on_alert
+        # on_live(is_live, source): the Twitch adapter passes bus.report_live for "twitch"
+        self.on_live = on_live
+        # twitch.paid_events: False = only stream start / end (the paid events stay unsubscribed)
+        self.paid = paid
         self._http = http or _http_httpx
         self._connect = connect             # tests: a fake websockets.connect
         self._task: Optional[asyncio.Task] = None
@@ -229,9 +245,13 @@ class EventSubClient:
         if self.auth.login and self.channel and self.auth.login.lower() != self.channel:
             return (f"Signed in as {self.auth.login}, not {self.channel}. Twitch only sends these events to the "
                     "channel owner's own sign-in.")
+        return ""
+
+    def paid_hint(self) -> str:
+        """'' when the sign-in allows at least one paid event, else the one thing to do. The link
+        still runs without them (stream start / end needs no scope)."""
         have = set(self.auth.status().get("scopes") or [])
-        missing = [scope for _, _, scope in SUBSCRIPTIONS if scope not in have]
-        if len(missing) == len(SUBSCRIPTIONS):
+        if not any(scope in have for _, _, scope in SUBSCRIPTIONS if scope):
             return "Press Reconnect under Settings → Twitch once, so Twitch allows the paid events."
         return ""
 
@@ -327,7 +347,15 @@ class EventSubClient:
                         await self._subscribe_all(str(session.get("id") or ""))
                     self.live = bool(self.subscribed)
                     if self.live:
-                        self._set("on", "Twitch paid events on: " + ", ".join(sorted(self.subscribed)) + ".")
+                        paid = sorted(t for t in self.subscribed if t not in LIVE_TYPES)
+                        if paid:
+                            self._set("on", "Twitch paid events on: " + ", ".join(paid) + ".")
+                        else:
+                            why = ("Paid events are switched off." if not self.paid
+                                   else self.paid_hint() or "Twitch refused the paid events.")
+                            self._set("on", "Twitch stream start / end on. " + why)
+                    if resubscribe:
+                        await self._check_live()
                 elif mtype == "session_reconnect":
                     return str((payload.get("session") or {}).get("reconnect_url") or "")
                 elif mtype == "notification":
@@ -347,7 +375,7 @@ class EventSubClient:
         have = set(self.auth.status().get("scopes") or [])
         skipped = []
         for stype, version, scope in SUBSCRIPTIONS:
-            if scope not in have:
+            if scope and (scope not in have or not self.paid):
                 skipped.append(stype)
                 continue
             if await self._subscribe(stype, version, session_id):
@@ -355,7 +383,33 @@ class EventSubClient:
         if skipped:
             log.info("Twitch paid events skipped (sign in again to allow): %s", ", ".join(skipped))
         if not self.subscribed:
-            raise ConnectionError("Twitch refused every paid-event subscription")
+            raise ConnectionError("Twitch refused every event subscription")
+
+    async def _check_live(self) -> None:
+        """One Helix ``streams`` look-up: is the channel live right now? (EventSub only says when
+        it changes, so this covers Core starting mid-stream.) Quietly does nothing on failure."""
+        if self.on_live is None or not self.auth.user_id:
+            return
+        try:
+            token = await self.auth.token()
+            if not token:
+                return
+            status, data = await self._http("GET", f"{STREAMS_URL}?user_id={self.auth.user_id}", None, {
+                "Client-Id": self.auth.client_id, "Authorization": f"Bearer {token}"})
+        except Exception:
+            log.debug("Twitch live check failed", exc_info=True)
+            return
+        if status != 200 or not isinstance(data, dict):
+            return
+        rows = [r for r in (data.get("data") or []) if isinstance(r, dict)]
+        self._live(any(str(r.get("type") or "live") == "live" for r in rows), "helix check")
+
+    def _live(self, is_live: bool, source: str) -> None:
+        if self.on_live is not None:
+            try:
+                self.on_live(is_live, source)
+            except Exception:
+                log.exception("Twitch live report failed")
 
     async def _subscribe(self, stype: str, version: str, session_id: str) -> bool:
         """One Helix subscription request; a 401 refreshes the token and tries once more."""
@@ -389,6 +443,11 @@ class EventSubClient:
             while len(self._seen) > 500:
                 self._seen.popitem(last=False)
         stype = str((payload.get("subscription") or {}).get("type") or "")
+        if stype in LIVE_TYPES:
+            ev = payload.get("event") or {}
+            # stream.online "type" can be live / playlist / watch_party / premiere / rerun: only live counts
+            self._live(stype == "stream.online" and str(ev.get("type") or "live") == "live", "eventsub")
+            return
         handler = HANDLERS.get(stype)
         if handler is None:
             return
