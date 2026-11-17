@@ -27,6 +27,10 @@ Home: `fridge-stream-core/core/media_library.py`; slots in `core/overlay_style.p
       has the name). Older `data/reaction_images/` uploads move in at start under the same names.
 - [ ] Audience looks (Stream Rooms silhouettes): `media:<name>` in a style's `file`; shows in "Used by"
       (`overlay: "audience looks"`), Rename follows, Delete puts the classic shape back (see [audience-looks.md](audience-looks.md)).
+- [ ] Stream Rooms picture lists (Route 22 billboards): the game's text setting `r22_bb_core` holds stored picture
+      names, comma-separated (`ROOMS_PICTURE_KEYS` in `api/admin_routes.py` = `MEDIA_PICKS` in `admin/rooms-setup.js`,
+      whose pop-up picks and uploads them). Shows in "Used by" (`overlay: "Stream Rooms"`) while the game is connected;
+      Rename and Delete send the new list to the game. The game reads pictures up to 3 MB.
 - [ ] Tests write to their own folders (`OverlayStyle(..., library=MediaLibrary(tmp))`), never `data/media`.
 
 ## Not yet (later steps)
