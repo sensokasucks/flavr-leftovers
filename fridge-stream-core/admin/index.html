@@ -79,6 +79,7 @@
       <div class="nav-heading">Chat &amp; viewers</div>
       <button class="tab" data-keywords="points rules earn spend permissions who can mods chat credits chat history log keep" data-tab="config" data-sub="points" data-title="Points &amp; permissions">Points &amp; permissions</button>
       <button class="tab" data-keywords="chat commands command groups reactions emoji tester try dry run" data-tab="config" data-sub="commands" data-set="cmds" data-title="Commands &amp; reactions">Commands &amp; reactions</button>
+      <button class="tab" data-keywords="discord bot server channel video requests youtube queue approve deny player playlist mods" data-tab="discord" data-title="Discord &amp; video requests">Discord &amp; video requests</button>
     </div>
 
     <div class="nav-group" data-mode="setup" data-heading="Games" id="nav-games-setup" hidden>
@@ -299,6 +300,39 @@
         <div id="live-tts-switches" class="tts-switches"></div>
         <div id="live-tts-missed" class="tts-missed" hidden></div>
         <p id="live-tts-msg" class="muted" role="status"></p>
+      </section>
+      <!-- Video requests (core/video_requests.py, api/video_request_routes.py; admin/discord.js renderLive).
+           Shown only while video requests are switched on (Setup → Discord & video requests).
+           Playing now + Skip / Pause at the top; the lists that grow (waiting, approved) below. -->
+      <section class="live-card vr-card" id="live-vr-card" hidden>
+        <div class="live-card-head">
+          <h3>Video requests</h3>
+          <span id="live-vr-state" class="muted"></span>
+          <a href="#discord" class="live-link">Video request settings →</a>
+        </div>
+        <div id="live-vr-now" class="vr-now"></div>
+        <!-- the pause between two videos (auto-play): countdown, shown only while it runs -->
+        <div id="live-vr-gap" class="vr-gap" hidden>
+          <span id="live-vr-gap-text"></span>
+          <button type="button" id="live-vr-gap-go" class="primary" title="Skip the wait and start the next video now">Start now</button>
+          <button type="button" id="live-vr-gap-hold" title="Stop the countdown. The next video waits until you press Play next.">Hold</button>
+        </div>
+        <div class="live-buttons">
+          <button type="button" id="live-vr-next" class="primary" title="Start the next approved video now">Play next</button>
+          <button type="button" id="live-vr-skip" title="Stop the video playing now">Skip</button>
+          <button type="button" id="live-vr-pause" aria-pressed="false" title="Pause / resume the video player page">Pause</button>
+          <label class="check" title="When a video ends, the next approved one starts by itself"><input id="live-vr-auto" type="checkbox" /> Auto-play</label>
+        </div>
+        <div class="live-buttons vr-add">
+          <input id="live-vr-url" type="text" placeholder="Paste a YouTube link to add it yourself" autocomplete="off" />
+          <button type="button" id="live-vr-add">Add</button>
+        </div>
+        <h4 class="vr-sub">Waiting for a yes <span id="live-vr-pending-n" class="muted"></span></h4>
+        <div id="live-vr-pending" class="vr-list"></div>
+        <h4 class="vr-sub">Up next <span id="live-vr-approved-n" class="muted"></span></h4>
+        <div id="live-vr-approved" class="vr-list"></div>
+        <details class="vr-history"><summary>History</summary><div id="live-vr-history" class="vr-list"></div></details>
+        <p id="live-vr-msg" class="muted" role="status"></p>
       </section>
       <!-- Share to Stream Rooms (admin/rooms-sender.js): Stream Rooms' sender page run inside this
            dashboard, in a frame: the big screen's tab, the webcam, the podiums' feeds and co-stream.
@@ -1085,6 +1119,118 @@
         </div>
       </div>
     </fieldset>
+  </section>
+
+  <!-- Discord & video requests (core/discord_bot.py, core/video_requests.py, api/video_request_routes.py;
+       admin/discord.js). Field ids are dc-<setting> (discord: block) and vr-<setting> (video_requests: block);
+       keep them in step with admin/discord.js readForm / fillForm and the two DEFAULTS. Each block says
+       its tab in data-dc-tab. Each tab shows one card, so they never fold (data-fold="no"). -->
+  <section id="tab-discord" class="panel">
+    <div class="page-head">
+      <h2 class="page-title">Discord &amp; video requests</h2>
+      <p class="tab-intro">Viewers post YouTube links in a Discord channel, you or your mods approve them, and the
+        approved videos play one after another on the <strong>video player</strong> (in OBS, or on the Stream Rooms
+        big screen as a shared browser tab). Stream Core logs in as <strong>your own Discord bot</strong>, made once in
+        Discord's developer portal (free). Nothing plays without a yes.</p>
+    </div>
+    <div id="dc-strip" class="tts-strip" role="status" aria-live="polite"></div>
+    <div class="tts-tabs" role="tablist" aria-label="Discord settings">
+      <button type="button" role="tab" data-dc-show="bot">Bot</button>
+      <button type="button" role="tab" data-dc-show="channels">Channels</button>
+      <button type="button" role="tab" data-dc-show="rules">Request rules</button>
+      <button type="button" role="tab" data-dc-show="player">Player</button>
+    </div>
+    <div class="config-grid">
+      <fieldset class="cfg-card" data-dc-tab="bot" data-fold="no">
+        <legend>Your Discord bot</legend>
+        <ol class="dc-steps">
+          <li>Open the <a href="https://discord.com/developers/applications" target="_blank" rel="noopener">Discord developer portal</a>,
+            press <strong>New Application</strong> and give it a name (your viewers see it).</li>
+          <li>Open <strong>Bot</strong>. Under <strong>Privileged Gateway Intents</strong> switch on
+            <strong>Message Content Intent</strong> and save.</li>
+          <li>On the same page press <strong>Reset Token</strong>, copy the token and paste it below. Treat it like a password.</li>
+          <li>Press <strong>Save and connect</strong>, then <strong>Invite the bot</strong> and pick your server.</li>
+        </ol>
+        <label>Bot token <input id="dc-token" type="password" autocomplete="new-password" placeholder="paste the token from the Bot tab" />
+          <span class="hint" id="dc-token-note"></span></label>
+        <label class="check" id="dc-token-clear-row" hidden><input id="dc-token-clear" type="checkbox" /> Remove the saved token</label>
+        <p id="dc-state" class="live-state">—</p>
+        <div class="form-row">
+          <button type="button" id="dc-connect" class="primary">Save and connect</button>
+          <button type="button" id="dc-disconnect">Disconnect</button>
+          <a id="dc-invite" class="button-link" href="#" target="_blank" rel="noopener" hidden>Invite the bot to your server →</a>
+        </div>
+      </fieldset>
+      <fieldset class="cfg-card" data-dc-tab="channels" data-fold="no">
+        <legend>Server and channels</legend>
+        <label>Server <select id="dc-guild_id"><option value="">(connect the bot first)</option></select></label>
+        <label>Request channel <select id="dc-request_channel_id"></select>
+          <span class="hint">Viewers post YouTube links here. The bot reacts ⏳, then ✅ / ❌ / ▶️.</span></label>
+        <label>Mod channel <select id="dc-mod_channel_id"></select>
+          <span class="hint">Optional: every request is posted here with Approve / Deny / Play now buttons. Make it a channel only your mods can see.</span></label>
+        <label class="check"><input id="dc-clean_channel" type="checkbox" /> Delete messages without a YouTube link in the request channel
+          <span class="hint">Needs the bot's Manage Messages permission (the invite link asks for it).</span></label>
+        <fieldset class="dc-roles"><legend>Who may press Approve / Deny <span class="hint">(admins and Manage Server always may)</span></legend>
+          <div id="dc-approver_role_ids" class="dc-role-list"></div></fieldset>
+        <fieldset class="dc-roles"><legend>Who may request <span class="hint">(none ticked = everyone)</span></legend>
+          <div id="dc-requester_role_ids" class="dc-role-list"></div></fieldset>
+        <div class="form-row"><button type="button" id="dc-reload-server">Reload channels and roles</button></div>
+      </fieldset>
+      <fieldset class="cfg-card" data-dc-tab="rules" data-fold="no">
+        <legend>Request rules</legend>
+        <label class="check"><input id="vr-enabled" type="checkbox" /> <strong>Take video requests</strong></label>
+        <div class="row2">
+          <label>Longest video (minutes) <input id="vr-max_minutes" type="number" min="0" max="360" step="1" />
+            <span class="hint">0 = no limit.</span></label>
+          <label>Waiting requests per person <input id="vr-per_person" type="number" min="0" max="50" step="1" />
+            <span class="hint">0 = no limit.</span></label>
+        </div>
+        <label>The same video twice
+          <select id="vr-repeats">
+            <option value="session">Not twice in one stream (since Core started)</option>
+            <option value="history">Never again (last 200 kept)</option>
+            <option value="off">Allowed</option>
+          </select></label>
+        <label>After a denial, that person waits (minutes) <input id="vr-deny_cooldown_min" type="number" min="0" max="1440" step="1" /></label>
+        <label>Blocked words <input id="vr-blocked_words" type="text" placeholder="comma separated, checked against the title and channel" autocomplete="off" /></label>
+        <label class="check"><input id="vr-bot_replies" type="checkbox" /> The bot answers in the channel (why a link was refused, denials)</label>
+        <label class="check"><input id="vr-now_playing_post" type="checkbox" /> The bot posts "Now playing" in the request channel</label>
+        <p class="hint">Live streams, age-restricted videos and videos their owner keeps on YouTube only are always refused.</p>
+      </fieldset>
+      <fieldset class="cfg-card" data-dc-tab="player" data-fold="no">
+        <legend>Where videos play</legend>
+        <label class="check"><input type="radio" name="vr-play_on" value="player" /> <span><strong>Video player page</strong> (recommended):
+          plays straight from YouTube, no downloading. Use it in OBS, and/or share it to Stream Rooms' big screen.</span></label>
+        <label class="check"><input type="radio" name="vr-play_on" value="rooms" /> <span><strong>Download into Stream Rooms</strong>:
+          the game downloads and converts each video (the next one is prepared ahead). Slower to start, but co-stream guests get it in sync.</span></label>
+        <label class="check"><input id="vr-auto_play" type="checkbox" /> Auto-play: start the next approved video when one ends</label>
+        <div class="row2">
+          <label title="How long auto-play waits after a video before the next one starts. 0 = at once. The Live card shows the countdown with Start now and Hold.">Pause between videos (seconds) <input id="vr-gap_seconds" type="number" min="0" max="600" step="1" /></label>
+          <label title="The player page also shows the Up next card in the corner for the last seconds of a video. 0 = only during the pause.">"Up next" before a video ends (seconds) <input id="vr-next_seconds" type="number" min="0" max="120" step="1" /></label>
+        </div>
+        <label class="check"><input id="vr-show_next" type="checkbox" /> Show an "Up next" card on the player page (during the pause, with a countdown)</label>
+        <div class="row2">
+          <label>Player volume <input id="vr-player_volume" type="number" min="0" max="100" step="5" /></label>
+          <label>Title card (seconds) <input id="vr-title_seconds" type="number" min="0" max="60" step="1" /></label>
+        </div>
+        <label class="check"><input id="vr-show_title" type="checkbox" /> Show "title, requested by name" when a video starts</label>
+        <h4>Player links</h4>
+        <p class="hint">For OBS: add a <strong>Browser Source</strong> with this link, 1920 × 1080 (see-through between videos):</p>
+        <div class="form-row"><input id="vr-link-obs" type="text" readonly /> <button type="button" data-copy="vr-link-obs">Copy</button></div>
+        <p class="hint">For Stream Rooms' big screen: open this in a browser tab, click <em>Click to start</em> once, then share that tab
+          with <a href="#live/sender">Share to Stream Rooms</a> (pick the tab in the share dialog).</p>
+        <div class="form-row"><input id="vr-link-tab" type="text" readonly /> <button type="button" data-copy="vr-link-tab">Copy</button>
+          <a id="vr-open-tab" class="button-link" href="/overlay/video-player.html?bg=black" target="_blank" rel="noopener">Open player tab →</a></div>
+        <h4>Queue overlay</h4>
+        <p class="hint">A small see-through list for OBS, "Now playing" and what's up next: add a <strong>Browser Source</strong> with this link,
+          about 520 × 400. It hides itself while nothing plays. Add <code>?count=5</code> for more rows or <code>?align=right</code> for a right-hand corner.</p>
+        <div class="form-row"><input id="vr-link-queue" type="text" readonly /> <button type="button" data-copy="vr-link-queue">Copy</button></div>
+      </fieldset>
+    </div>
+    <div class="form-row save-row">
+      <button type="button" id="dc-save" class="primary">Save</button>
+      <span id="dc-msg" class="muted" role="status"></span>
+    </div>
   </section>
 
   <!-- Read aloud (TTS): Core sends lines to the streamer's own text-to-speech server and the alerts
@@ -2314,6 +2460,7 @@
   <!-- QR codes for Setup → Phone remote (MIT, Kazuhiko Arase; window.qrcode) -->
   <script src="/admin/vendor/qrcode-generator-1.4.4.js"></script>
   <script src="/admin/tts.js"></script>
+  <script src="/admin/discord.js"></script>
   <!-- folding cards on every page; before rooms-setup.js, which uses window.FoldCards -->
   <script src="/admin/fold-cards.js"></script>
   <script src="/admin/rooms-setup.js"></script>

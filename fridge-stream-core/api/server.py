@@ -32,6 +32,7 @@ import os
 from api.admin_routes import _CORE_ROOT, create_admin_router
 from api.highlight_routes import create_highlight_router
 from api.tts_routes import create_tts_router
+from api.video_request_routes import create_video_request_router
 from api.log_routes import create_log_router
 from api.phone_admin_routes import create_phone_admin_router
 from core.local_guard import (
@@ -693,6 +694,9 @@ def create_app(core_state: "CoreState") -> FastAPI:
     app.include_router(create_highlight_router(core_state, _CORE_ROOT))
     # Text-to-speech (core/tts.py): /api/admin/tts* for Setup → Read aloud (TTS) and the Live card
     app.include_router(create_tts_router(core_state, _CORE_ROOT))
+    # Video requests + Discord bot (core/video_requests.py, core/discord_bot.py): /api/admin/video-requests*
+    # for Setup → Discord & video requests and the Live card; /api/video-requests/player* for the player page
+    app.include_router(create_video_request_router(core_state, _CORE_ROOT))
     # Troubleshooting log files (core/debug_log.py): /api/admin/logs* for Setup → Advanced
     app.include_router(create_log_router(core_state, _CORE_ROOT))
     # Phone remote card (Setup → Phone remote): switch the phone door, pair / remove phones

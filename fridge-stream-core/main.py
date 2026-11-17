@@ -297,6 +297,25 @@ class StreamCore:
         # a highlight reaching the screen is read aloud when that trigger is on
         self.highlights.on_shown = self.tts.on_highlight
 
+        # Video requests + the Discord bot that takes them (core/video_requests.py, core/discord_bot.py;
+        # Setup → Discord & video requests, Live card "Video requests"). Both off until switched on.
+        from core.discord_bot import DiscordBot
+        from core.video_requests import VideoRequestQueue
+        self.video_requests = VideoRequestQueue(
+            get_config=lambda: self.state.config or self.config,
+            data_dir=ROOT / "data",
+            send_stage=self.reactions.send_stage,
+            rooms_state=lambda: self.reactions.rooms_state,
+            note=lambda text, kind: self.bus.note(kind, text),
+        )
+        self.state.video_requests = self.video_requests
+        self.discord = DiscordBot(
+            get_config=lambda: self.state.config or self.config,
+            queue=self.video_requests,
+            note=lambda text, kind: self.bus.note(kind, text),
+        )
+        self.state.discord = self.discord
+
         self._metrics_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         # Recent chat for overlays that connect mid-stream (newest last)
@@ -367,6 +386,9 @@ class StreamCore:
         self._highlight_task = asyncio.create_task(self.highlights.run(self._stop), name="highlight-timer")
         # Text-to-speech worker: one line at a time; re-checks a "down" server every 30 s
         self._tts_task = asyncio.create_task(self.tts.run(self._stop), name="tts-worker")
+        # Video requests: watch Stream Rooms' "video ended" count (play_on: rooms); Discord bot login
+        self._vr_task = asyncio.create_task(self.video_requests.watch_rooms(self._stop), name="video-requests")
+        self.discord.start()
         if (self.config.get("core") or {}).get("watch_config", True):
             self._config_watch_task = asyncio.create_task(
                 self._config_watch_loop(), name="config-watch"
@@ -668,6 +690,10 @@ class StreamCore:
             except asyncio.CancelledError:
                 pass
             self.chat_games.tick_save()
+        try:
+            await self.discord.stop()
+        except Exception:
+            log.exception("Discord bot stop failed")
         if getattr(self, "_highlight_task", None):
             self._highlight_task.cancel()
             try:
