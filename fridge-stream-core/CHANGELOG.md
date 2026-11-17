@@ -9,6 +9,9 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Billboard pictures for Stream Rooms' Route 22 Cruise.** Setup › Stream Rooms › Stream Rooms settings › Room & sound, **Billboards** card (shown while the Route 22 Cruise room is loaded): **Billboard pictures** has a **Choose pictures** button. It lists the pictures in Stored files (click one to put it on or take it off the billboards) and **Upload pictures…** adds new ones to Stored files and picks them in one go. Stream Rooms fetches the picked pictures from Core. Stored files shows them under "Used by" (Stream Rooms, Route 22 billboards), and renaming or deleting a stored picture updates the list while the game is connected. Pictures over 3 MB are too big for Stream Rooms and can't be picked. Needs the matching Stream Rooms build.
+
 ## [2026.11.10] — 2026-11-10
 
 ### Added
