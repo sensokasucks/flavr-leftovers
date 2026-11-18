@@ -1262,6 +1262,8 @@
         <label class="check"><input id="cp-send_points" type="checkbox" /> Send the points list (top 500, every 5 minutes)</label>
         <label class="check"><input id="cp-send_queue" type="checkbox" /> Send the video request queue</label>
         <label class="check"><input id="cp-send_chat" type="checkbox" /> Send chat history (saved chat lines, for the bot's /said search; clearing chat here clears the bot's copy too)</label>
+        <label class="check"><input id="cp-moments_clips" type="checkbox" /> Make a Twitch clip when chat suddenly gets busy
+          <span class="hint">Chat moments (a sudden burst of chat while you're live) always go to the bot for its after-stream recap, with a link to that point in the VOD. With this on, Twitch also makes a real clip of it (it shows on your channel's Clips page). Needs Reconnect on the Twitch card once.</span></label>
         <p id="cp-state" class="live-state">—</p>
         <div class="form-row">
           <button type="button" id="cp-save" class="primary">Save</button>

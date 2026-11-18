@@ -23,6 +23,8 @@ Types sent (the companion's docs/CORE_LINK.md is the other half of this list; ke
              yet, for its /said chat search: up to CHAT_BATCH lines with an id above the
              ``chat_since`` the companion put in its last answer, every CHAT_SEC, and at once
              again while a full batch went (catching up on old history). Switch: send_chat.
+  moment     a sudden burst of chat during a stream (core/chat_moments.py): at, cpm, baseline and,
+             with moments.twitch_clips, a Twitch clip link (or clip_error). For the bot's recap.
   chat_cleared  after Core deletes saved chat (store.on_chat_cleared): ``before`` for an age-only
              trim, nothing for any other clear (the companion then wipes its copy, answers
              chat_since 0 and gets what is left sent again)

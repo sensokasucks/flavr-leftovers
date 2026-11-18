@@ -338,6 +338,18 @@ class StreamCore:
         )
         self.store.on_chat_cleared = self.companion.chat_cleared
         self.state.companion = self.companion
+        # Chat moments (core/chat_moments.py): a sudden burst of chat during a stream goes to the companion
+        # bot for its after-stream recap; with moments.twitch_clips on, Twitch makes a clip of it too
+        from core.chat_moments import ChatMoments
+        self.moments = ChatMoments(
+            get_config=lambda: self.state.config or self.config,
+            get_cpm=lambda: self.metrics.cpm,
+            is_live=lambda: bool(self.stream.live),
+            send=lambda m: self.companion.send("moment", m),
+            make_clip=self._twitch_clip,
+            twitch_live=lambda: "twitch" in self.stream.live_platforms(),
+            link_on=lambda: not self.companion.why_not(),
+        )
         self.stream.add_listener(self.companion.stream_changed)
 
         self._metrics_task: asyncio.Task | None = None
@@ -2011,6 +2023,13 @@ class StreamCore:
             except RuntimeError:
                 pass        # no running loop (tests driving StreamState by hand)
 
+    async def _twitch_clip(self) -> tuple[str, str]:
+        """core/chat_moments.py: a Twitch clip of the last ~30 s (adapters/twitch.py create_clip)."""
+        ad = (self.adapters or {}).get("twitch")
+        if ad is None or not hasattr(ad, "create_clip"):
+            return "", "Twitch is off in Core"
+        return await ad.create_clip()
+
     def _companion_heartbeat(self) -> dict:
         """What the companion bot gets every heartbeat (core/companion_link.py)."""
         snap = self.metrics.snapshot()
@@ -2053,6 +2072,10 @@ class StreamCore:
             await self.bus.publish_metrics(snap)
             # stream start / end: "still live" note once a minute, and the end after a long drop
             self.stream.tick()
+            try:
+                await self.moments.tick()           # chat moments for the companion bot's recap
+            except Exception:
+                log.exception("chat moments check failed")
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=2.0)
             except asyncio.TimeoutError:

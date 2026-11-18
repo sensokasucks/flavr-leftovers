@@ -5,8 +5,9 @@ Stream start / end and the companion bot link: dashboard routes.
   PUT  /api/admin/stream/settings    {auto_session?, restart_grace_min?}: credits.auto_session and
                                      stream.restart_grace_min, merged into config.yaml
   GET  /api/admin/companion          {settings: public_settings (key → key_set), status}
-  PUT  /api/admin/companion/settings {enabled, url, key, key_clear, heartbeat_sec, send_*}: the key is
-                                     only replaced when a new one is typed; the link restarts
+  PUT  /api/admin/companion/settings {enabled, url, key, key_clear, heartbeat_sec, send_*, moments_clips}:
+                                     the key is only replaced when a new one is typed; the link restarts.
+                                     moments_clips = moments.twitch_clips (core/chat_moments.py)
   POST /api/admin/companion/test     one hello now → {ok, message}
 
 Used by the Credits page card "When you go live" and Setup → Discord & video requests →
@@ -23,6 +24,7 @@ from fastapi import APIRouter, Body, Header, HTTPException
 from core.companion_link import public_settings, read_settings as read_companion
 from core.config import load_config, save_config
 from core.local_guard import resolve_admin_token, token_matches
+from core.chat_moments import read_settings as read_moments
 from core.stream_state import read_settings as read_stream
 
 
@@ -46,7 +48,8 @@ def create_companion_router(core_state, core_root) -> APIRouter:
 
     def _companion_answer() -> Dict[str, Any]:
         link = getattr(core_state, "companion", None)
-        return {"settings": public_settings(read_companion(_cfg())),
+        return {"settings": {**public_settings(read_companion(_cfg())),
+                             "moments_clips": read_moments(_cfg())["twitch_clips"]},
                 "status": link.status() if link else {"state": "off", "message": "Not ready."}}
 
     @router.get("/api/admin/stream")
@@ -86,6 +89,8 @@ def create_companion_router(core_state, core_root) -> APIRouter:
         if body.get("key_clear"):
             new["key"] = ""
         cfg["companion"] = read_companion({"companion": new})
+        if "moments_clips" in body:     # chat moments: also make a Twitch clip (core/chat_moments.py)
+            cfg["moments"] = {**dict(cfg.get("moments") or {}), "twitch_clips": bool(body["moments_clips"])}
         core_state.config = cfg
         save_config(cfg)
         link = getattr(core_state, "companion", None)
