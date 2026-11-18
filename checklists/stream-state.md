@@ -14,6 +14,7 @@ The companion bot itself lives in its own repo ([flavr-bot](https://github.com/s
 - [ ] Every change adds a `stream` line to Stream events (`core/activity.py` KINDS, admin.js `LIVE_FEED_KINDS`, the Stream filter button) and a `stream_state` `/ws` frame.
 - [ ] Companion link `companion.enabled` default **false**. Core only sends (`POST {url}/core/push`, `Authorization: Bearer {key}`); it opens no port. The key is never sent to the dashboard (`key_set`), kept on save unless a new one is typed, cleared with `key_clear`.
 - [ ] Sending never blocks: `send()` queues (max 200); heartbeat / snapshot replace older unsent ones; stream events and alerts wait while the bot is away. Test alerts and follows are never sent. Snapshots: top 500 points (only while `points.enabled` and `send_points`), the request queue (`send_queue`); every 5 minutes and right after a stream ends.
+- [ ] Chat for the bot's `/said` (`send_chat`, default on while the link is on): only lines Core saves (`chat_messages`), sent by id after the bot's `chat_since` (from its answers; nothing before its first answer), up to 1000 a message every 60 s, back to back while catching up. Clearing chat (by hand or the `chat_log.keep_days` trim) tells the bot (`chat_cleared`: `before` for an age-only clear, else a full re-send). Wiring: `store.chat_after`, `store.on_chat_cleared` in `main.py`.
 - [ ] Dashboard: the go-live card lives on the Credits page (Feature + roll), the companion card is a tab of the existing Discord & video requests page. No new menu entry.
 
 ## After-change verify

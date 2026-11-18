@@ -92,6 +92,20 @@ class StoreClearTests(unittest.IsolatedAsyncioTestCase):
         self.store.configure_chat_log({"enabled": True, "keep_days": "nonsense"})
         self.assertEqual(self.store.log_keep_days, 0)
 
+    async def test_companion_hears_about_clears_and_reads_new_lines(self):
+        heard = []
+        self.store.on_chat_cleared = heard.append
+        rows = await self.store.chat_after(0, 2)
+        self.assertEqual([r["message"] for r in rows], ["ancient line", "older line"])   # oldest id first
+        self.assertEqual([r["message"] for r in await self.store.chat_after(rows[-1]["id"])],
+                         ["fresh line", "kick line", "buy viewers"])
+        self.assertEqual(await self.store.clear_chat(platform="kick"), 1)    # filtered: full re-send
+        self.assertIsNone(heard[-1])
+        self.assertEqual(await self.store.clear_chat(30), 1)                 # age only: the cut-off time
+        self.assertAlmostEqual(heard[-1], time.time() - 30 * DAY, delta=5)
+        self.assertEqual(await self.store.clear_chat(30), 0)                 # nothing went: nothing said
+        self.assertEqual(len(heard), 2)
+
     async def test_csv_of_what_would_go(self):
         text = await self.store.export_chat_csv(older_than_days=30, keep_flagged=True)
         self.assertIn("ancient line", text)

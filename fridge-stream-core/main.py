@@ -327,12 +327,16 @@ class StreamCore:
         self.stream.add_listener(self._stream_changed)
         # Companion bot link (core/companion_link.py): Core sends heartbeats, stream changes, alerts and a
         # points / queue copy to an always-on bot on another home PC. Off until set up (Setup → Discord &
-        # video requests → Companion bot); Core only sends, it opens no port.
+        # video requests → Companion bot); Core only sends, it opens no port. With companion.send_chat it
+        # also sends saved chat (store.chat_after) for the bot's /said search, and clears follow
+        # (store.on_chat_cleared).
         self.companion = CompanionLink(
             get_config=lambda: self.state.config or self.config,
             heartbeat=self._companion_heartbeat,
             snapshot=self._companion_snapshot,
+            chat_after=self.store.chat_after,
         )
+        self.store.on_chat_cleared = self.companion.chat_cleared
         self.state.companion = self.companion
         self.stream.add_listener(self.companion.stream_changed)
 

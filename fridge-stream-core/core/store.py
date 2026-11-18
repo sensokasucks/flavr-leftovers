@@ -14,7 +14,7 @@ import logging
 import sqlite3
 import time
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from core.models import ChatEvent
 from core.csv_safe import SafeWriter
@@ -253,6 +253,9 @@ class Store:
         self._inflight: Optional[asyncio.Future] = None
         self._dropped = 0
         self._dropped_logged = 0.0
+        # called with (cut-off unix s or None) after clear_chat deleted lines; main.py sets it to
+        # CompanionLink.chat_cleared so the companion bot's /said copy follows
+        self.on_chat_cleared: Optional[Callable[[Optional[float]], None]] = None
         self._init_db()
 
     def configure_chat_log(self, cfg: dict | None) -> None:
@@ -1196,6 +1199,19 @@ class Store:
         finally:
             conn.close()
 
+    def _chat_after_sync(self, after_id: int, limit: int) -> list[dict]:
+        """Saved chat lines with an id above ``after_id``, oldest first (ids only grow:
+        AUTOINCREMENT). For the companion bot's /said copy (core/companion_link.py)."""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT id, platform, username, display_name, message, timestamp FROM chat_messages "
+                "WHERE id>? ORDER BY id LIMIT ?", (int(after_id), int(limit))).fetchall()
+            return [dict(r) for r in rows]
+
+    async def chat_after(self, after_id: int, limit: int = 1000) -> list[dict]:
+        """``_chat_after_sync`` off the event loop (core/companion_link.py ChatAfter)."""
+        return await self._run(self._chat_after_sync, after_id, limit)
+
     async def search_chat(
         self,
         user_id: Optional[int] = None,
@@ -1271,6 +1287,14 @@ class Store:
             deleted = await self._run(self._clear_chat_sync, older_than_days, keep_flagged, filters)
         if deleted:
             log.info("Cleared %d saved chat line(s)", deleted)
+            if self.on_chat_cleared is not None:
+                # the companion bot's chat copy follows (main.py → CompanionLink.chat_cleared): an
+                # age-only clear (no Chat history filters) sends the cut-off time, any other a full re-send
+                age_only = older_than_days and older_than_days > 0 and not any(filters.values())
+                try:
+                    self.on_chat_cleared(time.time() - older_than_days * 86400 if age_only else None)
+                except Exception:
+                    log.exception("chat cleared listener failed")
         return deleted
 
     async def trim_chat_log(self) -> int:
