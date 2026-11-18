@@ -519,6 +519,7 @@ hr{border:0;border-top:2px solid var(--line);margin:3em 0}
 <li><code>?template=streamlabs</code> for Streamlabs Chat Box CSS</li>
 <li><code>?template=streamelements</code> for StreamElements chat CSS</li>
 <li><code>?template=jchat</code> for jChat or Chat Is This CSS</li>
+<li><code>?template=youtube</code> for CSS made for YouTube's popout chat, like the Septapus Chat v2.0 Style Generator (chatv2.septapus.com)</li>
 </ul>
 <p>The template then decides the whole look: the K / T / Y letters, chatter pictures and word badges stay out of its way (<code>&amp;badges=1</code> or <code>&amp;avatars=1</code> brings them back). Templates carry their widget's settings as placeholders like <code>{font_size}</code> or <code>{{fontSize}}</code>; when you save, Core fills in the common ones with its own font size, colours and "hide after" time, and says how many it filled. Templates that come with their own HTML or JavaScript only bring their CSS. Like the alerts, the chat overlay can keep several <strong>Stylesheets</strong>, picked per source with <code>?css=</code> and the name.</p>
 <p>When a mod deletes a message, times out or bans someone, or clears chat on Twitch, Kick or YouTube, those lines leave the chat overlay too.</p>
@@ -541,7 +542,7 @@ hr{border:0;border-top:2px solid var(--line);margin:3em 0}
 <tr>
 <td>Chat, all platforms</td>
 <td><code>http://127.0.0.1:3850/overlay/chat.html</code></td>
-<td><code>?platform=twitch</code> (or <code>kick</code>, <code>youtube</code>) for one platform; <code>?platforms=kick,twitch</code> for a set; <code>&amp;badges=0</code> hides the K / T / Y letters; <code>?skin=plain</code>, <code>?hide=12</code>, <code>?top=1</code>, <code>?avatars=1</code>, <code>?sound=0</code> override the dashboard settings for one source (next heading); <code>?template=streamlabs</code> / <code>streamelements</code> / <code>jchat</code> for a free template, <code>?css=name</code> for a saved stylesheet</td>
+<td><code>?platform=twitch</code> (or <code>kick</code>, <code>youtube</code>) for one platform; <code>?platforms=kick,twitch</code> for a set; <code>&amp;badges=0</code> hides the K / T / Y letters; <code>?skin=plain</code>, <code>?hide=12</code>, <code>?top=1</code>, <code>?avatars=1</code>, <code>?sound=0</code> override the dashboard settings for one source (next heading); <code>?template=streamlabs</code> / <code>streamelements</code> / <code>jchat</code> / <code>youtube</code> for a free template, <code>?css=name</code> for a saved stylesheet</td>
 </tr>
 <tr>
 <td>Alerts</td>

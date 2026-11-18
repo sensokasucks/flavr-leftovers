@@ -183,6 +183,24 @@ class ChatPage(unittest.TestCase):
         keys = {p["key"] for p in by_id("chat")["params"]}
         self.assertTrue({"template", "css"} <= keys)
 
+    def test_youtube_template_names(self):
+        """?template=youtube draws YouTube popout-chat markup, which Septapus Chat v2.0 CSS selects."""
+        js = (OVERLAY / "chat.js").read_text(encoding="utf-8")
+        self.assertRegex(js, r'septapus:\s*"youtube"')
+        for needle in ('"yt-live-chat-text-message-renderer"', '"yt-live-chat-paid-message-renderer"',
+                       "<yt-live-chat-renderer>", "<yt-live-chat-item-list-renderer>", 'id="item-scroller"',
+                       'id="items"', 'id="author-photo"', 'id="timestamp"', "<yt-live-chat-author-chip>",
+                       'id="author-name"', 'id="author-badges"', 'id="message"', 'id="purchase-amount"',
+                       '"author-type"', '"is-deleted"', '"is-highlighted"', "<yt-live-chat-author-badge-renderer",
+                       'class="emoji emote'):
+            self.assertIn(needle, js)
+        css = (OVERLAY / "chat.css").read_text(encoding="utf-8")
+        # the base look must not outweigh pasted CSS
+        self.assertIn(":where(body.template-youtube) yt-live-chat-text-message-renderer {", css)
+        self.assertNotRegex(css, r"(?m)^body\.template-youtube ")
+        options = {o[0] for o in next(p for p in by_id("chat")["params"] if p["key"] == "template")["options"]}
+        self.assertIn("youtube", options)
+
 
 class Rig:
     def __init__(self, cls, config):

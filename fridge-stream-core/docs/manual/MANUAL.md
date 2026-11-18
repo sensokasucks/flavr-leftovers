@@ -463,6 +463,7 @@ The same rules can go into OBS's own **Custom CSS** box on the browser source in
 - `?template=streamlabs` for Streamlabs Chat Box CSS
 - `?template=streamelements` for StreamElements chat CSS
 - `?template=jchat` for jChat or Chat Is This CSS
+- `?template=youtube` for CSS made for YouTube's popout chat, like the Septapus Chat v2.0 Style Generator (chatv2.septapus.com)
 
 The template then decides the whole look: the K / T / Y letters, chatter pictures and word badges stay out of its way (`&badges=1` or `&avatars=1` brings them back). Templates carry their widget's settings as placeholders like `{font_size}` or `{{fontSize}}`; when you save, Core fills in the common ones with its own font size, colours and "hide after" time, and says how many it filled. Templates that come with their own HTML or JavaScript only bring their CSS. Like the alerts, the chat overlay can keep several **Stylesheets**, picked per source with `?css=` and the name.
 
@@ -483,7 +484,7 @@ Most overlays take switches on their address (which platforms the chat shows, th
 
 | Overlay | Address | Notes |
 |---|---|---|
-| Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading); `?template=streamlabs` / `streamelements` / `jchat` for a free template, `?css=name` for a saved stylesheet |
+| Chat, all platforms | `http://127.0.0.1:3850/overlay/chat.html` | `?platform=twitch` (or `kick`, `youtube`) for one platform; `?platforms=kick,twitch` for a set; `&badges=0` hides the K / T / Y letters; `?skin=plain`, `?hide=12`, `?top=1`, `?avatars=1`, `?sound=0` override the dashboard settings for one source (next heading); `?template=streamlabs` / `streamelements` / `jchat` / `youtube` for a free template, `?css=name` for a saved stylesheet |
 | Alerts | `http://127.0.0.1:3850/overlay/alerts.html` | `?skin=classic` / `card` / `custom`; `?preview=1` shows a sample; filters, layout, animations and `?css=` in section 13 |
 | End credits overlay | `http://127.0.0.1:3850/overlay/credits.html` | `?motion=matrix&title=THE%20CREW` overrides the saved look |
 | Replies and chat games boards | `http://127.0.0.1:3850/overlay/replies.html` | `?boards=0` hides boards, `?replies=0` shows boards only |
