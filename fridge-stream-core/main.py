@@ -297,6 +297,45 @@ class StreamCore:
         # a highlight reaching the screen is read aloud when that trigger is on
         self.highlights.on_shown = self.tts.on_highlight
 
+        # Video requests + the Discord bot that takes them (core/video_requests.py, core/discord_bot.py;
+        # Setup → Discord & video requests, Live card "Video requests"). Both off until switched on.
+        from core.discord_bot import DiscordBot
+        from core.video_requests import VideoRequestQueue
+        self.video_requests = VideoRequestQueue(
+            get_config=lambda: self.state.config or self.config,
+            data_dir=ROOT / "data",
+            send_stage=self.reactions.send_stage,
+            rooms_state=lambda: self.reactions.rooms_state,
+            note=lambda text, kind: self.bus.note(kind, text),
+        )
+        self.state.video_requests = self.video_requests
+        self.discord = DiscordBot(
+            get_config=lambda: self.state.config or self.config,
+            queue=self.video_requests,
+            note=lambda text, kind: self.bus.note(kind, text),
+        )
+        self.state.discord = self.discord
+
+        # Stream start / end (core/stream_state.py): the adapters say when each platform goes live or
+        # offline (bus.report_live); one stream spans every platform and short drops. A start can begin
+        # a new credits session (credits.auto_session, Credits page) and goes to the companion bot.
+        from core.stream_state import StreamState
+        from core.companion_link import CompanionLink
+        self.stream = StreamState(get_config=lambda: self.state.config or self.config, data_dir=ROOT / "data")
+        self.bus.stream = self.stream
+        self.state.stream = self.stream
+        self.stream.add_listener(self._stream_changed)
+        # Companion bot link (core/companion_link.py): Core sends heartbeats, stream changes, alerts and a
+        # points / queue copy to an always-on bot on another home PC. Off until set up (Setup → Discord &
+        # video requests → Companion bot); Core only sends, it opens no port.
+        self.companion = CompanionLink(
+            get_config=lambda: self.state.config or self.config,
+            heartbeat=self._companion_heartbeat,
+            snapshot=self._companion_snapshot,
+        )
+        self.state.companion = self.companion
+        self.stream.add_listener(self.companion.stream_changed)
+
         self._metrics_task: asyncio.Task | None = None
         self._stop = asyncio.Event()
         # Recent chat for overlays that connect mid-stream (newest last)
@@ -367,6 +406,12 @@ class StreamCore:
         self._highlight_task = asyncio.create_task(self.highlights.run(self._stop), name="highlight-timer")
         # Text-to-speech worker: one line at a time; re-checks a "down" server every 30 s
         self._tts_task = asyncio.create_task(self.tts.run(self._stop), name="tts-worker")
+        # Video requests: watch Stream Rooms' "video ended" count (play_on: rooms); Discord bot login
+        self._vr_task = asyncio.create_task(self.video_requests.watch_rooms(self._stop), name="video-requests")
+        self.discord.start()
+        # a stream saved as live before a restart gets stream.restart_grace_min to come back
+        self.stream.resume_timer()
+        self.companion.start()
         if (self.config.get("core") or {}).get("watch_config", True):
             self._config_watch_task = asyncio.create_task(
                 self._config_watch_loop(), name="config-watch"
@@ -668,6 +713,14 @@ class StreamCore:
             except asyncio.CancelledError:
                 pass
             self.chat_games.tick_save()
+        try:
+            await self.discord.stop()
+        except Exception:
+            log.exception("Discord bot stop failed")
+        try:
+            await self.companion.stop()
+        except Exception:
+            log.exception("companion link stop failed")
         if getattr(self, "_highlight_task", None):
             self._highlight_task.cancel()
             try:
@@ -1724,6 +1777,11 @@ class StreamCore:
         tag = "TEST" if payload.get("is_test") else payload.get("kind")
         log.info("[alert/%s] %s", tag, payload.get("headline"))
         try:
+            # companion bot: raids, gifts, tips ... for phone pings (never tests or follows)
+            self.companion.alert(payload)
+        except Exception:
+            log.exception("companion alert failed")
+        try:
             self.credits.note_alert(
                 payload.get("kind") or "",
                 payload.get("platform") or "",
@@ -1913,11 +1971,84 @@ class StreamCore:
                 "stats": {},
             })
 
+    # ------------------------------------------------------------------
+    # Stream start / end + companion bot (core/stream_state.py, core/companion_link.py)
+    # ------------------------------------------------------------------
+
+    def _stream_changed(self, change: dict) -> None:
+        """StreamState listener: Stream events line, new credits session on a start (when
+        credits.auto_session is on), and a ``stream_state`` /ws frame for the dashboard."""
+        event = change.get("event")
+        names = ", ".join(p.title() for p in change.get("platforms") or [])
+        if event == "started":
+            self.bus.note("stream", f"Stream started ({names or 'live'})")
+            auto = bool(((self.state.config or self.config).get("credits") or {}).get("auto_session"))
+            if auto:
+                try:
+                    self.credits.reset()
+                    self.bus.note("stream", "New credits session (Start a new session when I go live)")
+                    if self.state.ws_manager:
+                        self.state.ws_manager.push_roster(self.credits.snapshot)
+                except Exception:
+                    log.exception("credits auto session failed")
+        elif event == "dropped":
+            mins = round((self.stream.grace_sec or 0) / 60)
+            self.bus.note("stream", f"Every platform is offline; the stream ends if none is back in {mins} min")
+        elif event == "resumed":
+            self.bus.note("stream", f"Back live ({names}); same stream")
+        elif event == "ended":
+            mins = int(change.get("length_sec") or 0) // 60
+            self.bus.note("stream", f"Stream ended after {mins // 60} h {mins % 60} min")
+        mgr = self.state.ws_manager
+        if mgr:
+            try:
+                asyncio.get_running_loop().create_task(
+                    mgr.broadcast({"type": "stream_state", "data": self.stream.status()}))
+            except RuntimeError:
+                pass        # no running loop (tests driving StreamState by hand)
+
+    def _companion_heartbeat(self) -> dict:
+        """What the companion bot gets every heartbeat (core/companion_link.py)."""
+        snap = self.metrics.snapshot()
+        platforms = {}
+        for name, ad in (self.adapters or {}).items():
+            try:
+                platforms[name] = bool(getattr(ad, "connected", False))
+            except Exception:
+                platforms[name] = False
+        return {"stream": self.stream.status(), "viewers": snap.viewers,
+                "viewers_by_platform": snap.viewers_by_platform, "cpm": snap.cpm,
+                "credits": len(self.credits.chatters), "chat_connected": platforms}
+
+    async def _companion_snapshot(self) -> dict:
+        """Points leaderboard (top 500) and video request queue, for the companion's /points and
+        /queue while this PC is off. Each part only when its companion.send_* switch is on."""
+        from core.companion_link import read_settings as companion_settings
+        s = companion_settings(self.state.config or self.config)
+        out: dict = {}
+        if s["send_points"] and ((self.state.config or self.config).get("points") or {}).get("enabled", True):
+            try:
+                rows = await self.store.list_users(limit=500)
+                out["points"] = [{"name": r.get("display_name") or "", "points": int(r.get("points") or 0),
+                                  "accounts": r.get("accounts") or ""} for r in rows]
+            except Exception:
+                log.exception("companion points snapshot failed")
+        if s["send_queue"]:
+            try:
+                ps = self.video_requests.player_state()
+                out["queue"] = {"now": ps.get("now"), "up_next": ps.get("up_next") or [],
+                                "pending": len(self.video_requests.waiting("pending"))}
+            except Exception:
+                log.exception("companion queue snapshot failed")
+        return out
+
     async def _metrics_loop(self) -> None:
         """Publish a metrics snapshot every 2 seconds."""
         while not self._stop.is_set():
             snap = self.metrics.snapshot()
             await self.bus.publish_metrics(snap)
+            # stream start / end: "still live" note once a minute, and the end after a long drop
+            self.stream.tick()
             try:
                 await asyncio.wait_for(self._stop.wait(), timeout=2.0)
             except asyncio.TimeoutError:

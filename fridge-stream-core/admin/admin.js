@@ -560,7 +560,7 @@
       liveTimer = 0;
     }
     // #live/sender (what Stream Rooms opens for its "Open sender page" while linked to Core,
-    // stream-rooms core/rooms_remote.gd CORE_SENDER_PATH): the "Share to the big screen" card.
+    // stream-rooms core/rooms_remote.gd CORE_SENDER_PATH): the "Share to Stream Rooms" card.
     // Checked on every visit, also when Live is already showing.
     if (tabId === "live" && sub === "sender" && window.RoomsSender) window.RoomsSender.open();
     if (wasActive) return;
@@ -575,6 +575,8 @@
       loadFun();
       // the "Read aloud" card (admin/tts.js), shown only while text-to-speech is on
       if (window.TtsPage) window.TtsPage.openLive();
+      // the "Video requests" card (admin/discord.js), shown only while video requests are on
+      if (window.DiscordPage) window.DiscordPage.openLive();
       // Arrange, the Pinned and Scenes cards (admin/live-extras.js)
       if (window.LiveExtras) window.LiveExtras.openLive();
     }
@@ -595,6 +597,8 @@
     if (tabId === "rooms" && window.RoomsSetup) window.RoomsSetup.open(pick);
     // Read aloud (TTS) lives in its own file (admin/tts.js, loaded before this one)
     if (tabId === "tts" && window.TtsPage) window.TtsPage.open();
+    // Discord & video requests lives in its own file (admin/discord.js, loaded before this one)
+    if (tabId === "discord" && window.DiscordPage) window.DiscordPage.open();
     if (tabId === "integrations") initIntegrationsTab();
     if (tabId === "credits") initCreditsTab();
     if (tabId === "chat") {
@@ -989,6 +993,8 @@
       return;   // Core unreachable: the status card already says so
     }
     card.hidden = !r.connected;
+    // the "Share to Stream Rooms" card shows (and starts its sender) from the same answer
+    if (window.RoomsSender) window.RoomsSender.update(r);
     const st = r.state;
     if (!r.connected || !st) return;
     $("live-stage-state").textContent = "curtain " + (st.curtain || "?");
@@ -1028,6 +1034,15 @@
     $("rooms-presenters").innerHTML = pres.map((p) =>
       `<button data-rooms="presenter" data-value="${p.n}:${p.on ? "off" : "on"}" aria-pressed="${p.on}" ` +
       `title="${escapeHtml(p.source || "")}">Presenter ${p.n}</button>`).join("");
+    // Podiums on set that show a tab or window but have none yet (p.feed: that podium's row on the
+    // sender page, stream-rooms rooms_remote.gd build_state): a Pick button each, which opens the
+    // browser's share box through the "Share to Stream Rooms" card (admin/rooms-sender.js
+    // pickPresenter). The podium's full feed line is on Setup > Stream Rooms > Presenters & Co-stream.
+    const waiting = pres.filter((p) => p.on && p.source === "tab" && !(p.feed && p.feed.active));
+    $("rooms-presenters-feed").hidden = !waiting.length;
+    $("rooms-presenters-feed").innerHTML = waiting.map((p) =>
+      `<span>Presenter ${p.n} has no tab or window yet.</span> ` +
+      `<button type="button" data-pick-presenter="${p.n}">Pick it</button>`).join("<br>");
     const co = st.costream || {};
     $("rooms-costream-box").hidden = !co.role || co.role === "off";
     $("rooms-costream").textContent = (co.text || "") + (co.remote ? " · remote: " + co.remote : "");
@@ -1084,7 +1099,7 @@
     const hint = $("rooms-source-hint");
     if (!hint) return;
     hint.textContent = v === "tab"
-      ? (ROOMS_SAME_PC ? "Show opens the sender in the \"Share to the big screen\" card below." : "Show opens the sender in the default browser on the game's PC.") +
+      ? (ROOMS_SAME_PC ? "Show opens the sender in the \"Share to Stream Rooms\" card below." : "Show opens the sender in the default browser on the game's PC.") +
         " Click Share there and pick the tab or window; it goes on the big screen by itself."
       : v === "video" ? "A YouTube (or similar) link is downloaded and converted first; a file path plays straight away."
         : v.startsWith("spout:") ? "A program on this PC (VTube Studio, VSeeFace, OBS with Spout2...). Picture only, no sound."
@@ -1104,7 +1119,7 @@
       const v = $("rooms-source").value || "";
       if (v === "tab") {
         // The sender page only answers on the game's PC (127.0.0.1). This dashboard open on that PC
-        // runs it right here, in the "Share to the big screen" card (admin/rooms-sender.js). On a
+        // runs it right here, in the "Share to Stream Rooms" card (admin/rooms-sender.js). On a
         // phone or another PC that would share from the wrong device, so the game opens a sender
         // in its own PC's default browser instead (rooms action "sender", stream-rooms
         // rooms_remote.gd open_sender_page: Core's #live/sender there). The tab is then picked there.
@@ -1138,6 +1153,15 @@
     }
     setTimeout(loadRoomsCard, 400);
   }
+
+  // "Pick it" next to a podium waiting for a tab (loadRoomsCard above): straight from the click, so
+  // the browser lets the sender open its share box (admin/rooms-sender.js pickPresenter).
+  document.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-pick-presenter]");
+    if (!b || !window.RoomsSender) return;
+    const msg = window.RoomsSender.pickPresenter(Number(b.dataset.pickPresenter), true);
+    if ($("live-stage-msg")) $("live-stage-msg").textContent = msg;
+  });
 
   document.addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-rooms]");
@@ -1224,7 +1248,7 @@
   // has a fixed height (admin.css .live-feed) so it scrolls inside instead of moving the page.
   // Kinds and labels match core/activity.py KINDS and the filter buttons in index.html.
   // ------------------------------------------------------------------
-  const LIVE_FEED_KINDS = { alert: "Alert", redeem: "Redeem", command: "Command", game: "Game", flag: "Flag", error: "Error" };
+  const LIVE_FEED_KINDS = { alert: "Alert", redeem: "Redeem", command: "Command", game: "Game", flag: "Flag", stream: "Stream", error: "Error" };
   const FEED_MAX = 200;           // lines kept in the window
   const FEED_POLL_MS = 3000;
   let feedLast = 0;               // highest activity id seen (sent back as ?after=)

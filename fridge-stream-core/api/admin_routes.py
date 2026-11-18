@@ -61,6 +61,10 @@ log = logging.getLogger("api.admin")
 # the fridge-stream-core folder (data/, config/ live under it)
 _CORE_ROOT = Path(__file__).resolve().parent.parent
 
+# Stream Rooms text settings that list Stored files pictures by name, comma-separated: key -> what
+# Stored files' "Used by" calls it. Keep in step with MEDIA_PICKS in admin/rooms-setup.js.
+ROOMS_PICTURE_KEYS = {"r22_bb_core": "Route 22 billboards"}
+
 # Request bodies (pydantic models). FastAPI answers 422 on its own when a body doesn't fit.
 
 
@@ -1576,8 +1580,8 @@ def create_admin_router(core_state) -> APIRouter:
             raise HTTPException(409, "Stream Rooms isn't connected")
         return {"ok": True}
 
-    # ── Share to the big screen (the sender page inside the dashboard) ──
-    # The Live page's "Share to the big screen" card (admin/rooms-sender.js) runs Stream Rooms' sender
+    # ── Share to Stream Rooms (the sender page inside the dashboard) ──
+    # The Live page's "Share to Stream Rooms" card (admin/rooms-sender.js) runs Stream Rooms' sender
     # page inside the dashboard. The game serves that page only to 127.0.0.1 and writes its stream key
     # into it (stream-rooms core/capture_server.gd), and other web pages may not read it (no CORS). So
     # Core reads it server side from the address the game gave in its rooms_state ("sources" ->
@@ -2313,14 +2317,78 @@ def create_admin_router(core_state) -> APIRouter:
         def write_settings(self, **_kw) -> None:
             """Reactions look the picture up on every play; nothing to nudge."""
 
+    class _RoomsPictures:
+        """Stream Rooms settings that hold stored picture names, comma-separated (ROOMS_PICTURE_KEYS:
+        the Route 22 billboards, picked in admin/rooms-setup.js mediaPick). Known only while the game
+        is connected (the values are the game's, kept in the reactions engine's rooms_settings).
+
+        Same methods as the other users of stored files. A rename or a delete is sent to the game
+        as a setting change; with the game closed nothing can follow, and the game then simply
+        finds no picture by the old name.
+        """
+
+        @staticmethod
+        def _names(text: Any) -> list:
+            out: list = []
+            for part in str(text or "").replace("\n", ",").split(","):
+                n = part.strip().lower()
+                n = n[6:].strip() if n.startswith("media:") else n
+                if n and n not in out:
+                    out.append(n)
+            return out
+
+        @staticmethod
+        def _values() -> Dict[str, Any]:
+            eng = getattr(core_state, "reactions", None)
+            st = getattr(eng, "rooms_settings", None) or {}
+            return st.get("values") or {}
+
+        def media_refs(self) -> list:
+            """Each picked picture: {name, overlay, slot, kind}."""
+            vals = self._values()
+            return [{"name": n, "overlay": "Stream Rooms", "slot": label, "kind": "image"}
+                    for key, label in ROOMS_PICTURE_KEYS.items() for n in self._names(vals.get(key))]
+
+        def _rewrite(self, old: str, new: Optional[str]) -> int:
+            """Swap ``old`` for ``new`` (None = take it out) in every list; tells the game. Returns how many lists changed."""
+            import asyncio
+
+            eng = getattr(core_state, "reactions", None)
+            vals = self._values()
+            n = 0
+            for key in ROOMS_PICTURE_KEYS:
+                names = self._names(vals.get(key))
+                if old not in names:
+                    continue
+                kept = [new if x == old else x for x in names if new is not None or x != old]
+                text = ", ".join(kept)
+                try:        # (the stored-files routes are async, so a loop is running)
+                    asyncio.get_running_loop().create_task(eng.send_rooms_setting(key, text))
+                except RuntimeError:
+                    continue
+                vals[key] = text       # at once, so the answer's "Used by" is already right
+                n += 1
+            return n
+
+        def media_renamed(self, old: str, new: str) -> int:
+            return self._rewrite(old, new)
+
+        def media_forgotten(self, name: str) -> int:
+            return self._rewrite(name, None)
+
+        def write_settings(self, **_kw) -> None:
+            """Stream Rooms fetches its pictures again when the room is loaded; nothing to nudge."""
+
     def _media_users():
-        """Everything that points at stored files: alerts and chat overlay slots, reactions."""
+        """Everything that points at stored files: alerts and chat overlay slots, audience looks,
+        reactions, Stream Rooms picture lists."""
         from core.alerts import ALERT_STYLE
         from core.chat_style import CHAT_STYLE
 
         users: list = [ALERT_STYLE, CHAT_STYLE, _looks()]
         if getattr(core_state, "reactions", None) is not None:
             users.append(_ReactionPictures())
+            users.append(_RoomsPictures())
         return users
 
     def _media_payload() -> Dict[str, Any]:

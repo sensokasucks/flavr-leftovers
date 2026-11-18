@@ -586,6 +586,8 @@ class KickAdapter(BaseAdapter):
                     except Exception:
                         log.debug("Kick channel subscribe failed", exc_info=True)
                 livestream = data.get("livestream") or {}
+                # Core's stream start / end (core/stream_state.py); repeats are ignored there
+                self.bus.report_live("kick", bool(livestream.get("is_live")), "viewer poll")
                 if livestream.get("is_live"):
                     count = livestream.get("viewer_count") or livestream.get("viewers") or 0
                 else:

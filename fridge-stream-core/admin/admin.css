@@ -378,6 +378,9 @@ button.danger { color: var(--danger); }
 .sender-card .live-card-head h3 { margin-right: auto; }
 .sender-card .live-link { margin-left: 0; }
 .sender-card .live-card-head a, .sender-card .live-card-head button { white-space: nowrap; }
+/* "Share to Stream Rooms" while its sender isn't running here (rooms-sender.js idle) */
+.sender-idle { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 6px 0; }
+.sender-idle[hidden] { display: none; }
 .sender-frame { display: block; width: 100%; height: 160px; border: 0; background: transparent; color-scheme: dark; }
 .rooms-row label { display: flex; align-items: center; gap: 8px; }
 .rooms-row select { min-width: 180px; }
@@ -1493,6 +1496,7 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .feed-command .feed-kind { color: #6cc4ff; }
 .feed-game .feed-kind { color: var(--warn); }
 .feed-flag .feed-kind { color: #ff8fb1; }
+.feed-stream .feed-kind { color: #7ee2a8; }
 .feed-error .feed-kind { color: var(--danger); }
 @media (max-width: 560px) {
   .feed-row { grid-template-columns: 6.6em minmax(0, 1fr); }
@@ -1500,7 +1504,8 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 }
 
 /* ---- Live controls: Highlighted message card (admin.js "Highlighted message") ---- */
-.hl-card { grid-column: 1 / -1; }
+/* No width of its own: half or full width comes from Arrange (.live-wide, live-extras.js), like
+   every other Live card. (It used to force full width here, so Arrange's Half/Wide did nothing.) */
 .hl-now {
   padding: 8px 10px;
   border-left: 4px solid #a55bff;
@@ -1616,6 +1621,37 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-label .rs-slot { display: inline-flex; align-items: center; flex: 0 1 50%; justify-content: flex-end; min-width: 0; }
 .rs-label .rs-slot:has(input[type="checkbox"]), .rs-label .rs-slot:has(input[type="color"]) { flex: none; }
 .rs-label .rs-slot input[type="text"], .rs-label .rs-slot select { width: 100%; max-width: 220px; min-width: 0; display: inline-block; margin: 0; }
+/* Picture pickers (rooms-setup.js mediaPick): the count and button in the row, and the pop-up. */
+.rs-media { display: inline-flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.rs-media-count { font-size: .82rem; }
+.rs-media-dlg { width: min(760px, 94vw); max-height: 88vh; padding: 16px 18px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); color: var(--text); }
+.rs-media-dlg::backdrop { background: rgba(0, 0, 0, .6); }
+.rs-media-dlg h3 { margin: 0 0 4px; }
+.rs-media-dlg h4 { margin: 12px 0 6px; font-size: .9rem; }
+.rs-media-help { margin: 0 0 10px; font-size: .82rem; }
+.rs-media-sizes { margin: 0 0 10px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: .84rem; }
+.rs-media-sizes summary { cursor: pointer; font-weight: 600; }
+.rs-media-sizes p { margin: 6px 0; }
+.rs-media-sizes ul { margin: 0; padding-left: 18px; }
+.rs-media-sizes li { margin: 3px 0; }
+.rs-media-sizes a { color: var(--accent); }
+.rs-media-picked { display: flex; flex-wrap: wrap; gap: 6px; }
+.rs-media-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 3px; border: 1px solid var(--border); border-radius: 6px; font-size: .8rem; }
+.rs-media-chip img { width: 44px; height: 28px; object-fit: contain; background: #000; border-radius: 3px; }
+.rs-media-chip button { padding: 0 6px; min-height: 22px; }
+.rs-media-gone { border-style: dashed; color: var(--muted); }
+.rs-media-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; max-height: 44vh; overflow: auto; padding: 2px; }
+.rs-media-tile { display: flex; flex-direction: column; gap: 4px; padding: 5px; border: 2px solid var(--border); border-radius: 8px; background: var(--bg);
+  color: var(--text); font-size: .76rem; cursor: pointer; overflow-wrap: anywhere; }
+.rs-media-tile img { width: 100%; height: 70px; object-fit: contain; background: #000; border-radius: 4px; }
+.rs-media-tile.on { border-color: var(--accent); }
+.rs-media-tile:disabled { opacity: .45; cursor: not-allowed; }
+.rs-media-msg { min-height: 1.2em; margin: 8px 0 0; font-size: .82rem; }
+.rs-media-bad { color: #ff8a80; }
+.rs-media-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; }
+.rs-media-upload .btn-like { display: inline-block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.rs-media-upload .btn-like:hover, .rs-media-upload .btn-like:focus-visible { border-color: var(--accent); }
 .rs-range { display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0; }
 .rs-range input[type="range"] { flex: 1; min-width: 50px; width: 100%; }
 .rs-range output { flex: none; min-width: 44px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; font-size: .82rem; }
@@ -1630,6 +1666,15 @@ html.hc .nav-mode-btn[aria-pressed="true"] { outline: 2px solid var(--text); out
 .rs-row .rs-pin[aria-pressed="true"] { color: var(--accent); }
 @media (hover: none) { .rs-row .rs-pin { visibility: visible; } }
 .rs-warn { flex: 1; min-width: 0; color: #f0b44a; font-size: .8rem; }
+/* A Presenter card's feed line under "Shows" (rooms-setup.js renderFeeds): what the podium gets
+   from the sender page, and the button that picks its tab or window (or opens the sender). */
+.rs-feed { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: 6px 0 0 16px; font-size: .82rem; }
+.rs-feed[hidden] { display: none; }
+.rs-feed-text { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.rs-feed-live { color: var(--accent); }
+.rs-feed-bad { color: #ff6b6b; }
+.rs-feed-btn { flex: none; padding: 4px 10px; font-size: .82rem; }
+.rs-feed-btn[hidden] { display: none; }
 .rs-warn[hidden] { display: none; }
 .rs-start { background: var(--panel); border: 1px solid var(--accent); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; }
 .rs-start h3 { margin: 0 0 6px; }
@@ -1733,3 +1778,39 @@ body.arranging #tab-live .live-grid > .live-card.dragging { opacity: .5; }
 .fc-bar { display: flex; justify-content: flex-end; gap: 12px; margin: 0 0 6px; }
 .fc-bar .link-btn { font-size: .85rem; }
 html.hc .fc-card .fc-fold:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+
+/* Discord & video requests page and the Live card "Video requests" (admin/discord.js).
+   The page reuses the Read aloud page's strip and tab buttons (.tts-strip, .tts-tabs). */
+#tab-discord [data-dc-tab][hidden] { display: none; }
+.dc-steps { margin: 0 0 12px; padding-left: 20px; font-size: .9rem; line-height: 1.5; }
+.dc-roles { border: 1px solid var(--border); border-radius: 8px; margin: 10px 0; padding: 6px 10px; }
+.dc-role-list { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.dc-role-list label.check { font-size: .88rem; }
+.button-link { display: inline-block; padding: 6px 12px; border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); text-decoration: none; white-space: nowrap; }
+.button-link:hover { border-color: var(--accent); color: var(--accent); }
+#tab-discord input[readonly] { flex: 1; min-width: 260px; }
+#tab-discord ol a { color: var(--accent); } /* the setup steps' links, readable on the dark card */
+.vr-card .vr-sub { margin: 14px 0 6px; font-size: .9rem; color: var(--muted); }
+.vr-now { margin: 4px 0 10px; }
+.vr-playing { padding: 6px 10px; border-left: 3px solid var(--accent); background: rgba(83,252,24,.06); border-radius: 4px; }
+.vr-add { margin-top: 8px; }
+.vr-add input { flex: 1; min-width: 200px; }
+.vr-list { display: flex; flex-direction: column; gap: 6px; }
+/* a request: picture + title on top, its buttons on their own line below (the Live column is narrow) */
+.vr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px; border: 1px solid var(--border); border-radius: 8px; }
+.vr-row img { width: 80px; height: 45px; object-fit: cover; border-radius: 4px; flex: none; }
+.vr-info { flex: 1 1 140px; min-width: 0; display: flex; flex-direction: column; }
+.vr-info a { color: var(--text); text-decoration: none; font-weight: 600; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.vr-info a:hover { color: var(--accent); }
+.vr-info small { color: var(--muted); }
+.vr-btns { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; justify-content: flex-end; }
+.vr-btns select { max-width: 150px; }
+.vr-history { margin-top: 10px; }
+
+/* Video requests Live card: the countdown line while the pause between two videos runs */
+.vr-gap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 6px 0; padding: 8px 10px;
+  border-radius: 6px; background: var(--accent-soft, rgba(120, 140, 255, 0.14)); }
+.vr-gap[hidden] { display: none; }
+.vr-gap span { flex: 1; min-width: 12em; }

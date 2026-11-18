@@ -139,7 +139,7 @@ class RouteTests(unittest.TestCase):
 
 
 class SenderPageTests(unittest.TestCase):
-    """The Live page's "Share to the big screen" card (admin/rooms-sender.js): Core reads the game's
+    """The Live page's "Share to Stream Rooms" card (admin/rooms-sender.js): Core reads the game's
     sender page and key server side (GET /api/admin/rooms/sender-page, /sender-key)."""
 
     def setUp(self):
@@ -241,6 +241,7 @@ class SettingsAndPrefsTests(unittest.TestCase):
         state = CoreState()
         state.config = json.loads(json.dumps(disk))
         state.reactions = self.h.eng
+        self.state = state
         app = FastAPI()
         app.include_router(create_admin_router(state))
         p = mock.patch("api.admin_routes.load_config", lambda: json.loads(json.dumps(disk)))
@@ -275,6 +276,33 @@ class SettingsAndPrefsTests(unittest.TestCase):
         vals = self.client.get("/api/admin/rooms/settings", headers=HEAD).json()["values"]
         self.assertEqual(vals["volume"], 0.3)
         self.assertNotIn("sneaky", vals)
+
+    def test_billboard_pictures_follow_stored_files(self):
+        """Route 22's billboard list (a text setting of Stored files names, picked in
+        admin/rooms-setup.js mediaPick) shows in "Used by" and follows a rename and a delete."""
+        import base64
+
+        from core.media_library import MediaLibrary
+
+        gif = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"
+        self.state.media = MediaLibrary(Path(self.tmp.name) / "media")
+        for name in ("promo-a", "promo-b"):
+            r = self.client.post("/api/admin/media", headers=HEAD, json={"data": base64.b64encode(gif + name.encode()).decode(), "name": name})
+            self.assertEqual(r.status_code, 200, r.text)
+        eng = self.h.eng
+        eng.rooms_settings["schema"].append({"key": "r22_bb_core", "type": "text", "label": "Stream Core pictures"})
+        self.assertEqual(self.client.post("/api/admin/rooms/set", headers=HEAD, json={"key": "r22_bb_core", "value": "promo-a, promo-b"}).status_code, 200)
+        files = {f["name"]: f for f in self.client.get("/api/admin/media", headers=HEAD).json()["files"]}
+        self.assertEqual(files["promo-a"]["used_by"], [{"overlay": "Stream Rooms", "slot": "Route 22 billboards", "kind": "image"}])
+        # rename: the list follows and the game is told
+        r = self.client.put("/api/admin/media/promo-a", headers=HEAD, json={"name": "friend"})
+        self.assertEqual(r.status_code, 200, r.text)
+        self.assertEqual(eng.rooms_settings["values"]["r22_bb_core"], "friend, promo-b")
+        self.assertEqual(self.ws.sent[-1], {"type": "rooms_set", "data": {"key": "r22_bb_core", "value": "friend, promo-b"}})
+        # delete: taken out of the list
+        r = self.client.delete("/api/admin/media/promo-b", headers=HEAD)
+        self.assertEqual(r.json()["emptied"], 1)
+        self.assertEqual(eng.rooms_settings["values"]["r22_bb_core"], "friend")
 
     def test_prefs_merge_and_scene(self):
         put = lambda body: self.client.put("/api/admin/dashboard-prefs", headers=HEAD, json=body).json()

@@ -33,6 +33,13 @@
  * and put their settings in columns. See "Folding cards".
  * What the big screen shows is picked on the Live page's Stream Rooms card (admin.js
  * renderRoomsSources); the Big screen page only links there.
+ * Podium feeds: under each Presenter card's "Shows" setting, a feed line (renderFeeds) says what the
+ * podium gets from the sender page ("Live: <tab>", "No tab or window picked yet"...) and has the
+ * button that picks the tab or window (window.RoomsSender.pickPresenter, admin/rooms-sender.js).
+ * The sender itself runs in the Live page's "Share to Stream Rooms" card.
+ * Picture pickers: a text setting listed in MEDIA_PICKS (Route 22's billboard pictures) holds
+ * Stored files names, comma-separated. Instead of a text box it gets a "Choose pictures" button and
+ * a pop-up to tick stored pictures and upload new ones (mediaPick; GET / POST /api/admin/media).
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
  */
 (() => {
@@ -172,10 +179,31 @@
   };
   const OTHER_SECTION = "More from Stream Rooms";
 
+  // Text settings that hold Stored files picture names, comma-separated (the game fetches each
+  // from /media/<name>): key -> what the pictures are for, shown as the pop-up's title. Stream
+  // Rooms reads PNG, JPEG, WebP and GIF up to MEDIA_PICK_MAX bytes (its core/picture_file.gd
+  // MAX_BYTES; keep the two in step), so bigger stored pictures are listed but can't be ticked.
+  const MEDIA_PICKS = { r22_bb_core: "Billboard pictures" };
+  // Picture sizes the pop-up suggests for a key, each with a blank template to download
+  // (admin/billboard-templates/, drawn by make_templates.py there; keep the sizes in step):
+  // [width, height, file, what it is good for]. Any size works (Stream Rooms builds each board
+  // to its picture's shape, between about 2:3 tall and 10:3 wide); these fill the boards best.
+  const MEDIA_TEMPLATES = {
+    r22_bb_core: [
+      [1920, 1080, "billboard-1920x1080.png", "Best all-round: fills every billboard"],
+      [1920, 660, "billboard-wide-1920x660.png", "Wide banner: fills the parked trailer's side"],
+      [1080, 1080, "billboard-square-1080x1080.png", "Square: on a narrower board"],
+      [1080, 1350, "billboard-tall-1080x1350.png", "Tall poster: on a narrow, tall board"],
+    ],
+  };
+  const MEDIA_PICK_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
+  const MEDIA_PICK_MAX = 3 * 1024 * 1024;
+
   // Labels and help texts for this page, by key (presenter keys once, as presenter_N_...).
   // Only what the game's own wording gets wrong here: in-game tabs and buttons, key letters,
   // "this panel", or a label that only made sense under an in-game heading.
   const WORDS = {
+    r22_bb_core: { label: "Billboard pictures", tip: "The pictures on the Route 22 Cruise's roadside billboards, for example your friends' promo pictures. Choose pictures lists what is in Stored files and uploads new ones. Each board is built to its picture's shape, so the whole picture shows." },
     ndi_auto: { tip: "When the NDI source shown last comes back (OBS restarted, for example), show it again by itself." },
     spout_auto: { tip: "When the last Spout sender starts again (and nothing else is on the big screen), show it again by itself." },
     screen_peer: { label: "Show the avatar of", tip: "In a co-stream: put someone's avatar (what they set up as their avatar for co-streams) on the big screen. Pick (nobody) to go back to the shared tab. The host's choice goes to every PC in the session." },
@@ -304,6 +332,11 @@
       }
     };
     let el;
+    if (MEDIA_PICKS[e.key] && e.type === "text") {
+      el = mediaPick(e, v, send);
+      el.dataset.rsKey = e.key;
+      return el;
+    }
     if (e.type === "bool") {
       el = document.createElement("input");
       el.type = "checkbox";
@@ -348,9 +381,169 @@
     return el;
   }
 
+  /** The names in a picture-list setting ("a, b,c" -> ["a", "b", "c"]; "media:" in front is allowed). */
+  function pickNames(v) {
+    const out = [];
+    String(v == null ? "" : v).replace(/\n/g, ",").split(",").forEach((part) => {
+      const n = part.trim().replace(/^media:/, "");
+      if (n && !out.includes(n)) out.push(n);
+    });
+    return out;
+  }
+
+  /**
+   * The control for a MEDIA_PICKS setting: a line saying how many pictures are picked and a
+   * "Choose pictures" button. The button opens a pop-up (a <dialog> on <body>, so it works in a
+   * settings row and in the Live page's Pinned card alike) with
+   *   - "Picture sizes and templates" (MEDIA_TEMPLATES): suggested pixel sizes, each with a
+   *     blank template to download,
+   *   - the picked pictures in their order, each with a "Take off" button,
+   *   - every picture in Stored files as a tile; a click puts it on or takes it off,
+   *   - "Upload pictures": sends the files to Stored files (POST /api/admin/media, where an
+   *     identical file is reused) and picks them.
+   * Every change is sent at once (send(text), the names joined with ", "); the game then fetches
+   * the pictures from Core. el.rsSetNames(text) puts a value from the game back in.
+   */
+  function mediaPick(e, value, send) {
+    let names = pickNames(value);
+    let library = [];            // stored pictures: [{name, ext, size, ...}]
+    const el = document.createElement("span");
+    el.className = "rs-media";
+    const count = document.createElement("span");
+    count.className = "rs-media-count muted";
+    const open = document.createElement("button");
+    open.type = "button";
+    open.textContent = "Choose pictures";
+    open.title = "Pick pictures from Stored files, or upload new ones";
+    el.append(count, open);
+
+    const dlg = document.createElement("dialog");
+    dlg.className = "rs-media-dlg";
+    dlg.innerHTML = `<h3>${esc(MEDIA_PICKS[e.key])}</h3>
+      <p class="muted rs-media-help">Click a picture to put it on or take it off. Stream Rooms shows the picked ones in the order below.
+        Pictures live in Stored files (Overlays), so one upload can be used in many places.</p>
+      ${(MEDIA_TEMPLATES[e.key] || []).length ? `<details class="rs-media-sizes"><summary>Picture sizes and templates</summary>
+        <p class="muted">Any size works and the whole picture always shows: each billboard is built to its picture's shape. These sizes fill the boards best.
+          JPG or PNG, under 3 MB. Download a template, draw over it, then upload the result.</p>
+        <ul>${MEDIA_TEMPLATES[e.key].map(([w, h, file, note]) => `<li><b>${w} x ${h}</b> px · ${esc(note)} ·
+          <a href="/admin/billboard-templates/${esc(file)}" download>Download template</a></li>`).join("")}</ul></details>` : ""}
+      <div class="rs-media-picked" data-part="picked"></div>
+      <h4>Stored pictures</h4>
+      <div class="rs-media-grid" data-part="grid"></div>
+      <p class="rs-media-msg muted" data-part="msg" role="status"></p>
+      <div class="rs-media-foot">
+        <label class="rs-media-upload"><input type="file" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+          <span class="btn-like" role="button" tabindex="0" title="PNG, JPEG, WebP or GIF, up to 3 MB each">Upload pictures…</span></label>
+        <button type="button" data-part="done">Done</button>
+      </div>`;
+    const part = (n) => dlg.querySelector(`[data-part="${n}"]`);
+    const msg = (text, ok) => {
+      part("msg").textContent = text;
+      part("msg").classList.toggle("rs-media-bad", ok === false);
+    };
+    const url = (n) => "/media/" + encodeURIComponent(n);
+    const usable = (f) => f.kind === "image" && MEDIA_PICK_EXTS.includes(String(f.ext).toLowerCase());
+
+    const draw = () => {
+      count.textContent = names.length ? `${names.length} picture${names.length === 1 ? "" : "s"}` : "None picked";
+      if (!dlg.open) return;
+      const known = new Set(library.map((f) => f.name));
+      part("picked").innerHTML = names.length
+        ? names.map((n, i) => `<span class="rs-media-chip${known.has(n) || !library.length ? "" : " rs-media-gone"}">
+            ${known.has(n) ? `<img src="${esc(url(n))}" alt="" loading="lazy" />` : ""}<span>${i + 1}. ${esc(n)}${known.has(n) || !library.length ? "" : " (not in Stored files)"}</span>
+            <button type="button" data-off="${esc(n)}" title="Take this picture off">✕</button></span>`).join("")
+        : `<span class="muted">No pictures picked yet.</span>`;
+      part("grid").innerHTML = library.length
+        ? library.map((f) => {
+          const big = Number(f.size) > MEDIA_PICK_MAX;
+          const on = names.includes(f.name);
+          return `<button type="button" class="rs-media-tile${on ? " on" : ""}" data-name="${esc(f.name)}" aria-pressed="${on}"${big ? " disabled" : ""}
+              title="${big ? "Over 3 MB: too big for Stream Rooms. Save a smaller copy and upload that." : on ? "Picked. Click to take it off." : "Click to pick it."}">
+              <img src="${esc(url(f.name))}" alt="" loading="lazy" /><span>${esc(f.name)}${big ? " (too big)" : ""}</span></button>`;
+        }).join("")
+        : `<span class="muted">No pictures in Stored files yet. Upload some below.</span>`;
+    };
+    const commit = async () => {
+      draw();
+      await send(names.join(", "));
+    };
+    const load = async () => {
+      try {
+        library = ((await call("/api/admin/media")).files || []).filter(usable);
+      } catch (err) {
+        msg("Couldn't read Stored files: " + (err.message || err), false);
+      }
+      draw();
+    };
+
+    open.addEventListener("click", () => {
+      if (!dlg.isConnected) document.body.appendChild(dlg);
+      msg("");
+      dlg.showModal();
+      draw();
+      load();
+    });
+    part("done").addEventListener("click", () => dlg.close());
+    dlg.addEventListener("click", (ev) => {
+      if (ev.target === dlg) return void dlg.close();          // a click on the dimmed page behind
+      const off = ev.target.closest("[data-off]");
+      const tile = ev.target.closest(".rs-media-tile");
+      if (off) names = names.filter((n) => n !== off.dataset.off);
+      else if (tile && !tile.disabled) {
+        const n = tile.dataset.name;
+        names = names.includes(n) ? names.filter((x) => x !== n) : names.concat(n);
+      } else return;
+      commit();
+    });
+    const fileBox = dlg.querySelector('input[type="file"]');
+    dlg.querySelector(".btn-like").addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); fileBox.click(); }
+    });
+    fileBox.addEventListener("change", async () => {
+      const files = Array.from(fileBox.files || []);
+      fileBox.value = "";
+      let added = 0;
+      const failed = [];
+      for (const f of files) {
+        if (f.size > MEDIA_PICK_MAX) { failed.push(`${f.name} is over 3 MB`); continue; }
+        msg(`Uploading ${f.name}…`);
+        try {
+          const dataUrl = await new Promise((ok, bad) => {
+            const r = new FileReader();
+            r.onload = () => ok(r.result);
+            r.onerror = () => bad(new Error("couldn't read the file"));
+            r.readAsDataURL(f);
+          });
+          const res = await call("/api/admin/media", { method: "POST", body: JSON.stringify({ data: dataUrl, filename: f.name }) });
+          library = (res.files || []).filter(usable);
+          if (res.file && usable(res.file)) {
+            if (!names.includes(res.file.name)) names.push(res.file.name);
+            added += 1;
+          } else failed.push(`${f.name} isn't a picture Stream Rooms can show`);
+        } catch (err) {
+          failed.push(`${f.name}: ${err.message || err}`);
+        }
+      }
+      if (added) await commit();
+      else draw();
+      msg((added ? `Added ${added} picture${added === 1 ? "" : "s"}. ` : "") + (failed.length ? "Not added: " + failed.join("; ") + "." : ""), !failed.length);
+    });
+
+    el.rsSetNames = (v) => {
+      const next = pickNames(v);
+      if (JSON.stringify(next) === JSON.stringify(names)) return;
+      names = next;
+      draw();
+    };
+    draw();
+    return el;
+  }
+
   /** Put a value into a control made by makeControl (unless the person is using it right now). */
   function setControl(el, e, v) {
-    if (!el || el.contains(document.activeElement)) return;
+    if (!el) return;
+    if (el.rsSetNames) return void el.rsSetNames(v);   // a picture picker (mediaPick)
+    if (el.contains(document.activeElement)) return;
     if (e.type === "bool") el.checked = !!v;
     else if (e.type === "range") {
       el.querySelector("input").value = v;
@@ -410,6 +603,8 @@
           return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
             <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
             ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
+            ${/^presenter_\d_source$/.test(e.key) ? `<p class="rs-feed" data-rs-feed hidden><span class="rs-feed-text"></span>
+              <button type="button" class="rs-feed-btn"></button></p>` : ""}
             <div class="rs-actions">
               <span class="rs-warn" hidden title=""></span>
               <button type="button" class="rs-reset link-btn" title="Put the default back">Reset</button>
@@ -539,6 +734,58 @@
     applyView();
   }
 
+  // ── Podium feeds (the line under each Presenter card's "Shows") ───────
+  // Sources that come through the sender page (stream-rooms web/sender.html "Presenter feeds"):
+  // "tab" (a tab or window picked there), "web" (a web page opened and shared from there), "camera"
+  // (started there) and "peer" (a co-stream avatar, received there). The others (silhouette, green,
+  // NDI, Spout) don't need it, so their line stays hidden.
+  const FEED_SOURCES = ["tab", "web", "camera", "peer"];
+
+  /**
+   * Fill every Presenter card's feed line from the game's state (state.presenters[].feed: that
+   * podium's row on the sender page, {active, label, error}; state.sender.connected: a sender page
+   * is open). The button's data-pick says what it does: "1" picks a tab or window, "0" opens the
+   * sender. Called by load() every POLL_MS.
+   */
+  function renderFeeds() {
+    const st = state || {};
+    const open = !!(st.sender && st.sender.connected);
+    document.querySelectorAll("#tab-rooms [data-rs-feed]").forEach((line) => {
+      const key = line.closest(".rs-row").dataset.key;
+      const n = Number(/^presenter_(\d)_/.exec(key)[1]);
+      const src = String(data.values[key] || "");
+      const p = (st.presenters || []).find((x) => x && x.n === n) || {};
+      const feed = p.feed || {};
+      const text = line.querySelector(".rs-feed-text");
+      const btn = line.querySelector(".rs-feed-btn");
+      line.hidden = !FEED_SOURCES.includes(src);
+      if (line.hidden) return;
+      let say = "";
+      let button = "";
+      let pick = false;
+      let bad = false;
+      if (feed.active) say = "Live: " + (feed.label || "on");
+      else if (feed.error) { say = "Sender: " + feed.error; bad = true; }
+      if (src === "tab") {
+        pick = true;
+        button = feed.active ? "Pick another" : "Pick a tab or window";
+        if (!say) say = open ? "No tab or window picked yet." : "No tab or window yet (the sender isn't open).";
+      } else if (src === "web") {
+        if (!feed.active) button = "Open the sender";
+        if (!say) say = "The web page is opened and shared from the sender (Presenter " + n + "'s row there).";
+      } else if (!feed.active && !open) {
+        // camera / someone's avatar: they start by themselves once a sender page is open
+        button = "Open the sender";
+        say = (src === "camera" ? "The camera" : "The avatar") + " comes through the sender, which isn't open.";
+      } else if (!say) say = src === "camera" ? "Starting the camera in the sender..." : "Waiting for the avatar in the sender...";
+      text.textContent = say;
+      text.className = "rs-feed-text " + (feed.active ? "rs-feed-live" : bad ? "rs-feed-bad" : "muted");
+      btn.hidden = !button;
+      btn.textContent = button;
+      btn.dataset.pick = pick ? "1" : "0";
+    });
+  }
+
   /** Start here: the few things that make Stream Rooms work, ticked from the game's state. */
   function renderStart() {
     const box = $("rooms-start");
@@ -577,6 +824,7 @@
       build();
       refreshValues();
       renderStart();
+      renderFeeds();
     } catch (e) {
       say(String(e.message || e), true);
     }
@@ -611,6 +859,14 @@
     const row = t.closest(".rs-row");
     if (!row) return;
     const key = row.dataset.key;
+    const feedBtn = t.closest(".rs-feed-btn");
+    if (feedBtn) {
+      // a podium's "Pick a tab or window" / "Open the sender" (renderFeeds): straight from the click,
+      // so the browser lets the sender open its share box
+      const n = Number(/^presenter_(\d)_/.exec(key)[1]);
+      if (window.RoomsSender) say(window.RoomsSender.pickPresenter(n, feedBtn.dataset.pick === "1"), false);
+      return;
+    }
     if (t.closest(".rs-reset")) {
       const e = byKey[key];
       call("/api/admin/rooms/set", { method: "POST", body: JSON.stringify({ key, value: data.defaults[key] }) })
