@@ -16,7 +16,7 @@
   const $ = (id) => document.getElementById(id);
   const tokenKey = "stream_core_admin_token";   // same localStorage key as admin.js
   const POLL_MS = 5000;
-  const CP_FIELDS = ["enabled", "url", "heartbeat_sec", "send_alerts", "send_points", "send_queue"];
+  const CP_FIELDS = ["enabled", "url", "heartbeat_sec", "send_alerts", "send_points", "send_queue", "send_chat", "moments_clips"];
   let cpDirty = false;
   let goDirty = false;
 

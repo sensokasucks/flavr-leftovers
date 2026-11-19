@@ -34,11 +34,13 @@ BUILTIN_CLIENT_ID = "timu942xi1c5yqua2b5uv6vtu68yy2"
 # What the sign-in asks for: reading chat and posting into it (replies to commands), plus
 # reading the channel's paid events Twitch only sends through EventSub (bits power-ups and
 # celebrations with their bits, charity donations, Hype Train summaries; see
-# adapters/twitch_eventsub.py). Core never spends, changes or posts anything else.
-# Chatter pictures need no scope.
+# adapters/twitch_eventsub.py), plus making clips of chat moments when moments.twitch_clips is
+# on (core/chat_moments.py; off by default). Core never spends, changes or posts anything else.
+# Chatter pictures need no scope. A sign-in from before a scope was added needs Reconnect.
 CHAT_SCOPES = ["user:read:chat", "user:write:chat"]
 PAID_SCOPES = ["bits:read", "channel:read:charity", "channel:read:hype_train"]
-SCOPES = CHAT_SCOPES + PAID_SCOPES
+CLIP_SCOPES = ["clips:edit"]
+SCOPES = CHAT_SCOPES + PAID_SCOPES + CLIP_SCOPES
 
 ID_BASE = "https://id.twitch.tv/oauth2"
 DEVICE_URL = f"{ID_BASE}/device"

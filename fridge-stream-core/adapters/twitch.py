@@ -37,6 +37,7 @@ log = logging.getLogger("adapters.twitch")
 # Helix (Twitch's official API) addresses used for posting replies (TwitchAdapter.send_message)
 HELIX_CHAT_URL = "https://api.twitch.tv/helix/chat/messages"
 HELIX_USERS_URL = "https://api.twitch.tv/helix/users"
+HELIX_CLIPS_URL = "https://api.twitch.tv/helix/clips"
 TWITCH_CHAT_MAX_CHARS = 500     # Twitch refuses longer chat messages
 WRITE_SCOPE = "user:write:chat"
 
@@ -335,6 +336,36 @@ class TwitchAdapter(BaseAdapter):
         self.last_send_error = why
         log.info("Twitch reply not posted, showing it on the overlay instead: %s", why)
         return False
+
+    async def create_clip(self) -> tuple[str, str]:
+        """Make a Twitch clip of the last ~30 s of the live stream (Helix "Create Clip"); returns
+        (clip url, "") or ("", why not). Called by core/chat_moments.py for a chat moment when
+        ``moments.twitch_clips`` is on. Needs Connect Twitch with ``clips:edit``
+        (twitch_auth.CLIP_SCOPES; an older sign-in has to press Reconnect) and the channel live.
+        Twitch makes the clip a few seconds later; the link works once it has."""
+        if not self.channel or not self.auth.connected:
+            return "", "Twitch is not connected"
+        if "clips:edit" not in (self.auth.status().get("scopes") or []):
+            return "", "the Twitch sign-in can't make clips; press Reconnect on the Twitch card"
+        for attempt in (1, 2):
+            token = await self.auth.token()
+            if not token:
+                return "", "Twitch is not connected"
+            broadcaster = await self._channel_id(token)
+            if not broadcaster:
+                return "", f"could not find the Twitch channel {self.channel}"
+            status, answer = await self._helix(
+                "POST", f"{HELIX_CLIPS_URL}?broadcaster_id={broadcaster}", None,
+                {"Client-Id": self.auth.client_id, "Authorization": f"Bearer {token}"})
+            if status == 401 and attempt == 1:
+                self.auth.invalidate()
+                continue
+            rows = answer.get("data") if isinstance(answer, dict) else None
+            if status == 202 and rows and isinstance(rows[0], dict) and rows[0].get("id"):
+                return f"https://clips.twitch.tv/{rows[0]['id']}", ""
+            msg = answer.get("message") if isinstance(answer, dict) else ""
+            return "", f"Twitch made no clip: {msg or f'HTTP {status}'}"
+        return "", "Twitch refused the sign-in"
 
     async def start(self) -> None:
         """Start the IRC loop (and EventSub) in the background; does nothing without a channel."""

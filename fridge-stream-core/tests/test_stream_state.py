@@ -182,6 +182,55 @@ class Link(unittest.TestCase):
         self.assertIn("snapshot", types)
         self.assertEqual(len(self.link._queue), 0)
 
+    def test_chat_goes_after_the_companions_chat_since_and_clears_follow(self):
+        rows = [{"id": i, "platform": "twitch", "username": "amy", "display_name": "Amy", "message": f"hi {i}",
+                 "timestamp": 100.0 + i} for i in range(1, 6)]
+        asked = []
+        bodies = []
+        since = {"v": 0}
+
+        async def chat_after(after, limit):
+            asked.append(after)
+            return [r for r in rows if r["id"] > after][:limit]
+
+        async def post(url, body, headers):
+            bodies.append(body)
+            if body["type"] == "chat":
+                since["v"] = body["data"]["lines"][-1]["id"]
+            if body["type"] == "chat_cleared":
+                since["v"] = 0
+            return 200, {"ok": True, "chat_since": since["v"]}
+
+        async def snap():
+            return {}
+
+        import core.companion_link as cl
+        old = cl.CHAT_BATCH
+        cl.CHAT_BATCH = 2               # small batches: the catch-up sends them back to back
+        self.addCleanup(setattr, cl, "CHAT_BATCH", old)
+        link = CompanionLink(lambda: self.cfg, heartbeat=lambda: {}, snapshot=snap, post=post,
+                             chat_after=chat_after)
+
+        async def go():
+            link.start()
+            await asyncio.sleep(3.5)
+            link.chat_cleared(None)          # a clear by hand: the bot wipes, Core sends it all again
+            await asyncio.sleep(3.5)
+            await link.stop()
+
+        run(go())
+        chats = [b["data"]["lines"] for b in bodies if b["type"] == "chat"]
+        ids = [[ln["id"] for ln in c] for c in chats]
+        self.assertEqual(ids[:3], [[1, 2], [3, 4], [5]])         # nothing before the bot's first answer
+        self.assertEqual(chats[0][0], {"id": 1, "platform": "twitch", "username": "amy", "display_name": "Amy",
+                                       "message": "hi 1", "at": 101.0})
+        self.assertIn({"type": "chat_cleared", "data": {}}, [{k: b[k] for k in ("type", "data")} for b in bodies])
+        self.assertEqual(ids[3:6], [[1, 2], [3, 4], [5]])        # re-sent after the wipe
+        # switched off: no chat at all
+        self.cfg["companion"]["send_chat"] = False
+        link.chat_cleared(5.0)
+        self.assertEqual([m for m in link._queue if m["type"].startswith("chat")], [])
+
     def test_alert_brief(self):
         self.assertIsNone(alert_brief({"kind": "sub", "is_test": True}))
         b = alert_brief({"kind": "gift", "qty": 10, "display_name": "Amy", "platform": "twitch", "user_id": "1"})

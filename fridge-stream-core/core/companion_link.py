@@ -19,6 +19,15 @@ Types sent (the companion's docs/CORE_LINK.md is the other half of this list; ke
              kind, platform, display_name, amount, currency, qty, months, viewers, headline
   snapshot   every 5 minutes and right after a stream ends: points leaderboard (top 500) and the
              video request queue, so the companion can answer /points and /queue while this PC is off
+  chat       saved chat lines (Chat history, core/store.py chat_messages) the companion doesn't have
+             yet, for its /said chat search: up to CHAT_BATCH lines with an id above the
+             ``chat_since`` the companion put in its last answer, every CHAT_SEC, and at once
+             again while a full batch went (catching up on old history). Switch: send_chat.
+  moment     a sudden burst of chat during a stream (core/chat_moments.py): at, cpm, baseline and,
+             with moments.twitch_clips, a Twitch clip link (or clip_error). For the bot's recap.
+  chat_cleared  after Core deletes saved chat (store.on_chat_cleared): ``before`` for an age-only
+             trim, nothing for any other clear (the companion then wipes its copy, answers
+             chat_since 0 and gets what is left sent again)
 
 Sending never blocks Core: ``send()`` puts the message on a small queue that one task drains.
 Heartbeats and snapshots replace any older unsent one; stream events and alerts wait (up to
@@ -45,13 +54,19 @@ DEFAULTS: Dict[str, Any] = {
     "send_alerts": True,
     "send_points": True,
     "send_queue": True,
+    "send_chat": True,    # saved chat lines for the companion's /said search (only lines Core saves)
 }
+CHAT_SEC = 60.0           # new chat lines go to the companion this often
+CHAT_BATCH = 1000         # lines per "chat" message
 SNAPSHOT_SEC = 300.0      # points + queue copy this often (and after each stream end)
 QUEUE_MAX = 200           # unsent stream events / alerts kept while the companion is away
 RETRY_MAX = 120.0         # seconds between tries while the companion doesn't answer
 REPLACED = ("heartbeat", "snapshot")   # only the newest of these matters
 # Alerts not worth a phone ping or a record on the companion
 SKIP_ALERT_KINDS = {"follow"}
+
+# (after id, limit) -> saved chat rows with an id above it, oldest first (core/store.py chat_after)
+ChatAfter = Callable[[int, int], Awaitable[list]]
 
 # (url, json body, headers) -> (http status, json reply or {}); swapped for a fake in tests
 Post = Callable[[str, Dict[str, Any], Dict[str, str]], Awaitable[Tuple[int, Any]]]
@@ -81,7 +96,7 @@ def read_settings(cfg: Dict[str, Any]) -> Dict[str, Any]:
         out["heartbeat_sec"] = max(10, min(300, int(out["heartbeat_sec"])))
     except (TypeError, ValueError):
         out["heartbeat_sec"] = DEFAULTS["heartbeat_sec"]
-    for k in ("send_alerts", "send_points", "send_queue"):
+    for k in ("send_alerts", "send_points", "send_queue", "send_chat"):
         out[k] = bool(out[k])
     return out
 
@@ -112,7 +127,8 @@ class CompanionLink:
     def __init__(self, get_config: Callable[[], Dict[str, Any]],
                  heartbeat: Callable[[], Dict[str, Any]],
                  snapshot: Callable[[], Awaitable[Dict[str, Any]]],
-                 post: Optional[Post] = None, clock: Callable[[], float] = time.time):
+                 post: Optional[Post] = None, clock: Callable[[], float] = time.time,
+                 chat_after: Optional[ChatAfter] = None):
         self._get_config = get_config
         self._heartbeat = heartbeat
         self._snapshot = snapshot
@@ -128,6 +144,12 @@ class CompanionLink:
         self.sent = 0
         self._next_beat = 0.0
         self._next_snap = 0.0
+        # chat for /said: main.py passes store.chat_after; chat_since comes from the companion's
+        # answers (None until it has answered once: then Core knows where its copy ends)
+        self._chat_after = chat_after
+        self.chat_since: Optional[int] = None
+        self._next_chat = 0.0
+        self._chat_waiting = False      # a "chat" message is queued and not delivered yet
 
     # ── settings / status ──────────────────────────────────────────────
     @property
@@ -158,7 +180,8 @@ class CompanionLink:
             self._queue = deque(m for m in self._queue if m["type"] != kind)
         self._queue.append({"type": kind, "data": data, "at": self.clock(), "core": "stream-core"})
         while len(self._queue) > QUEUE_MAX:
-            self._queue.popleft()
+            if self._queue.popleft()["type"] == "chat":
+                self._chat_waiting = False      # read again from chat_since next time
         self._wake.set()
 
     def stream_changed(self, change: Dict[str, Any]) -> None:
@@ -176,6 +199,13 @@ class CompanionLink:
         if brief:
             self.send("alert", brief)
 
+    def chat_cleared(self, before: Optional[float] = None) -> None:
+        """core/store.py ``on_chat_cleared`` (main.py wires it): saved chat was deleted. ``before``:
+        an age-only trim (lines older than that went); None: any other clear."""
+        if not self.settings["send_chat"]:
+            return
+        self.send("chat_cleared", {"before": before} if before else {})
+
     async def _deliver(self, msg: Dict[str, Any]) -> Tuple[bool, str]:
         s = self.settings
         try:
@@ -183,6 +213,15 @@ class CompanionLink:
                                              {"Authorization": f"Bearer {s['key']}"})
         except Exception as e:
             return False, f"Can't reach the companion bot at {s['url']} ({type(e).__name__})."
+        if status == 200 and isinstance(data, dict) and data.get("chat_since") is not None:
+            try:
+                since = int(data["chat_since"])               # an older bot doesn't send it: no chat
+            except (TypeError, ValueError):
+                since = None
+            if since is not None:
+                if self.chat_since is None or since < self.chat_since:
+                    self._next_chat = 0.0       # first answer, or the bot's copy was wiped: send now
+                self.chat_since = since
         if status == 401:
             return False, "The companion bot refused the password. Type the same one on both sides."
         if status != 200:
@@ -248,6 +287,22 @@ class CompanionLink:
                 self.send("snapshot", await self._snapshot())
             except Exception:
                 log.exception("companion snapshot failed")
+        if (now >= self._next_chat and s["send_chat"] and self._chat_after is not None
+                and self.chat_since is not None and not self._chat_waiting):
+            self._next_chat = now + CHAT_SEC
+            try:
+                rows = await self._chat_after(self.chat_since, CHAT_BATCH)
+            except Exception:
+                log.exception("companion chat read failed")
+                rows = []
+            if rows:
+                lines = [{"id": int(r["id"]), "platform": r.get("platform") or "", "username": r.get("username") or "",
+                          "display_name": r.get("display_name") or "", "message": str(r.get("message") or "")[:2000],
+                          "at": float(r.get("timestamp") or 0)} for r in rows]
+                self.send("chat", {"lines": lines})
+                self._chat_waiting = True
+                if len(rows) >= CHAT_BATCH:
+                    self._next_chat = 0.0       # catching up: the next batch right after this one
 
     async def _loop(self) -> None:
         backoff = 5.0
@@ -257,6 +312,7 @@ class CompanionLink:
             why = self.why_not()
             if why:
                 self._queue.clear()
+                self._chat_waiting = False
                 self._set("off", why)
                 first = True
                 await self._sleep(15.0)
@@ -272,7 +328,9 @@ class CompanionLink:
                     self._set("retrying", err + f" Trying again in {backoff:.0f} s.")
                     failed = True
                     break
-                self._queue.popleft()
+                done = self._queue.popleft()
+                if done["type"] == "chat":
+                    self._chat_waiting = False
                 self.sent += 1
                 self.last_ok = self.clock()
                 backoff = 5.0
@@ -281,7 +339,10 @@ class CompanionLink:
                 await self._sleep(backoff)
                 backoff = min(backoff * 2, RETRY_MAX)
                 continue
-            wait = max(1.0, min(self._next_beat, self._next_snap) - self.clock())
+            nxt = min(self._next_beat, self._next_snap)
+            if self.settings["send_chat"] and self._chat_after is not None:
+                nxt = min(nxt, self._next_chat)
+            wait = max(1.0, nxt - self.clock())
             await self._sleep(wait)
 
     async def _sleep(self, seconds: float) -> None:
