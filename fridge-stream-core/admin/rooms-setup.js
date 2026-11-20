@@ -90,6 +90,7 @@
       ["Stage curtain", /^curtain_/, "The curtain buttons are on the Live page's Stream Rooms card."],
       ["Camera moves", ["camera_glide", "camera_fov"], "Camera views are picked on the Live page; new ones are saved in the game."],
       ["Big screen light", ["screen_light", "screen_glow"]],
+      ["Route 22 billboards", /^r22_bb_/, "Shows while the Route 22 Cruise room is loaded. The other billboard settings are under More."],
       ["Sound", ["volume", "ambience_volume", "room_acoustics", "room_speaker", "audio_delay_ms", "video_delay_ms"]],
       ["Graphics and speed", ["graphics_quality", "gfx_gi", "gfx_ssao", "gfx_ssr", "gfx_fog", "gfx_shadows", "gfx_msaa", "gfx_render_scale", "fps_cap", "vsync"],
         "For the PC Stream Rooms runs on. Lower these on a slower PC."],
@@ -150,7 +151,7 @@
   // Stream Rooms" section, so nothing is ever dropped. Keep the titles in step with CARDS.
   const SECTIONS = {
     room: [
-      ["In the room", ["Room", "Stage curtain", "Big screen light", "Camera moves"]],
+      ["In the room", ["Room", "Stage curtain", "Big screen light", "Camera moves", "Route 22 billboards"]],
       ["Sound", ["Sound"]],
       ["This PC and the game window", ["Graphics and speed", "Game window"], "Only for the PC Stream Rooms runs on."],
     ],
@@ -381,6 +382,15 @@
     return el;
   }
 
+  /**
+   * Whether a setting only shows under More. The game marks what sits under an Advanced fold in
+   * its panel, which includes every room's own settings; a picture picker (MEDIA_PICKS) is an
+   * everyday thing on this page, so it shows in Basics all the same.
+   */
+  function isAdv(e) {
+    return !!e.adv && !MEDIA_PICKS[e.key];
+  }
+
   /** The names in a picture-list setting ("a, b,c" -> ["a", "b", "c"]; "media:" in front is allowed). */
   function pickNames(v) {
     const out = [];
@@ -600,7 +610,7 @@
         (g.note ? `<p class="rs-note muted">${esc(g.note)}</p>` : "") +
         g.items.map((e) => {
           const w = wording(e);
-          return `<div class="rs-row${e.adv ? " rs-adv" : ""}" data-key="${esc(e.key)}">
+          return `<div class="rs-row${isAdv(e) ? " rs-adv" : ""}" data-key="${esc(e.key)}">
             <label class="rs-label"><span class="rs-dot" title="Changed from the default" aria-label="changed"></span><span class="rs-name">${esc(w.label)}</span><span class="rs-slot"></span></label>
             ${w.tip ? `<p class="field-help">${esc(w.tip)}</p>` : ""}
             ${/^presenter_\d_source$/.test(e.key) ? `<p class="rs-feed" data-rs-feed hidden><span class="rs-feed-text"></span>
@@ -696,7 +706,7 @@
         const ch = changed(e.key);
         if (ch) changedCount++;
         // a search or "Changed only" also finds Advanced settings, so nothing is out of reach
-        const on = (more || !e.adv || words.length > 0 || only) && words.every((w) => hay.includes(w)) && (!only || ch);
+        const on = (more || !isAdv(e) || words.length > 0 || only) && words.every((w) => hay.includes(w)) && (!only || ch);
         row.hidden = !on;
         if (on) shownCount++;
       });
