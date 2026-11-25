@@ -9,6 +9,8 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+## [2026.11.25] — 2026-11-25
+
 ### Added
 - **Chat moments and Twitch clips for the companion bot's stream recap.** While you're live and the companion bot link is on, Core notices when chat suddenly gets much busier than usual (three times the usual chat per minute, at least 20 lines a minute, at most one every 5 minutes; the `moments:` block in config.yaml) and tells the bot, which lists these moments in its after-stream recap with a link to that point in the VOD. New switch under Setup → Discord & video requests → Companion bot: **Make a Twitch clip when chat suddenly gets busy** (off by default, because clips show on your channel's public Clips page). It uses Twitch's own Create Clip API and needs one new permission: press **Reconnect** on the Twitch card once. Kick and YouTube have no clip API, so their moments get the VOD time only.
 - **Chat history for the companion bot's `/said` search.** With the companion bot link on, Core now also sends your saved chat (Chat history) to the bot, so moderators can search who said what, when, from Discord with `/said`, even while this PC is off. It catches up on old history by itself, a minute at a time after that, and clearing chat here (Clear history, or keeping chat only N days) clears the bot's copy too. Only lines Core saves go; switch it off with **Send chat history** on the Companion bot tab. Code: `core/companion_link.py`, `core/store.py` (`chat_after`).
