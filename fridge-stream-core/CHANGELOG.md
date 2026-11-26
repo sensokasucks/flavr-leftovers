@@ -9,7 +9,7 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
-## [2026.11.25] — 2026-11-25
+## [2026.11.26] — 2026-11-26
 
 ### Added
 - **Chat moments and Twitch clips for the companion bot's stream recap.** While you're live and the companion bot link is on, Core notices when chat suddenly gets much busier than usual (three times the usual chat per minute, at least 20 lines a minute, at most one every 5 minutes; the `moments:` block in config.yaml) and tells the bot, which lists these moments in its after-stream recap with a link to that point in the VOD. New switch under Setup → Discord & video requests → Companion bot: **Make a Twitch clip when chat suddenly gets busy** (off by default, because clips show on your channel's public Clips page). It uses Twitch's own Create Clip API and needs one new permission: press **Reconnect** on the Twitch card once. Kick and YouTube have no clip API, so their moments get the VOD time only.
