@@ -1,21 +1,31 @@
-"""Draws the Route 22 billboard picture templates the dashboard offers for download
+"""Draws the Route 22 and Route 81 billboard picture templates the dashboard offers for download
 (admin/rooms-setup.js MEDIA_TEMPLATES lists them; keep the sizes in step). Run from this folder:
 
-    python make_templates.py
+    python make_templates.py            (all of them)
+    python make_templates.py --route81  (only Route 81's)
 
 Needs Pillow. Each template is a plain PNG of the exact pixel size: a dark card with the size
 written on it, a dashed "keep words inside" line 5% in from the edge. The
 whole picture shows on a billboard (Stream Rooms builds each board to its picture's shape), so
 the dashed line is only a comfortable margin, not a cut line.
 """
+import sys
+
 from PIL import Image, ImageDraw, ImageFont
 
-# (file name, width, height, the one-line note under the size)
+# (file name, width, height, the one-line note under the size, the frame's colour)
+# Route 22's set first, then Route 81's (its own files, green, with the road's name on them).
+GREEN = (83, 252, 24)
+FOREST = (70, 190, 110)
 SIZES = [
-    ("billboard-1920x1080.png", 1920, 1080, "Fits every billboard. The best all-round size."),
-    ("billboard-wide-1920x660.png", 1920, 660, "Wide banner. Fills the parked trailer's side."),
-    ("billboard-square-1080x1080.png", 1080, 1080, "Square. Shows on a narrower board."),
-    ("billboard-tall-1080x1350.png", 1080, 1350, "Tall poster. Shows on a narrow, tall board."),
+    ("billboard-1920x1080.png", 1920, 1080, "Fits every billboard. The best all-round size.", GREEN),
+    ("billboard-wide-1920x660.png", 1920, 660, "Wide banner. Fills the parked trailer's side.", GREEN),
+    ("billboard-square-1080x1080.png", 1080, 1080, "Square. Shows on a narrower board.", GREEN),
+    ("billboard-tall-1080x1350.png", 1080, 1350, "Tall poster. Shows on a narrow, tall board.", GREEN),
+    ("route81-billboard-1920x1080.png", 1920, 1080, "Route 81. Fits every board and the painted barn.", FOREST),
+    ("route81-billboard-wide-1920x660.png", 1920, 660, "Route 81. Wide banner: the parked trailer's side.", FOREST),
+    ("route81-billboard-square-1080x1080.png", 1080, 1080, "Route 81. Square: shows on a narrower board.", FOREST),
+    ("route81-billboard-tall-1080x1350.png", 1080, 1350, "Route 81. Tall poster: a narrow, tall board.", FOREST),
 ]
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 
@@ -35,10 +45,12 @@ def dashed(draw, box, colour, width, dash=28, gap=18):
             y += dash + gap
 
 
-for name, w, h, note in SIZES:
-    im = Image.new("RGB", (w, h), (24, 30, 42))
+for name, w, h, note, frame in SIZES:
+    if "--route81" in sys.argv and not name.startswith("route81-"):
+        continue        # (leave Route 22's files as they are)
+    im = Image.new("RGB", (w, h), (24, 30, 42) if frame == GREEN else (20, 34, 30))
     d = ImageDraw.Draw(im)
-    d.rectangle([0, 0, w - 1, h - 1], outline=(83, 252, 24), width=6)
+    d.rectangle([0, 0, w - 1, h - 1], outline=frame, width=6)
     m = round(min(w, h) * 0.05)
     dashed(d, (m, m, w - m, h - m), (150, 160, 180), 3)
     big = ImageFont.truetype(FONT, round(min(w, h) * 0.11))

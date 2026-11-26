@@ -9,6 +9,9 @@ Dates are when the work landed in this tree.
 
 ## Unreleased
 
+### Added
+- **Billboard pictures for Stream Rooms' Route 81 Cruise.** Setup › Stream Rooms › Stream Rooms settings › Room & sound has a **Route 81 billboards** card while the Route 81 Cruise room is loaded. Its **Choose pictures** button works like Route 22's, but the pictures are a separate set, so the mountain road can show other pictures than the desert road. **Picture sizes and templates** offers Route 81's own blank templates. Needs the Stream Rooms build with the Route 81 Cruise.
+
 ## [2026.11.26] — 2026-11-26
 
 ### Added

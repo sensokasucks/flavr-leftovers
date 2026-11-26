@@ -303,6 +303,12 @@ class SettingsAndPrefsTests(unittest.TestCase):
         r = self.client.delete("/api/admin/media/promo-b", headers=HEAD)
         self.assertEqual(r.json()["emptied"], 1)
         self.assertEqual(eng.rooms_settings["values"]["r22_bb_core"], "friend")
+        # Route 81 has its own list: the same picture can be on both, each named in "Used by"
+        eng.rooms_settings["schema"].append({"key": "r81_bb_core", "type": "text", "label": "Stream Core pictures"})
+        self.assertEqual(self.client.post("/api/admin/rooms/set", headers=HEAD, json={"key": "r81_bb_core", "value": "friend"}).status_code, 200)
+        files = {f["name"]: f for f in self.client.get("/api/admin/media", headers=HEAD).json()["files"]}
+        self.assertEqual(sorted(u["slot"] for u in files["friend"]["used_by"]), ["Route 22 billboards", "Route 81 billboards"])
+        self.assertEqual(eng.rooms_settings["values"]["r22_bb_core"], "friend")
 
     def test_prefs_merge_and_scene(self):
         put = lambda body: self.client.put("/api/admin/dashboard-prefs", headers=HEAD, json=body).json()
