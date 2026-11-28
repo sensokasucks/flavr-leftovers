@@ -63,7 +63,7 @@ _CORE_ROOT = Path(__file__).resolve().parent.parent
 
 # Stream Rooms text settings that list Stored files pictures by name, comma-separated: key -> what
 # Stored files' "Used by" calls it. Keep in step with MEDIA_PICKS in admin/rooms-setup.js.
-ROOMS_PICTURE_KEYS = {"r22_bb_core": "Route 22 billboards"}
+ROOMS_PICTURE_KEYS = {"r22_bb_core": "Route 22 billboards", "r81_bb_core": "Route 81 billboards"}
 
 # Request bodies (pydantic models). FastAPI answers 422 on its own when a body doesn't fit.
 
@@ -2319,7 +2319,7 @@ def create_admin_router(core_state) -> APIRouter:
 
     class _RoomsPictures:
         """Stream Rooms settings that hold stored picture names, comma-separated (ROOMS_PICTURE_KEYS:
-        the Route 22 billboards, picked in admin/rooms-setup.js mediaPick). Known only while the game
+        the Route 22 and Route 81 billboards, picked in admin/rooms-setup.js mediaPick). Known only while the game
         is connected (the values are the game's, kept in the reactions engine's rooms_settings).
 
         Same methods as the other users of stored files. A rename or a delete is sent to the game

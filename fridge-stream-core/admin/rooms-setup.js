@@ -37,7 +37,8 @@
  * podium gets from the sender page ("Live: <tab>", "No tab or window picked yet"...) and has the
  * button that picks the tab or window (window.RoomsSender.pickPresenter, admin/rooms-sender.js).
  * The sender itself runs in the Live page's "Share to Stream Rooms" card.
- * Picture pickers: a text setting listed in MEDIA_PICKS (Route 22's billboard pictures) holds
+ * Picture pickers: a text setting listed in MEDIA_PICKS (Route 22's and Route 81's billboard
+ * pictures, two separate sets) holds
  * Stored files names, comma-separated. Instead of a text box it gets a "Choose pictures" button and
  * a pop-up to tick stored pictures and upload new ones (mediaPick; GET / POST /api/admin/media).
  * admin.js calls window.RoomsSetup.open(sub) from activateTab.
@@ -91,6 +92,7 @@
       ["Camera moves", ["camera_glide", "camera_fov"], "Camera views are picked on the Live page; new ones are saved in the game."],
       ["Big screen light", ["screen_light", "screen_glow"]],
       ["Route 22 billboards", /^r22_bb_/, "Shows while the Route 22 Cruise room is loaded. The other billboard settings are under More."],
+      ["Route 81 billboards", /^r81_bb_/, "Shows while the Route 81 Cruise room is loaded. Its pictures are a separate set from Route 22's. The other billboard settings are under More."],
       ["Sound", ["volume", "ambience_volume", "room_acoustics", "room_speaker", "audio_delay_ms", "video_delay_ms"]],
       ["Graphics and speed", ["graphics_quality", "gfx_gi", "gfx_ssao", "gfx_ssr", "gfx_fog", "gfx_shadows", "gfx_msaa", "gfx_render_scale", "fps_cap", "vsync"],
         "For the PC Stream Rooms runs on. Lower these on a slower PC."],
@@ -151,7 +153,7 @@
   // Stream Rooms" section, so nothing is ever dropped. Keep the titles in step with CARDS.
   const SECTIONS = {
     room: [
-      ["In the room", ["Room", "Stage curtain", "Big screen light", "Camera moves", "Route 22 billboards"]],
+      ["In the room", ["Room", "Stage curtain", "Big screen light", "Camera moves", "Route 22 billboards", "Route 81 billboards"]],
       ["Sound", ["Sound"]],
       ["This PC and the game window", ["Graphics and speed", "Game window"], "Only for the PC Stream Rooms runs on."],
     ],
@@ -184,7 +186,7 @@
   // from /media/<name>): key -> what the pictures are for, shown as the pop-up's title. Stream
   // Rooms reads PNG, JPEG, WebP and GIF up to MEDIA_PICK_MAX bytes (its core/picture_file.gd
   // MAX_BYTES; keep the two in step), so bigger stored pictures are listed but can't be ticked.
-  const MEDIA_PICKS = { r22_bb_core: "Billboard pictures" };
+  const MEDIA_PICKS = { r22_bb_core: "Billboard pictures", r81_bb_core: "Route 81 billboard pictures" };
   // Picture sizes the pop-up suggests for a key, each with a blank template to download
   // (admin/billboard-templates/, drawn by make_templates.py there; keep the sizes in step):
   // [width, height, file, what it is good for]. Any size works (Stream Rooms builds each board
@@ -196,6 +198,14 @@
       [1080, 1080, "billboard-square-1080x1080.png", "Square: on a narrower board"],
       [1080, 1350, "billboard-tall-1080x1350.png", "Tall poster: on a narrow, tall board"],
     ],
+    // Route 81's own templates (green, marked Route 81); its shapes are the classic board, the
+    // tall pole, the wooden sign, the parked trailer and the painted barn.
+    r81_bb_core: [
+      [1920, 1080, "route81-billboard-1920x1080.png", "Best all-round: fills every board and the painted barn"],
+      [1920, 660, "route81-billboard-wide-1920x660.png", "Wide banner: fills the parked trailer's side"],
+      [1080, 1080, "route81-billboard-square-1080x1080.png", "Square: on a narrower board"],
+      [1080, 1350, "route81-billboard-tall-1080x1350.png", "Tall poster: on a narrow, tall board"],
+    ],
   };
   const MEDIA_PICK_EXTS = ["png", "jpg", "jpeg", "webp", "gif"];
   const MEDIA_PICK_MAX = 3 * 1024 * 1024;
@@ -205,6 +215,7 @@
   // "this panel", or a label that only made sense under an in-game heading.
   const WORDS = {
     r22_bb_core: { label: "Billboard pictures", tip: "The pictures on the Route 22 Cruise's roadside billboards, for example your friends' promo pictures. Choose pictures lists what is in Stored files and uploads new ones. Each board is built to its picture's shape, so the whole picture shows." },
+    r81_bb_core: { label: "Billboard pictures", tip: "The pictures on the Route 81 Cruise's billboards (boards in the fields and in front of the woods, a painted barn). This is its own set: the Route 22 Cruise's pictures are picked on its own card. Choose pictures lists what is in Stored files and uploads new ones. Each board is built to its picture's shape, so the whole picture shows." },
     ndi_auto: { tip: "When the NDI source shown last comes back (OBS restarted, for example), show it again by itself." },
     spout_auto: { tip: "When the last Spout sender starts again (and nothing else is on the big screen), show it again by itself." },
     screen_peer: { label: "Show the avatar of", tip: "In a co-stream: put someone's avatar (what they set up as their avatar for co-streams) on the big screen. Pick (nobody) to go back to the shared tab. The host's choice goes to every PC in the session." },
